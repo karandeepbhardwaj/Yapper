@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+out/
+target/
+*.vsix
+
+# Rust
+**/*.rs.bk
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.vscode/settings.json
+.vscode/launch.json
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Tauri
+apps/desktop/src-tauri/WixTools/
+
+# VS Code Extension
+extensions/vscode-bridge/out/
+
+# Temp
+*.tmp
+*.bak
+.npmrc.tmp
