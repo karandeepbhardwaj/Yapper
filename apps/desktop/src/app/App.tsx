@@ -1,24 +1,27 @@
 import { useEffect, useState } from "react";
 import { MainWindow } from "./components/MainWindow";
+import { LandingPage } from "./components/LandingPage";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { emit } from "@tauri-apps/api/event";
+import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
   const { settings, updateSettings } = useSettings();
   const { widgetState, latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [hasOnboarded, setHasOnboarded] = useState(() => {
+    return localStorage.getItem("yapper-onboarded") === "true";
+  });
 
-  // Add new history item when refinement completes
   useEffect(() => {
     if (latestResult) {
       addItem(latestResult);
     }
   }, [latestResult, addItem]);
 
-  // Dark mode — check system preference on mount
   useEffect(() => {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (prefersDark) {
@@ -38,55 +41,67 @@ export default function App() {
     emit("theme-changed", nowDark ? "dark" : "light");
   };
 
+  const handleGetStarted = () => {
+    localStorage.setItem("yapper-onboarded", "true");
+    setHasOnboarded(true);
+  };
+
   return (
     <div
       className="h-screen overflow-hidden"
       style={{
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontFamily: "var(--font-body, 'Inter', sans-serif)",
         background: "var(--background)",
       }}
     >
-      <MainWindow
-        isDarkMode={isDarkMode}
-        onToggleDarkMode={handleToggleDarkMode}
-        historyItems={historyItems}
-        settings={settings}
-        onUpdateSettings={updateSettings}
-      />
+      <AnimatePresence mode="wait">
+        {!hasOnboarded ? (
+          <motion.div
+            key="landing"
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.3 }}
+          >
+            <LandingPage onGetStarted={handleGetStarted} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="main"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="h-screen"
+          >
+            <MainWindow
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={handleToggleDarkMode}
+              historyItems={historyItems}
+              settings={settings}
+              onUpdateSettings={updateSettings}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {error && (
         <div
-          className="fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg"
+          className="fixed top-4 right-4 z-50 p-4 rounded-2xl shadow-lg"
           style={{
             background: "var(--destructive)",
             color: "var(--destructive-foreground)",
           }}
         >
           <p className="text-sm">{error}</p>
-          <button
-            onClick={() => setError(null)}
-            className="text-xs underline mt-1"
-          >
+          <button onClick={() => setError(null)} className="text-xs underline mt-1">
             Dismiss
           </button>
         </div>
       )}
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: var(--claude-bg-light);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: var(--claude-border);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: var(--claude-orange);
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--yapper-border); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--yapper-accent); }
       `}</style>
     </div>
   );

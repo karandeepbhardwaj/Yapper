@@ -1,8 +1,15 @@
-/* Inter font - loaded from system or bundled, no external requests */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
   font-weight: 300 700;
   font-display: swap;
   src: local('Inter');
+}
+
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: local('Manrope');
 }

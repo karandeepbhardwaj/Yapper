@@ -1,10 +1,10 @@
 [package]
-name = "prompt-refinement-services"
+name = "yapper"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "prompt_refinement_services_lib"
+name = "yapper_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

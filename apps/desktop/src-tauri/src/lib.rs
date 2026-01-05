@@ -9,26 +9,27 @@ use tauri::{Emitter, Manager};
 
 
 #[cfg(target_os = "macos")]
-fn is_mouse_near(center_x: f64, center_y: f64, radius: f64) -> bool {
+fn is_mouse_near(center_x_logical: f64, center_y_logical: f64, radius_logical: f64) -> bool {
     use cocoa::foundation::NSPoint;
     use objc::*;
 
     unsafe {
+        // NSEvent.mouseLocation returns points in screen coordinates (bottom-left origin)
         let mouse_loc: NSPoint = msg_send![class!(NSEvent), mouseLocation];
 
-        // Get screen height for coordinate conversion (macOS uses bottom-left origin)
         let screens: cocoa::base::id = msg_send![class!(NSScreen), screens];
         let main_screen: cocoa::base::id = msg_send![screens, objectAtIndex: 0_usize];
         let frame: cocoa::foundation::NSRect = msg_send![main_screen, frame];
         let screen_height = frame.size.height;
 
-        // Convert center_y from top-left to bottom-left coordinate system
-        let center_y_flipped = screen_height - center_y;
+        // NSEvent mouseLocation is in points (logical), bottom-left origin
+        // Our center_y_logical is top-left origin, convert to bottom-left
+        let center_y_bl = screen_height - center_y_logical;
 
-        let dx = mouse_loc.x - center_x;
-        let dy = mouse_loc.y - center_y_flipped;
+        let dx = mouse_loc.x - center_x_logical;
+        let dy = mouse_loc.y - center_y_bl;
 
-        (dx * dx + dy * dy).sqrt() <= radius
+        (dx * dx + dy * dy).sqrt() <= radius_logical
     }
 }
 
@@ -268,89 +269,79 @@ pub fn run() {
             // Register global hotkey
             hotkey::register(app)?;
 
-            // Position widget at center bottom and poll mouse for hover
+            // Configure widget: position at center bottom + convert to NSPanel
+            #[cfg(target_os = "macos")]
             {
-                let app_handle = app.handle().clone();
-
-                // Position at center bottom on startup
                 if let Some(widget) = app.get_webview_window("widget") {
-                    let monitor = app.primary_monitor().ok().flatten();
-                    if let Some(m) = monitor {
-                        let sf = m.scale_factor();
-                        let sw = m.size().width as f64 / sf;
-                        let sh = m.size().height as f64 / sf;
-                        let expanded = 110.0;
+                    // Position at center bottom
+                    if let Ok(Some(monitor)) = app.primary_monitor() {
+                        let sf = monitor.scale_factor();
+                        let sw = monitor.size().width as f64 / sf;
+                        let sh = monitor.size().height as f64 / sf;
+                        let win_size = 110.0;
+                        let x = (sw - win_size) / 2.0;
+                        let y = sh - win_size - 80.0;
+                        let _ = widget.set_position(tauri::LogicalPosition::new(x, y));
+                    }
+
+                    // Poll mouse position globally to detect hover even when app is inactive
+                    let app_handle = app.handle().clone();
+                    std::thread::spawn(move || {
+                        use std::sync::atomic::{AtomicBool, Ordering};
+                        static WAS_HOVERING: AtomicBool = AtomicBool::new(false);
+
+                        // Wait for window to settle after positioning
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+
+                        // Get the center position (in logical coords)
+                        let Some(widget) = app_handle.get_webview_window("widget") else { return };
+                        let scale = widget.scale_factor().unwrap_or(2.0);
+                        let Ok(pos) = widget.outer_position() else { return };
+                        let Ok(size) = widget.outer_size() else { return };
+                        let cx = pos.x as f64 / scale + (size.width as f64 / scale) / 2.0;
+                        let cy = pos.y as f64 / scale + (size.height as f64 / scale) / 2.0;
+                        println!("[HOVER] Widget center: ({:.0}, {:.0}), scale: {}", cx, cy, scale);
+
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_millis(80));
+
+                            let hovering = {
+                                #[cfg(target_os = "macos")]
+                                { is_mouse_near(cx, cy, 70.0) }
+                                #[cfg(not(target_os = "macos"))]
+                                { false }
+                            };
+                            let was = WAS_HOVERING.load(Ordering::Relaxed);
+
+                            if hovering != was {
+                                WAS_HOVERING.store(hovering, Ordering::Relaxed);
+                                println!("[HOVER] Mouse hover: {}", hovering);
+                                if let Some(w) = app_handle.get_webview_window("widget") {
+                                    let js = format!(
+                                        "window.dispatchEvent(new CustomEvent('yapper-hover', {{detail: {}}}))",
+                                        hovering
+                                    );
+                                    let _ = w.eval(&js);
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                if let Some(widget) = app.get_webview_window("widget") {
+                    if let Ok(Some(monitor)) = app.primary_monitor() {
+                        let sf = monitor.scale_factor();
+                        let sw = monitor.size().width as f64 / sf;
+                        let sh = monitor.size().height as f64 / sf;
+                        let win_size = 110.0;
                         let _ = widget.set_position(tauri::LogicalPosition::new(
-                            (sw - expanded) / 2.0,
-                            sh - expanded - 80.0,
+                            (sw - win_size) / 2.0,
+                            sh - win_size - 80.0,
                         ));
                     }
                 }
-
-                // Poll mouse position to collapse/expand widget window
-                // Works even when app is inactive — no JS needed
-                std::thread::spawn(move || {
-                    let mut is_expanded = true;
-                    let expanded_size = 110.0;
-                    let collapsed_w = 48.0;
-                    let collapsed_h = 8.0;
-
-                    // Wait for window to initialize
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-
-                    // Capture the center position
-                    let (center_x, center_y) = {
-                        if let Some(widget) = app_handle.get_webview_window("widget") {
-                            if let (Ok(pos), Ok(size)) = (widget.outer_position(), widget.outer_size()) {
-                                let scale = widget.scale_factor().unwrap_or(1.0);
-                                (
-                                    pos.x as f64 + (size.width as f64 / scale) / 2.0,
-                                    pos.y as f64 + (size.height as f64 / scale) / 2.0,
-                                )
-                            } else {
-                                return;
-                            }
-                        } else {
-                            return;
-                        }
-                    };
-
-                    loop {
-                        std::thread::sleep(std::time::Duration::from_millis(60));
-
-                        let Some(widget) = app_handle.get_webview_window("widget") else { continue };
-
-                        let is_active = stt::get_state() != stt::State::Idle;
-
-                        // Check mouse position using macOS API
-                        let mouse_near = {
-                            #[cfg(target_os = "macos")]
-                            {
-                                is_mouse_near(center_x, center_y, expanded_size / 2.0 + 15.0)
-                            }
-                            #[cfg(not(target_os = "macos"))]
-                            { false }
-                        };
-
-                        let should_expand = mouse_near || is_active;
-
-                        if should_expand && !is_expanded {
-                            is_expanded = true;
-                            let _ = widget.set_size(tauri::LogicalSize::new(expanded_size, expanded_size));
-                            let _ = widget.set_position(tauri::LogicalPosition::new(
-                                center_x - expanded_size / 2.0,
-                                center_y - expanded_size / 2.0,
-                            ));
-                        } else if !should_expand && is_expanded {
-                            is_expanded = false;
-                            let _ = widget.set_size(tauri::LogicalSize::new(collapsed_w, collapsed_h));
-                            let _ = widget.set_position(tauri::LogicalPosition::new(
-                                center_x - collapsed_w / 2.0,
-                                center_y + expanded_size / 2.0 - collapsed_h, // bottom of original area
-                            ));
-                        }
-                    }
-                });
             }
 
             Ok(())

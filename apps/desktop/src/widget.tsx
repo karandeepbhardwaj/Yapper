@@ -7,9 +7,26 @@ import { invoke } from "@tauri-apps/api/core";
 
 type WidgetState = "idle" | "listening" | "processing";
 
+const EXPANDED_SIZE = 64;
+const COLLAPSED_WIDTH = 48;
+const COLLAPSED_HEIGHT = 6;
+
 function WidgetApp() {
   const [state, setState] = useState<WidgetState>("idle");
+  const [isHovered, setIsHovered] = useState(false);
   const mouseDownTime = useRef(0);
+
+  const isExpanded = isHovered || state !== "idle";
+
+  // Listen for global hover from Rust polling (works when app is inactive)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setIsHovered(detail === true);
+    };
+    window.addEventListener("yapper-hover", handler);
+    return () => window.removeEventListener("yapper-hover", handler);
+  }, []);
 
   useEffect(() => {
     const unlistenState = listen<string>("stt-state-changed", (event) => {
@@ -18,17 +35,17 @@ function WidgetApp() {
     const unlistenTheme = listen<string>("theme-changed", (event) => {
       const root = document.documentElement;
       if (event.payload === "dark") {
-        root.style.setProperty("--claude-orange", "#E89B7D");
-        root.style.setProperty("--claude-orange-dark", "#CC785C");
-        root.style.setProperty("--claude-bg-lighter", "#2A2A2A");
-        root.style.setProperty("--claude-text-secondary", "#A3A3A3");
-        root.style.setProperty("--claude-border", "#333333");
+        root.style.setProperty("--yapper-accent", "#ffb59e");
+        root.style.setProperty("--yapper-accent-dark", "#ae3200");
+        root.style.setProperty("--yapper-bg-lighter", "#191c1d");
+        root.style.setProperty("--yapper-text-secondary", "#c6c6c6");
+        root.style.setProperty("--yapper-border", "#474747");
       } else {
-        root.style.setProperty("--claude-orange", "#CC785C");
-        root.style.setProperty("--claude-orange-dark", "#B85C3D");
-        root.style.setProperty("--claude-bg-lighter", "#FAFAFA");
-        root.style.setProperty("--claude-text-secondary", "#666666");
-        root.style.setProperty("--claude-border", "#E5E5E5");
+        root.style.setProperty("--yapper-accent", "#ae3200");
+        root.style.setProperty("--yapper-accent-dark", "#852400");
+        root.style.setProperty("--yapper-bg-lighter", "#f8f9fa");
+        root.style.setProperty("--yapper-text-secondary", "#474747");
+        root.style.setProperty("--yapper-border", "#c6c6c6");
       }
     });
     return () => {
@@ -55,6 +72,8 @@ function WidgetApp() {
 
   return (
     <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={{
         width: "100vw",
         height: "100vh",
@@ -64,65 +83,121 @@ function WidgetApp() {
         background: "transparent",
       }}
     >
-      {/* Always render the full circle — window resize handles collapse/expand */}
-      <div
+      {/* Animated container — morphs between pill and circle */}
+      <motion.div
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
+        animate={{
+          width: isExpanded ? EXPANDED_SIZE : COLLAPSED_WIDTH,
+          height: isExpanded ? EXPANDED_SIZE : COLLAPSED_HEIGHT,
+          borderRadius: isExpanded ? EXPANDED_SIZE / 2 : COLLAPSED_HEIGHT / 2,
+          opacity: isExpanded ? 1 : 0.4,
+        }}
+        whileHover={isExpanded ? { scale: 1.08 } : undefined}
+        whileTap={isExpanded ? { scale: 0.94 } : undefined}
+        transition={{
+          duration: 0.2,
+          ease: [0.25, 0.1, 0.25, 1],
+        }}
         style={{
-          width: 64,
-          height: 64,
-          borderRadius: "50%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           cursor: state === "processing" ? "wait" : "pointer",
           background:
             state === "idle"
-              ? "var(--claude-bg-lighter)"
+              ? "var(--yapper-bg-lighter)"
               : state === "listening"
-              ? "var(--claude-orange)"
-              : "var(--claude-orange-dark)",
-          border: state === "idle" ? "1px solid var(--claude-border)" : "none",
+              ? "var(--yapper-accent)"
+              : "var(--yapper-accent-dark)",
+          border: state === "idle" ? "1px solid var(--yapper-border)" : "none",
+          overflow: "hidden",
+          position: "relative",
+          zIndex: 2,
         }}
       >
-        {state === "idle" && (
-          <Mic style={{ width: 24, height: 24, color: "var(--claude-text-secondary)" }} />
-        )}
+        {/* Content — fades in/out with expand */}
+        <motion.div
+          animate={{
+            opacity: isExpanded ? 1 : 0,
+            scale: isExpanded ? 1 : 0.5,
+          }}
+          transition={{ duration: 0.15 }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {state === "idle" && (
+            <Mic style={{ width: 24, height: 24, color: "var(--yapper-text-secondary)" }} />
+          )}
 
-        {state === "listening" && (
-          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Mic style={{ width: 24, height: 24, color: "white" }} />
-            <div
-              style={{
-                position: "absolute",
-                bottom: -4,
-                left: "50%",
-                transform: "translateX(-50%)",
-                display: "flex",
-                gap: 2,
-              }}
-            >
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  style={{ width: 2, backgroundColor: "white", borderRadius: 9999 }}
-                  animate={{ height: ["4px", "12px", "4px"] }}
-                  transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
-                />
-              ))}
+          {state === "listening" && (
+            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Mic style={{ width: 24, height: 24, color: "white" }} />
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: -4,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  display: "flex",
+                  gap: 2,
+                }}
+              >
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    style={{ width: 2, backgroundColor: "white", borderRadius: 9999 }}
+                    animate={{ height: ["4px", "12px", "4px"] }}
+                    transition={{
+                      duration: 0.6,
+                      repeat: Infinity,
+                      delay: i * 0.15,
+                      ease: "easeInOut",
+                    }}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {state === "processing" && (
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          >
-            <Sparkles style={{ width: 24, height: 24, color: "white" }} />
-          </motion.div>
-        )}
-      </div>
+          {state === "processing" && (
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            >
+              <Sparkles style={{ width: 24, height: 24, color: "white" }} />
+            </motion.div>
+          )}
+        </motion.div>
+      </motion.div>
+
+      {/* Pulse glow ring — only when listening and expanded */}
+      {state === "listening" && isExpanded && (
+        <motion.div
+          style={{
+            position: "absolute",
+            width: EXPANDED_SIZE,
+            height: EXPANDED_SIZE,
+            borderRadius: "50%",
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+          animate={{
+            boxShadow: [
+              "0 0 0 0 rgba(174, 50, 0, 0.5)",
+              "0 0 0 18px rgba(174, 50, 0, 0)",
+            ],
+          }}
+          transition={{
+            duration: 1.5,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      )}
     </div>
   );
 }
