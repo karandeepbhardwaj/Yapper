@@ -20,11 +20,7 @@ export function useTauriEvents() {
       listen<SttResult>("refinement-complete", (event) => {
         const item: HistoryItem = {
           id: Date.now().toString(),
-          timestamp: new Date().toLocaleString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: true,
-          }),
+          timestamp: new Date().toISOString(),
           refinedText: event.payload.refinedText,
           rawTranscript: event.payload.rawTranscript,
         };

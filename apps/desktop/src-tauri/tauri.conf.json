@@ -20,19 +20,20 @@
         "center": true,
         "resizable": true,
         "minWidth": 480,
-        "minHeight": 400
+        "minHeight": 400,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       },
       {
         "label": "widget",
         "title": "",
         "url": "/widget.html",
-        "width": 80,
-        "height": 80,
-        "x": -100,
-        "y": -100,
+        "width": 100,
+        "height": 100,
         "decorations": false,
         "alwaysOnTop": true,
         "transparent": true,
+        "shadow": false,
         "resizable": false,
         "skipTaskbar": true,
         "visible": true

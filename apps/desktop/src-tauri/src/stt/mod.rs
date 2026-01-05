@@ -3,13 +3,40 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
 
-static IS_RECORDING: AtomicBool = AtomicBool::new(false);
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum State {
+    Idle,
+    Recording,
+    Processing,
+}
+
+static STATE: Lazy<Mutex<State>> = Lazy::new(|| Mutex::new(State::Idle));
+
+pub fn get_state() -> State {
+    *STATE.lock().unwrap()
+}
+
+pub fn set_state(new: State) {
+    *STATE.lock().unwrap() = new;
+}
+
+/// Try to transition from expected → new. Returns true if successful.
+pub fn transition(expected: State, new: State) -> bool {
+    let mut state = STATE.lock().unwrap();
+    if *state == expected {
+        *state = new;
+        true
+    } else {
+        false
+    }
+}
 
 pub async fn start(app: &tauri::AppHandle) -> Result<(), String> {
-    if IS_RECORDING.swap(true, Ordering::SeqCst) {
-        return Err("Already recording".to_string());
+    if !transition(State::Idle, State::Recording) {
+        return Err("Not idle".to_string());
     }
 
     #[cfg(target_os = "macos")]
@@ -30,7 +57,7 @@ pub async fn start(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 pub async fn stop() -> Result<String, String> {
-    if !IS_RECORDING.swap(false, Ordering::SeqCst) {
+    if !transition(State::Recording, State::Processing) {
         return Err("Not recording".to_string());
     }
 

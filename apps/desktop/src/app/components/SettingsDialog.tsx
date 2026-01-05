@@ -159,7 +159,7 @@ export function SettingsDialog({ isOpen, onClose, settings, onUpdateSettings }: 
                         color: "var(--claude-text-primary)",
                       }}
                     >
-                      {settings?.hotkey ?? "Alt+Space"}
+                      {settings?.hotkey ?? "Cmd+Shift+."}
                     </kbd>
                   </div>
                   <div className="flex items-center justify-between text-xs">
