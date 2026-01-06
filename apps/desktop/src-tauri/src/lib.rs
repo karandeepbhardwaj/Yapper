@@ -374,12 +374,18 @@ fn create_panel(handle: &tauri::AppHandle) {
         let _: () = msg_send![panel, setCollectionBehavior:
             (1u64 | (1u64 << 4) | (1u64 << 6) | (1u64 << 8))];
 
-        // Position at screen bottom
-        if let Some((x, y)) = get_widget_position(110.0) {
+        // Position above dock, start at collapsed pill size (60x16)
+        let pill_w = 60.0;
+        let pill_h = 16.0;
+        if let Some((x, y)) = get_widget_position(pill_w) {
             let primary_h = get_primary_screen_height();
-            let origin = NSPoint { x, y: primary_h - y - 110.0 };
-            let _: () = msg_send![panel, setFrameOrigin: origin];
-            WIDGET_CENTER.store_pos(x + 55.0, y + 55.0);
+            let origin = NSPoint { x, y: primary_h - y - pill_h };
+            let new_frame = cocoa::foundation::NSRect {
+                origin,
+                size: cocoa::foundation::NSSize { width: pill_w, height: pill_h },
+            };
+            let _: () = msg_send![panel, setFrame: new_frame display: true animate: false];
+            WIDGET_CENTER.store_pos(x + pill_w / 2.0, y + pill_h / 2.0);
         }
 
         // Show panel, hide original window
