@@ -1,72 +1,67 @@
 import { createRoot } from "react-dom/client";
 import { useState, useEffect } from "react";
-import { Mic, Sparkles } from "lucide-react";
-import { motion } from "motion/react";
+import { Mic } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 type WidgetState = "idle" | "listening" | "processing";
 
-const EXPANDED_SIZE = 64;
-const COLLAPSED_WIDTH = 48;
-const COLLAPSED_HEIGHT = 6;
+// Pill sizes for each state
+const COLLAPSED_W = 40;
+const COLLAPSED_H = 5;
+const HOVER_W = 52;
+const HOVER_H = 24;
+const RECORDING_W = 160;
+const RECORDING_H = 32;
+
+const PILL_EASE = [0.34, 1.1, 0.64, 1] as const;
 
 function WidgetApp() {
   const [state, setState] = useState<WidgetState>("idle");
   const [isHovered, setIsHovered] = useState(false);
 
-  const isExpanded = isHovered || state !== "idle";
+  const isRecording = state === "listening" || state === "processing";
 
-  // Listen for global hover from Rust polling (works when app is inactive)
+  // Rust-polled hover
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      setIsHovered(detail === true);
+      setIsHovered((e as CustomEvent).detail === true);
     };
     window.addEventListener("yapper-hover", handler);
     return () => window.removeEventListener("yapper-hover", handler);
   }, []);
 
   useEffect(() => {
-    const unlistenState = listen<string>("stt-state-changed", (event) => {
+    const unsub = listen<string>("stt-state-changed", (event) => {
       setState(event.payload as WidgetState);
     });
-    const unlistenTheme = listen<string>("theme-changed", (event) => {
-      const root = document.documentElement;
-      if (event.payload === "dark") {
-        root.style.setProperty("--yapper-accent", "#ffb59e");
-        root.style.setProperty("--yapper-accent-dark", "#ae3200");
-        root.style.setProperty("--yapper-bg-lighter", "#191c1d");
-        root.style.setProperty("--yapper-text-secondary", "#c6c6c6");
-        root.style.setProperty("--yapper-border", "#474747");
-      } else {
-        root.style.setProperty("--yapper-accent", "#ae3200");
-        root.style.setProperty("--yapper-accent-dark", "#852400");
-        root.style.setProperty("--yapper-bg-lighter", "#f8f9fa");
-        root.style.setProperty("--yapper-text-secondary", "#474747");
-        root.style.setProperty("--yapper-border", "#c6c6c6");
-      }
-    });
-    return () => {
-      unlistenState.then((fn) => fn());
-      unlistenTheme.then((fn) => fn());
-    };
+    return () => { unsub.then((fn) => fn()); };
   }, []);
 
-  const handleClick = async () => {
-    if (state === "idle") {
+  const handlePillClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isRecording) {
       await invoke("start_recording");
-    } else if (state === "listening") {
-      await invoke("stop_recording");
     }
   };
 
-  // Use mousedown to fire immediately on first click,
-  // even when the app isn't focused (bypasses activation delay)
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    handleClick();
+  const handleStop = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await invoke("stop_recording");
   };
+
+  const handleDiscard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Just reset UI state — no refinement, no paste, no save
+    setState("idle");
+    // Reset backend STT state without triggering the pipeline
+    invoke("cancel_recording").catch(() => {});
+  };
+
+  // Determine pill dimensions
+  const pillW = isRecording ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
+  const pillH = isRecording ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
 
   return (
     <div
@@ -74,128 +69,145 @@ function WidgetApp() {
         width: "100vw",
         height: "100vh",
         display: "flex",
-        alignItems: "flex-end",
+        alignItems: "center",
         justifyContent: "center",
-        paddingBottom: 4,
         background: "transparent",
       }}
     >
-      {/* Animated container — morphs between pill and circle */}
       <motion.div
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        onMouseDown={handleMouseDown}
+        onMouseDown={!isRecording ? handlePillClick : undefined}
         animate={{
-          width: isExpanded ? EXPANDED_SIZE : COLLAPSED_WIDTH,
-          height: isExpanded ? EXPANDED_SIZE : COLLAPSED_HEIGHT,
-          borderRadius: isExpanded ? EXPANDED_SIZE / 2 : COLLAPSED_HEIGHT / 2,
-          opacity: isExpanded ? 1 : 0.4,
+          width: pillW,
+          height: pillH,
+          borderRadius: pillH / 2,
+          opacity: !isRecording && !isHovered ? 0.5 : 1,
         }}
-        whileHover={isExpanded ? { scale: 1.08 } : undefined}
-        whileTap={isExpanded ? { scale: 0.94 } : undefined}
         transition={{
-          duration: 0.2,
-          ease: [0.25, 0.1, 0.25, 1],
+          duration: 0.35,
+          ease: PILL_EASE,
+          opacity: { duration: 0.2 },
         }}
         style={{
+          background: "#1a1a1a",
+          border: "1.5px solid #3a3a3a",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          cursor: state === "processing" ? "wait" : "pointer",
-          background:
-            state === "idle"
-              ? "var(--yapper-bg-lighter)"
-              : state === "listening"
-              ? "var(--yapper-accent)"
-              : "var(--yapper-accent-dark)",
-          border: state === "idle" ? "1px solid var(--yapper-border)" : "none",
+          cursor: isRecording ? "default" : "pointer",
           overflow: "hidden",
           position: "relative",
-          zIndex: 2,
         }}
       >
-        {/* Content — fades in/out with expand */}
-        <motion.div
-          animate={{
-            opacity: isExpanded ? 1 : 0,
-            scale: isExpanded ? 1 : 0.5,
-          }}
-          transition={{ duration: 0.15 }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {state === "idle" && (
-            <Mic style={{ width: 24, height: 24, color: "var(--yapper-text-secondary)" }} />
+        <AnimatePresence mode="wait">
+          {!isRecording && isHovered && (
+            <motion.div
+              key="hover"
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.7 }}
+              transition={{ duration: 0.15 }}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <Mic style={{ width: 14, height: 14, color: "#e5383b" }} />
+            </motion.div>
           )}
-
-          {state === "listening" && (
-            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Mic style={{ width: 24, height: 24, color: "white" }} />
-              <div
+          {isRecording && (
+            <motion.div
+              key="recording"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15, delay: 0.12 }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                padding: "0 6px",
+              }}
+            >
+              {/* Discard (X) button */}
+              <motion.button
+                onClick={handleDiscard}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
                 style={{
-                  position: "absolute",
-                  bottom: -4,
-                  left: "50%",
-                  transform: "translateX(-50%)",
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  background: "#3a3a3a",
+                  border: "none",
+                  cursor: "pointer",
                   display: "flex",
-                  gap: 2,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  color: "#aaa",
+                  fontSize: 12,
+                  fontWeight: 400,
+                  lineHeight: 1,
                 }}
               >
-                {[0, 1, 2].map((i) => (
+                ✕
+              </motion.button>
+
+              {/* Wave bars */}
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 2.5 }}>
+                {Array.from({ length: 12 }).map((_, i) => (
                   <motion.div
                     key={i}
-                    style={{ width: 2, backgroundColor: "white", borderRadius: 9999 }}
-                    animate={{ height: ["4px", "12px", "4px"] }}
+                    style={{
+                      width: 2.5,
+                      borderRadius: 1.5,
+                      background: "#e5383b",
+                    }}
+                    animate={{
+                      height: [3, 8 + Math.sin(i * 0.7) * 6, 3],
+                      opacity: [0.5, 1, 0.5],
+                    }}
                     transition={{
-                      duration: 0.6,
+                      duration: 0.6 + Math.random() * 0.3,
                       repeat: Infinity,
-                      delay: i * 0.15,
+                      delay: i * 0.05,
                       ease: "easeInOut",
                     }}
                   />
                 ))}
               </div>
-            </div>
-          )}
 
-          {state === "processing" && (
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-            >
-              <Sparkles style={{ width: 24, height: 24, color: "white" }} />
+              {/* Stop (send for refinement) button */}
+              <motion.button
+                onClick={handleStop}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  background: "#e5383b",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 1.5,
+                    background: "#fff",
+                  }}
+                />
+              </motion.button>
             </motion.div>
           )}
-        </motion.div>
+        </AnimatePresence>
       </motion.div>
-
-      {/* Pulse glow ring — only when listening and expanded */}
-      {state === "listening" && isExpanded && (
-        <motion.div
-          style={{
-            position: "absolute",
-            width: EXPANDED_SIZE,
-            height: EXPANDED_SIZE,
-            borderRadius: "50%",
-            pointerEvents: "none",
-            zIndex: 1,
-          }}
-          animate={{
-            boxShadow: [
-              "0 0 0 0 rgba(174, 50, 0, 0.5)",
-              "0 0 0 18px rgba(174, 50, 0, 0)",
-            ],
-          }}
-          transition={{
-            duration: 1.5,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -82,6 +82,36 @@ async fn toggle_recording(handle: &tauri::AppHandle) {
                 Ok(r) => (r.refined_text, r.category, r.title),
                 Err(_) => (raw_transcript.clone(), None, None),
             };
+            // Auto-paste
+            let text_for_paste = refined_text.clone();
+            std::thread::spawn(move || {
+                #[cfg(target_os = "macos")]
+                {
+                    use std::process::Command;
+                    if let Ok(mut child) = Command::new("pbcopy")
+                        .stdin(std::process::Stdio::piped())
+                        .spawn()
+                    {
+                        if let Some(stdin) = child.stdin.as_mut() {
+                            use std::io::Write;
+                            let _ = stdin.write_all(text_for_paste.as_bytes());
+                        }
+                        let _ = child.wait();
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    let _ = Command::new("osascript")
+                        .args(["-e", r#"
+                            tell application "System Events"
+                                set frontApp to name of first application process whose frontmost is true
+                                tell application process frontApp
+                                    keystroke "v" using command down
+                                end tell
+                            end tell
+                        "#])
+                        .output();
+                }
+            });
+
             let _ = history::add_entry(handle, &raw_transcript, &refined_text);
 
             #[derive(Clone, Serialize)]
@@ -146,9 +176,9 @@ fn get_widget_position(widget_size: f64) -> Option<(f64, f64)> {
             {
                 // Center horizontally within the visible frame
                 let x_bl = visible.origin.x + (visible.size.width - widget_size) / 2.0;
-                // Position just above the dock (visible.origin.y = dock top edge)
-                // Add small gap so widget doesn't touch dock
-                let y_bl = visible.origin.y + 6.0;
+                // Position so the pill sits just above the dock
+                // visible.origin.y = top edge of dock in bottom-left coords
+                let y_bl = visible.origin.y;
 
                 // Convert from macOS bottom-left to Tauri top-left coordinates
                 let x_tl = x_bl;
@@ -302,6 +332,15 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
+    // Discard — just reset STT state, no refinement, no paste, no save
+    let _ = stt::stop().await; // stop audio capture, discard transcript
+    stt::set_state(stt::State::Idle);
+    app.emit("stt-state-changed", "idle").ok();
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_history(app: tauri::AppHandle) -> Result<Vec<history::HistoryEntry>, String> {
     history::get_all(&app).map_err(|e| e.to_string())
 }
@@ -374,18 +413,17 @@ fn create_panel(handle: &tauri::AppHandle) {
         let _: () = msg_send![panel, setCollectionBehavior:
             (1u64 | (1u64 << 4) | (1u64 << 6) | (1u64 << 8))];
 
-        // Position above dock, start at collapsed pill size (60x16)
-        let pill_w = 60.0;
-        let pill_h = 16.0;
-        if let Some((x, y)) = get_widget_position(pill_w) {
+        // Position above dock with 80x80 fixed size
+        let panel_size = 180.0;
+        if let Some((x, y)) = get_widget_position(panel_size) {
             let primary_h = get_primary_screen_height();
-            let origin = NSPoint { x, y: primary_h - y - pill_h };
+            let origin = NSPoint { x, y: primary_h - y - panel_size };
             let new_frame = cocoa::foundation::NSRect {
                 origin,
-                size: cocoa::foundation::NSSize { width: pill_w, height: pill_h },
+                size: cocoa::foundation::NSSize { width: panel_size, height: panel_size },
             };
             let _: () = msg_send![panel, setFrame: new_frame display: true animate: false];
-            WIDGET_CENTER.store_pos(x + pill_w / 2.0, y + pill_h / 2.0);
+            WIDGET_CENTER.store_pos(x + panel_size / 2.0, y + panel_size / 2.0);
         }
 
         // Show panel, hide original window
@@ -539,7 +577,6 @@ pub fn run() {
                         let mut last_x = 0.0f64;
                         let mut last_y = 0.0f64;
                         let mut tick = 0u32;
-                        let widget_size = 110.0;
 
                         loop {
                             std::thread::sleep(std::time::Duration::from_millis(80));
@@ -548,7 +585,8 @@ pub fn run() {
                             // Reposition panel every ~480ms
                             #[cfg(target_os = "macos")]
                             if tick % 6 == 0 {
-                                if let Some((x, y)) = get_widget_position(widget_size) {
+                                let panel_size = 180.0;
+                                if let Some((x, y)) = get_widget_position(panel_size) {
                                     if (x - last_x).abs() > 2.0 || (y - last_y).abs() > 2.0 {
                                         let panel = load_panel();
                                         if !panel.is_null() {
@@ -556,13 +594,13 @@ pub fn run() {
                                                 use objc::*;
                                                 use cocoa::foundation::NSPoint;
                                                 let primary_h = get_primary_screen_height();
-                                                let origin = NSPoint { x, y: primary_h - y - widget_size };
+                                                let origin = NSPoint { x, y: primary_h - y - panel_size };
                                                 let _: () = msg_send![panel, setFrameOrigin: origin];
                                             }
                                         }
                                         last_x = x;
                                         last_y = y;
-                                        WIDGET_CENTER.store_pos(x + widget_size / 2.0, y + widget_size / 2.0);
+                                        WIDGET_CENTER.store_pos(x + panel_size / 2.0, y + panel_size / 2.0);
                                     }
                                 }
                             }
@@ -582,32 +620,6 @@ pub fn run() {
                             let was = WAS_HOVERING.load(Ordering::Relaxed);
                             if should_expand != was {
                                 WAS_HOVERING.store(should_expand, Ordering::Relaxed);
-
-                                // Resize panel to match content
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let panel = load_panel();
-                                    if !panel.is_null() {
-                                        unsafe {
-                                            use objc::*;
-                                            let (new_w, new_h) = if should_expand {
-                                                (80.0, 80.0)  // circle + padding
-                                            } else {
-                                                (60.0, 16.0)  // pill size
-                                            };
-                                            let new_size = cocoa::foundation::NSSize { width: new_w, height: new_h };
-                                            // Resize while keeping the bottom-center position
-                                            let current_frame: cocoa::foundation::NSRect = msg_send![panel, frame];
-                                            let new_x = current_frame.origin.x + (current_frame.size.width - new_w) / 2.0;
-                                            let new_y = current_frame.origin.y; // keep bottom edge same
-                                            let new_frame = cocoa::foundation::NSRect {
-                                                origin: cocoa::foundation::NSPoint { x: new_x, y: new_y },
-                                                size: new_size,
-                                            };
-                                            let _: () = msg_send![panel, setFrame: new_frame display: true animate: false];
-                                        }
-                                    }
-                                }
 
                                 if let Some(w) = hover_handle.get_webview_window("widget") {
                                     let js = format!(
@@ -712,6 +724,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_recording,
             stop_recording,
+            cancel_recording,
             get_history,
             clear_history,
             get_settings,
