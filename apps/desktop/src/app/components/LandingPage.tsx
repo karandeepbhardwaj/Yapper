@@ -87,8 +87,6 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
               width: 36,
               height: 36,
               color: "#ae3200",
-              fill: "#ae3200",
-              strokeWidth: 0,
             }}
           />
         </motion.div>
