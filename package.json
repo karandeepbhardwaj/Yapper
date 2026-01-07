@@ -1,5 +1,5 @@
 {
-  "name": "prompt-refinement-services",
+  "name": "yapper",
   "private": true,
   "scripts": {
     "dev": "pnpm --filter desktop dev",

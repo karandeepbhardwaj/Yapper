@@ -37,7 +37,7 @@ export function activate(context: vscode.ExtensionContext) {
       const status = server
         ? `Bridge running on ${BRIDGE_HOST}:${BRIDGE_PORT} (${connectedClients} client(s))`
         : "Bridge not running";
-      vscode.window.showInformationMessage(`Prompt Refinement: ${status}`);
+      vscode.window.showInformationMessage(`Yapper: ${status}`);
     })
   );
 
@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
 function startServer(context: vscode.ExtensionContext) {
   if (server) {
     vscode.window.showInformationMessage(
-      "Prompt Refinement Bridge is already running."
+      "Yapper Bridge is already running."
     );
     return;
   }
@@ -60,7 +60,7 @@ function startServer(context: vscode.ExtensionContext) {
     connectedClients++;
     updateStatusBar();
     console.log(
-      `[Prompt Refinement] Client connected (${connectedClients} total)`
+      `[Yapper] Client connected (${connectedClients} total)`
     );
 
     ws.on("message", async (data: Buffer) => {
@@ -78,7 +78,7 @@ function startServer(context: vscode.ExtensionContext) {
         }
 
         console.log(
-          `[Prompt Refinement] Refining text (${message.rawText.length} chars, style: ${message.style || "Professional"})`
+          `[Yapper] Refining text (${message.rawText.length} chars, style: ${message.style || "Professional"})`
         );
 
         const tokenSource = new vscode.CancellationTokenSource();
@@ -117,7 +117,7 @@ function startServer(context: vscode.ExtensionContext) {
           tokenSource.dispose();
         }
       } catch (err) {
-        console.error("[Prompt Refinement] Failed to parse message:", err);
+        console.error("[Yapper] Failed to parse message:", err);
         sendError(ws, "unknown", "Invalid message format");
       }
     });
@@ -126,23 +126,23 @@ function startServer(context: vscode.ExtensionContext) {
       connectedClients = Math.max(0, connectedClients - 1);
       updateStatusBar();
       console.log(
-        `[Prompt Refinement] Client disconnected (${connectedClients} remaining)`
+        `[Yapper] Client disconnected (${connectedClients} remaining)`
       );
     });
 
     ws.on("error", (error: Error) => {
-      console.error("[Prompt Refinement] WebSocket error:", error.message);
+      console.error("[Yapper] WebSocket error:", error.message);
     });
   });
 
   httpServer.listen(BRIDGE_PORT, BRIDGE_HOST, () => {
     server = httpServer;
     console.log(
-      `[Prompt Refinement] Bridge server started on ws://${BRIDGE_HOST}:${BRIDGE_PORT}`
+      `[Yapper] Bridge server started on ws://${BRIDGE_HOST}:${BRIDGE_PORT}`
     );
     updateStatusBar();
     vscode.window.showInformationMessage(
-      `Prompt Refinement Bridge started on port ${BRIDGE_PORT}`
+      `Yapper Bridge started on port ${BRIDGE_PORT}`
     );
   });
 
@@ -175,7 +175,7 @@ function stopServer() {
 
   connectedClients = 0;
   updateStatusBar();
-  vscode.window.showInformationMessage("Prompt Refinement Bridge stopped.");
+  vscode.window.showInformationMessage("Yapper Bridge stopped.");
 }
 
 function sendError(ws: WebSocket, id: string, error: string) {
@@ -187,12 +187,12 @@ function sendError(ws: WebSocket, id: string, error: string) {
 
 function updateStatusBar() {
   if (server) {
-    statusBarItem.text = `$(radio-tower) PRS${connectedClients > 0 ? ` (${connectedClients})` : ""}`;
-    statusBarItem.tooltip = `Prompt Refinement Bridge - ${connectedClients} client(s) connected`;
+    statusBarItem.text = `$(radio-tower) Yapper${connectedClients > 0 ? ` (${connectedClients})` : ""}`;
+    statusBarItem.tooltip = `Yapper Bridge - ${connectedClients} client(s) connected`;
     statusBarItem.backgroundColor = undefined;
   } else {
-    statusBarItem.text = "$(radio-tower) PRS (off)";
-    statusBarItem.tooltip = "Prompt Refinement Bridge - Not running";
+    statusBarItem.text = "$(radio-tower) Yapper (off)";
+    statusBarItem.tooltip = "Yapper Bridge - Not running";
     statusBarItem.backgroundColor = new vscode.ThemeColor(
       "statusBarItem.warningBackground"
     );

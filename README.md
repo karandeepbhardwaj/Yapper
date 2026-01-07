@@ -1,99 +1,121 @@
-# Prompt Refinement Services
+<p align="center">
+  <h1 align="center">Yapper</h1>
+  <p align="center">Voice-to-text desktop app that captures speech, refines transcripts with AI, and auto-pastes at your cursor</p>
+</p>
 
-A secure, offline-first desktop utility for Windows and macOS that captures speech, refines transcripts through GitHub Copilot, and auto-pastes results at the active cursor position.
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Status" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-0.0.1-blue" alt="Version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform" /></a>
+  <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
+</p>
 
-## Architecture
+<!-- TODO: Add screenshot/demo GIF here -->
+<!-- ![Yapper Demo](docs/assets/demo.gif) -->
 
-```
-┌─────────────────────────┐     WebSocket (127.0.0.1:9147)     ┌──────────────────────┐
-│   Desktop App (Tauri)   │ ◄──────────────────────────────► │  VS Code Extension   │
-│                         │          local only                │                      │
-│  ┌───────────────────┐  │                                    │  ┌────────────────┐  │
-│  │  React Frontend   │  │                                    │  │ WebSocket Srv  │  │
-│  │  (Figma UI)       │  │                                    │  │ (ws, 127.0.0.1)│  │
-│  └────────┬──────────┘  │                                    │  └───────┬────────┘  │
-│           │ IPC         │                                    │          │           │
-│  ┌────────┴──────────┐  │                                    │  ┌───────┴────────┐  │
-│  │  Rust Backend     │  │                                    │  │  vscode.lm API │  │
-│  │  - Global Hotkey  │  │                                    │  │  (Copilot)     │  │
-│  │  - Native STT     │  │                                    │  └────────────────┘  │
-│  │  - Auto-paste     │  │                                    │                      │
-│  └───────────────────┘  │                                    └──────────────────────┘
-└─────────────────────────┘
-         │
-         ▼
-  ┌──────────────┐
-  │ OS Native    │
-  │ STT APIs     │
-  │ (offline)    │
-  └──────────────┘
-```
+---
 
-## Security Model
+## :sparkles: Features
 
-- **Zero Egress**: The desktop application makes NO external network requests
-- **No Bundled AI Models**: Uses strictly native OS offline dictation APIs
-  - macOS: `SFSpeechRecognizer` with `requiresOnDeviceRecognition = true`
-  - Windows: `Windows.Media.SpeechRecognition.SpeechRecognizer`
-- **Local-Only Bridge**: WebSocket communication bound exclusively to `127.0.0.1`
-- **Enterprise AI**: Text refinement routes through the organization's pre-authorized GitHub Copilot connection via VS Code
-- **Memory Safe**: Rust backend (Tauri) ensures no buffer overflows or memory corruption
-- **Minimal CSP**: Content Security Policy restricts frontend to self-origin only
+- **Voice capture** -- press a global hotkey and start talking
+- **On-device speech recognition** via macOS `SFSpeechRecognizer` (fully offline)
+- **AI transcript refinement** through GitHub Copilot (VS Code extension bridge)
+- **Auto-paste** refined text at your active cursor position
+- **Floating widget** that follows you across macOS Spaces
+- **History dashboard** with bento grid layout, fuzzy search (Fuse.js), pin/copy/expand
+- **Dark/light mode** with smooth transitions
+- **Landing/onboarding page** for first-time users
+- **Global hotkey** (`Cmd+Shift+.`) to start/stop recording from anywhere
+- **Zero egress** -- the desktop app makes no external network requests
 
-## Prerequisites
+---
 
-- **Rust** (1.75+): [rustup.rs](https://rustup.rs)
-- **Node.js** (20+): [nodejs.org](https://nodejs.org)
-- **pnpm** (9+): `npm install -g pnpm`
-- **VS Code** with GitHub Copilot extension installed and activated
-- **Platform SDKs**:
-  - macOS: Xcode Command Line Tools (`xcode-select --install`)
-  - Windows: Visual Studio Build Tools with C++ workload
-
-## Project Structure
+## :building_construction: Architecture
 
 ```
-prompt-refinement-services/
-├── apps/desktop/                 # Tauri desktop application
-│   ├── src/                      # React frontend (Figma UI)
-│   │   ├── app/
-│   │   │   ├── components/       # UI components
-│   │   │   ├── hooks/            # Tauri event hooks
-│   │   │   └── lib/              # Bridge + types
-│   │   └── styles/               # Tailwind + theme CSS
-│   └── src-tauri/                # Rust backend
-│       └── src/
-│           ├── stt/              # Native STT (macOS/Windows)
-│           ├── bridge.rs         # WebSocket client
-│           ├── autopaste.rs      # Keystroke simulation
-│           ├── hotkey.rs         # Global shortcut
-│           └── history.rs        # Transcript history
-├── extensions/vscode-bridge/     # VS Code companion extension
-│   └── src/
-│       ├── extension.ts          # WebSocket server + lifecycle
-│       ├── copilot-bridge.ts     # vscode.lm API integration
-│       └── protocol.ts           # Shared message types
-└── docs/                         # Implementation plans
+┌─────────────────────────────┐   WebSocket (127.0.0.1:9147)   ┌─────────────────────────┐
+│     Desktop App (Tauri)     │ ◄────────────────────────────► │   VS Code Extension     │
+│                             │         local only              │                         │
+│  ┌───────────────────────┐  │                                 │  ┌───────────────────┐  │
+│  │   React Frontend      │  │                                 │  │  WebSocket Server │  │
+│  │   (Tailwind + Radix)  │  │                                 │  │  (ws, 127.0.0.1)  │  │
+│  └──────────┬────────────┘  │                                 │  └─────────┬─────────┘  │
+│             │ IPC           │                                 │            │             │
+│  ┌──────────┴────────────┐  │                                 │  ┌─────────┴─────────┐  │
+│  │   Rust Backend        │  │                                 │  │   vscode.lm API   │  │
+│  │   - Global Hotkey     │  │                                 │  │   (Copilot LLM)   │  │
+│  │   - Native STT        │  │                                 │  └───────────────────┘  │
+│  │   - Auto-paste        │  │                                 │                         │
+│  │   - History           │  │                                 └─────────────────────────┘
+│  └───────────────────────┘  │
+└──────────────┬──────────────┘
+               ▼
+        ┌──────────────┐
+        │  macOS Native │
+        │  STT APIs     │
+        │  (offline)    │
+        └──────────────┘
 ```
 
-## Building
+---
 
-### Desktop Application
+## :rocket: Quick Start
+
+### Prerequisites
+
+| Dependency | Version | Install |
+|---|---|---|
+| Rust | 1.75+ | [rustup.rs](https://rustup.rs) |
+| Node.js | 20+ | [nodejs.org](https://nodejs.org) |
+| pnpm | 9+ | `npm install -g pnpm` |
+| Xcode CLI Tools | latest | `xcode-select --install` |
+| VS Code | latest | With GitHub Copilot extension active |
+
+### Build & Run
 
 ```bash
+# Clone the repo
+git clone https://github.com/your-org/yapper.git
+cd yapper
+
 # Install dependencies
 pnpm install
 
-# Development mode (with hot reload)
+# Run in development mode (hot reload)
 pnpm tauri dev
 
 # Production build
 pnpm tauri build
 ```
 
-The production binary will be in `apps/desktop/src-tauri/target/release/bundle/`.
+The production `.app` bundle will be in `apps/desktop/src-tauri/target/release/bundle/`.
 
-### VS Code Extension
+---
+
+## :gear: How It Works
+
+Yapper follows a five-stage pipeline:
+
+```
+ 🎙 Speak  ──►  🔴 Record  ──►  📝 Transcribe  ──►  ✨ Refine  ──►  📋 Paste
+   │               │                  │                   │               │
+   │          Microphone         SFSpeech           Copilot LLM      Keystroke
+   │          capture            Recognizer         via VS Code      simulation
+   │                             (on-device)        extension        (auto-paste)
+```
+
+1. **Speak** -- press `Cmd+Shift+.` (or click the floating widget) to begin
+2. **Record** -- audio is captured from the microphone in real time
+3. **Transcribe** -- macOS `SFSpeechRecognizer` converts speech to text on-device
+4. **Refine** -- the raw transcript is sent over a local WebSocket to the VS Code extension, which uses the `vscode.lm` API (GitHub Copilot) to clean up grammar, filler words, and formatting
+5. **Paste** -- the refined text is automatically typed at your current cursor position via keystroke simulation
+
+---
+
+## :jigsaw: VS Code Extension Setup
+
+The companion extension (`extensions/vscode-bridge/`) bridges Yapper to GitHub Copilot.
 
 ```bash
 cd extensions/vscode-bridge
@@ -108,97 +130,94 @@ npm run compile
 npm run package
 ```
 
-Install the `.vsix` file in VS Code: Extensions panel → `...` menu → "Install from VSIX..."
+Install the `.vsix` in VS Code: **Extensions panel** > `...` menu > **Install from VSIX...**
 
-## Usage
+The extension auto-starts on VS Code launch and exposes these commands:
 
-### Quick Start
+| Command | Description |
+|---|---|
+| `Yapper: Start Bridge` | Start the WebSocket server |
+| `Yapper: Stop Bridge` | Stop the WebSocket server |
+| `Yapper: Show Status` | Show connection status |
 
-1. Install and launch the desktop app
-2. Install the VS Code extension (ensure GitHub Copilot is active)
-3. The VS Code extension auto-starts the WebSocket bridge on activation
-4. Press **Alt+Space** (or **Option+Space** on macOS) to start recording
-5. Speak your transcript
-6. Press the hotkey again (or click the widget) to stop
-7. The refined text is automatically pasted at your cursor position
+---
 
-### Keyboard Shortcuts
-
-| Action               | Shortcut                     |
-| -------------------- | ---------------------------- |
-| Start/Stop Recording | `Alt+Space` / `Option+Space` |
-| Open Settings        | `Cmd+,` / `Ctrl+,`          |
+## :wrench: Configuration
 
 ### Settings
 
-- **Auto-stop after silence**: Automatically stop recording after detecting silence
-- **Show floating widget**: Toggle the always-on-top recording button
-- **Language**: Recognition language (English, Spanish, French, German, Japanese)
-- **Refinement Style**: Professional, Casual, Technical, or Creative
+Settings are persisted to the macOS app config directory:
 
-### Widget States
+```
+~/Library/Application Support/com.prompt-refinement.services/settings.json
+```
 
-| State      | Appearance                      | Meaning                    |
-| ---------- | ------------------------------- | -------------------------- |
-| Idle       | Gray button with mic icon       | Ready to record            |
-| Listening  | Orange button with waveform     | Recording speech           |
-| Processing | Dark orange with spinning icon  | Refining through Copilot   |
+Available settings:
 
-## Configuration
+| Setting | Default | Description |
+|---|---|---|
+| Auto-stop after silence | `true` | Stop recording when silence is detected |
+| Show floating widget | `true` | Show the always-on-top recording button |
+| Language | English | Recognition language |
+| Refinement style | Professional | Professional, Casual, Technical, or Creative |
 
-### Desktop App
+### Global Hotkey
 
-Settings are persisted to the OS app config directory:
-- macOS: `~/Library/Application Support/com.prompt-refinement.services/settings.json`
-- Windows: `%APPDATA%\com.prompt-refinement.services\settings.json`
+| Action | Shortcut |
+|---|---|
+| Start / Stop Recording | `Cmd + Shift + .` |
 
-### VS Code Extension
+The hotkey works globally across all macOS applications and Spaces.
 
-The extension auto-starts on VS Code launch. Commands available:
-- `Prompt Refinement: Start Bridge` — Start the WebSocket server
-- `Prompt Refinement: Stop Bridge` — Stop the WebSocket server
-- `Prompt Refinement: Show Status` — Show connection status
+---
 
-The bridge uses port `9147` on `127.0.0.1` by default.
+## :art: Widget States
 
-## Offline Operation
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐
+│          │     │          │     │          │
+│   IDLE   │────►│ LISTENING│────►│PROCESSING│
+│          │     │          │     │          │
+│  ⚪ Mic  │     │  🟠 Wave │     │  🟠 Spin │
+│  (gray)  │     │ (orange) │     │  (dark)  │
+└──────────┘     └──────────┘     └──────────┘
+     ▲                                 │
+     └─────────────────────────────────┘
+                 done / error
+```
 
-The desktop app operates fully offline. No runtime network requests are made:
-- Speech recognition uses on-device models provided by the OS
-- Fonts are loaded from the system (Inter, with system font fallbacks)
-- No telemetry, analytics, or update checks
+| State | Appearance | Meaning |
+|---|---|---|
+| Idle | Gray button with mic icon | Ready to record |
+| Listening | Orange button with waveform | Recording speech |
+| Processing | Dark orange with spinner | Refining through Copilot |
 
-The only network activity is the VS Code extension communicating with GitHub Copilot through VS Code's built-in, enterprise-authorized channel.
+---
 
-## Permissions Required
+## :toolbox: Tech Stack
 
-### macOS
-- **Microphone Access**: Required for speech recognition
-- **Speech Recognition**: Required for on-device transcription
-- **Accessibility**: Required for auto-paste (keystroke simulation)
+| Layer | Technology |
+|---|---|
+| Desktop framework | [Tauri 2](https://v2.tauri.app) (Rust) |
+| Frontend | React 18, TypeScript, Tailwind CSS 4 |
+| UI components | Radix UI, shadcn/ui, Motion (Framer) |
+| Speech-to-text | macOS `SFSpeechRecognizer` (on-device) |
+| AI refinement | GitHub Copilot via `vscode.lm` API |
+| Bridge protocol | WebSocket (`ws`) on `127.0.0.1:9147` |
+| Search | Fuse.js (fuzzy search) |
+| Charts | Recharts |
+| Build tooling | Vite, pnpm workspaces |
 
-### Windows
-- **Microphone Access**: Required for speech recognition
-- **Speech Recognition**: Required for dictation
+---
 
-## Troubleshooting
+## :handshake: Contributing
 
-### "No Copilot models available"
-Ensure GitHub Copilot is installed, activated, and your organization's license is valid in VS Code.
+Contributions are welcome! Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** for details on setting up the development environment, code style, and how to submit pull requests.
 
-### Auto-paste not working
-- macOS: Grant Accessibility permission in System Settings → Privacy & Security → Accessibility
-- Windows: Run as administrator if paste simulation fails
+---
 
-### Bridge connection failed
-- Check that VS Code is running with the extension active
-- Verify port 9147 is not blocked by firewall or another process
-- Run "Show Prompt Refinement Bridge Status" command in VS Code
+## :page_facing_up: License
 
-### Speech recognition not available
-- macOS: Ensure on-device speech recognition models are downloaded (System Settings → Keyboard → Dictation)
-- Windows: Ensure speech recognition language packs are installed
+This project is licensed under the **MIT License** -- see the [LICENSE](LICENSE) file for details.
 
-## License
-
-© 2026 Prompt Refinement Services. All rights reserved.
+Copyright 2026 Yapper contributors.
