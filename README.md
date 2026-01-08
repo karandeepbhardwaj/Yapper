@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="#"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Status" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-0.0.1-blue" alt="Version" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-0.0.3-blue" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform" /></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
@@ -39,7 +39,7 @@
 │                             │         local only              │                         │
 │  ┌───────────────────────┐  │                                 │  ┌───────────────────┐  │
 │  │   React Frontend      │  │                                 │  │  WebSocket Server │  │
-│  │   (Tailwind + Radix)  │  │                                 │  │  (ws, 127.0.0.1)  │  │
+│  │  (Tailwind + Motion)  │  │                                 │  │  (ws, 127.0.0.1)  │  │
 │  └──────────┬────────────┘  │                                 │  └─────────┬─────────┘  │
 │             │ IPC           │                                 │            │             │
 │  ┌──────────┴────────────┐  │                                 │  ┌─────────┴─────────┐  │
@@ -60,7 +60,32 @@
 
 ---
 
-## :rocket: Quick Start
+## :package: Installation
+
+### Desktop App (macOS)
+
+1. Download `Yapper_x.x.x_aarch64.dmg` from the [latest release](https://github.com/karandeepbhardwaj/Yapper/releases)
+2. Open the `.dmg` and drag **Yapper** to your Applications folder
+3. Launch Yapper
+
+> **"Yapper is damaged and can't be opened"** -- this happens because the app is not notarized with Apple. To fix it, open Terminal and run:
+> ```bash
+> xattr -cr /Applications/Yapper.app
+> ```
+> Then launch Yapper again. This only needs to be done once.
+
+### VS Code Extension
+
+1. Download `yapper-bridge-x.x.x.vsix` from the [latest release](https://github.com/karandeepbhardwaj/Yapper/releases)
+2. In VS Code: `Cmd+Shift+P` > **Extensions: Install from VSIX...** > select the `.vsix` file
+3. Make sure [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) is installed and signed in
+4. The bridge auto-starts when VS Code opens -- look for the radio tower icon in the status bar
+
+> **Note:** VS Code must be open for AI refinement to work. Without it, Yapper still captures and pastes raw transcripts.
+
+---
+
+## :rocket: Building from Source
 
 ### Prerequisites
 
@@ -76,7 +101,7 @@
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/yapper.git
+git clone https://github.com/karandeepbhardwaj/Yapper.git
 cd yapper
 
 # Install dependencies
@@ -200,13 +225,12 @@ The hotkey works globally across all macOS applications and Spaces.
 |---|---|
 | Desktop framework | [Tauri 2](https://v2.tauri.app) (Rust) |
 | Frontend | React 18, TypeScript, Tailwind CSS 4 |
-| UI components | Radix UI, shadcn/ui, Motion (Framer) |
+| Animations | Motion (Framer Motion) |
 | Speech-to-text | macOS `SFSpeechRecognizer` (on-device) |
 | AI refinement | GitHub Copilot via `vscode.lm` API |
 | Bridge protocol | WebSocket (`ws`) on `127.0.0.1:9147` |
 | Search | Fuse.js (fuzzy search) |
-| Charts | Recharts |
-| Build tooling | Vite, pnpm workspaces |
+| Build tooling | Vite, esbuild, pnpm workspaces |
 
 ---
 
