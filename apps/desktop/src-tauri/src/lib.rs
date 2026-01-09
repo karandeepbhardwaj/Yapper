@@ -608,13 +608,18 @@ pub fn run() {
                                     if (x - last_x).abs() > 2.0 || (y - last_y).abs() > 2.0 {
                                         let panel = load_panel();
                                         if !panel.is_null() {
-                                            unsafe {
-                                                use objc::*;
-                                                use cocoa::foundation::NSPoint;
-                                                let primary_h = get_primary_screen_height();
-                                                let origin = NSPoint { x, y: primary_h - y - panel_h };
-                                                let _: () = msg_send![panel, setFrameOrigin: origin];
-                                            }
+                                            let _ = hover_handle.run_on_main_thread(move || {
+                                                let panel = load_panel();
+                                                if !panel.is_null() {
+                                                    unsafe {
+                                                        use objc::*;
+                                                        use cocoa::foundation::NSPoint;
+                                                        let primary_h = get_primary_screen_height();
+                                                        let origin = NSPoint { x, y: primary_h - y - panel_h };
+                                                        let _: () = msg_send![panel, setFrameOrigin: origin];
+                                                    }
+                                                }
+                                            });
                                         }
                                         last_x = x;
                                         last_y = y;
