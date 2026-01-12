@@ -104,23 +104,28 @@ function getApiKey(settingName: string, envVar: string): string {
 
 // --- HTTP helper ---
 
-function httpPost(url: string, headers: Record<string, string>, body: string): Promise<string> {
+function httpPost(urlStr: string, headers: Record<string, string>, body: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
+    // Parse URL manually to avoid needing DOM URL type
+    const match = urlStr.match(/^https:\/\/([^/]+)(\/.*)?$/);
+    if (!match) { return reject(new Error(`Invalid URL: ${urlStr}`)); }
+    const hostname = match[1];
+    const pathStr = match[2] || "/";
+
     const req = https.request({
-      hostname: parsed.hostname,
-      path: parsed.pathname + parsed.search,
+      hostname,
+      path: pathStr,
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
-    }, (res) => {
+    }, (res: import("http").IncomingMessage) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
       res.on("end", () => {
-        const body = Buffer.concat(chunks).toString();
+        const respBody = Buffer.concat(chunks).toString();
         if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 300)}`));
+          reject(new Error(`HTTP ${res.statusCode}: ${respBody.slice(0, 300)}`));
         } else {
-          resolve(body);
+          resolve(respBody);
         }
       });
     });
