@@ -153,6 +153,11 @@ pub fn setup(app: &tauri::App) {
     if let Some(widget) = app.get_webview_window("widget") {
         log::info!("[Widget] Windows setup starting");
 
+        // On Windows, transparent webview backgrounds don't work reliably with WebView2.
+        // We use a non-transparent dark background that matches the pill color.
+        // The widget.tsx detects this via a CSS media query or navigator.platform.
+        let _ = widget.set_size(tauri::LogicalSize::new(180.0, 34.0));
+
         // Set initial position
         let panel_w = 180.0;
         let panel_h = 34.0;
@@ -161,13 +166,22 @@ pub fn setup(app: &tauri::App) {
             let _ = widget.set_position(tauri::LogicalPosition::new(x, y));
             WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h / 2.0);
         } else {
-            log::warn!("[Widget] Could not determine widget position");
+            log::warn!("[Widget] Could not determine widget position, using center fallback");
+            // Fallback: center of primary monitor
+            if let Ok(Some(monitor)) = app.primary_monitor() {
+                let sf = monitor.scale_factor();
+                let sw = monitor.size().width as f64 / sf;
+                let sh = monitor.size().height as f64 / sf;
+                let x = (sw - panel_w) / 2.0;
+                let y = sh - panel_h - 50.0;
+                let _ = widget.set_position(tauri::LogicalPosition::new(x, y));
+                WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h / 2.0);
+            }
         }
 
         // Ensure widget is visible and on top
         let _ = widget.show();
         let _ = widget.set_always_on_top(true);
-        let _ = widget.set_focus();
 
         log::info!("[Widget] Windows setup complete");
 

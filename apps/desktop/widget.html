@@ -13,6 +13,15 @@
         height: 100%;
       }
     </style>
+    <script>
+      // On Windows, WebView2 doesn't support transparent backgrounds reliably.
+      // Detect Windows and apply an opaque dark background instead.
+      if (navigator.platform.toUpperCase().includes("WIN")) {
+        document.documentElement.style.background = "#1a1a1a";
+        document.documentElement.style.borderRadius = "17px";
+        document.documentElement.style.overflow = "hidden";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
