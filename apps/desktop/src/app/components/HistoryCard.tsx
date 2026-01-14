@@ -176,6 +176,25 @@ function formatDuration(seconds: number): string {
   return `${m}m ${s}s`;
 }
 
+function formatActionLabel(action: string, params?: Record<string, string>): string {
+  switch (action) {
+    case "translate":
+      return params?.targetLang ? `Translated to ${params.targetLang}` : "Translated";
+    case "summarize":
+      return "Summarized";
+    case "draft":
+      return params?.type ? `Drafted ${params.type}` : "Drafted";
+    case "explain":
+      return "Explained";
+    case "chain":
+      return params?.steps ? params.steps.split(" + ").map(s =>
+        s.charAt(0).toUpperCase() + s.slice(1)
+      ).join(" + ") : "Chained";
+    default:
+      return action.charAt(0).toUpperCase() + action.slice(1);
+  }
+}
+
 interface HistoryCardProps {
   timestamp: string;
   refinedText: string;
@@ -189,6 +208,9 @@ interface HistoryCardProps {
   entryType?: string;
   conversation?: ConversationData;
   durationSeconds?: number;
+  isHovered?: boolean;
+  action?: string;
+  actionParams?: Record<string, string>;
 }
 
 export function HistoryCard({
@@ -204,11 +226,13 @@ export function HistoryCard({
   entryType,
   conversation,
   durationSeconds,
+  isHovered = false,
+  action,
+  actionParams,
 }: HistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isConversationExpanded, setIsConversationExpanded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCopy = () => {
@@ -236,11 +260,6 @@ export function HistoryCard({
     document.body.removeChild(ta);
   };
 
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    setIsCopied(false);
-    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-  };
 
   const handlePin = () => {
     onTogglePin?.();
@@ -251,8 +270,7 @@ export function HistoryCard({
 
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={handleMouseLeave}
+      data-card-id={timestamp}
       style={{
         borderRadius: BORDER_RADIUS.xl,
         padding: `${SPACING.lg}px 18px`,
@@ -269,7 +287,6 @@ export function HistoryCard({
         flexDirection: "column",
         position: "relative",
         overflow: "hidden",
-        contain: "layout style paint",
         transition: "background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease",
       }}
     >
@@ -317,18 +334,22 @@ export function HistoryCard({
               display: "flex",
               alignItems: "center",
               gap: 5,
-              padding: "2px 8px 2px 6px",
-              borderRadius: BORDER_RADIUS.sm,
-              background: "rgba(0,0,0,0.12)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+              padding: "5px 10px 4px 8px",
+              borderRadius: 20,
+              background: "rgba(255,255,255,0.15)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.12)",
+              border: "1px solid rgba(255,255,255,0.12)",
             }}>
-              <Star style={{ width: 10, height: 10, color: "#fff", fill: "#fff", flexShrink: 0 }} />
+              <Star style={{ width: 10, height: 10, color: "#fff", fill: "#fff", flexShrink: 0, position: "relative", top: -0.5 }} />
               <span style={{
                 fontSize: 9,
-                fontWeight: 600,
+                fontWeight: 700,
                 color: "#fff",
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
+                lineHeight: 1,
               }}>
                 Pinned
               </span>
@@ -337,16 +358,24 @@ export function HistoryCard({
           {category && (
             <span
               style={{
-                display: "inline-block",
-                padding: "3px 10px",
-                borderRadius: BORDER_RADIUS.sm,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "5px 12px 4px",
+                borderRadius: 20,
                 fontSize: 9,
-                fontWeight: 600,
+                fontWeight: 700,
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
-                background: isPinnedCard ? "rgba(0,0,0,0.12)" : "var(--yapper-accent-light, #faf0ec)",
-                color: isPinnedCard ? "rgba(255,255,255,0.85)" : "var(--yapper-accent-dark, #DA7756)",
-                boxShadow: isPinnedCard ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "none",
+                lineHeight: 1,
+                background: isPinnedCard ? "rgba(255,255,255,0.15)" : "rgba(218,119,86,0.1)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                color: isPinnedCard ? "rgba(255,255,255,0.9)" : "var(--yapper-accent-dark, #DA7756)",
+                boxShadow: isPinnedCard
+                  ? "inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.12)"
+                  : "inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -1px 0 rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.06)",
+                border: isPinnedCard ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(218,119,86,0.12)",
                 whiteSpace: "nowrap",
                 flexShrink: 0,
               }}
@@ -354,9 +383,32 @@ export function HistoryCard({
               {category}
             </span>
           )}
+          {action && action !== "dictation" && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                padding: "2px 6px",
+                borderRadius: 4,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase" as const,
+                background: variant === "pinned"
+                  ? "rgba(255,255,255,0.2)"
+                  : "rgba(218,119,86,0.12)",
+                color: variant === "pinned"
+                  ? "rgba(255,255,255,0.9)"
+                  : "#DA7756",
+              }}
+            >
+              {formatActionLabel(action, actionParams)}
+            </span>
+          )}
         </div>
 
-        {/* Action buttons */}
+        {/* Action buttons — visible on hover only (CSS class handles visibility) */}
         <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
           <button
             onClick={(e) => { e.stopPropagation(); handleCopy(); }}
