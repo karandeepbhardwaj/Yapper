@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::store;
 
@@ -36,6 +37,10 @@ pub struct HistoryEntry {
     pub conversation: Option<ConversationData>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "durationSeconds")]
     pub duration_seconds: Option<u64>,
+    #[serde(rename = "action", skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(rename = "actionParams", skip_serializing_if = "Option::is_none")]
+    pub action_params: Option<HashMap<String, String>>,
 }
 
 pub fn get_all(app: &tauri::AppHandle) -> Result<Vec<HistoryEntry>, String> {
@@ -49,6 +54,8 @@ pub fn add_entry(
     category: Option<&str>,
     title: Option<&str>,
     duration_seconds: Option<u64>,
+    action: Option<&str>,
+    action_params: Option<&HashMap<String, String>>,
 ) -> Result<(), String> {
     let mut entries = get_all(app)?;
 
@@ -64,6 +71,8 @@ pub fn add_entry(
         entry_type: None,
         conversation: None,
         duration_seconds,
+        action: action.map(|a| a.to_string()),
+        action_params: action_params.cloned(),
     };
 
     entries.insert(0, entry);
@@ -103,6 +112,8 @@ pub fn add_conversation_entry(
         entry_type: Some("conversation".to_string()),
         conversation: Some(ConversationData { turns, key_points }),
         duration_seconds: Some(duration_seconds),
+        action: None,
+        action_params: None,
     };
 
     entries.insert(0, entry);
@@ -140,6 +151,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Follow-up on quarterly report".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(12),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 200).to_string(),
@@ -151,6 +164,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Auth middleware architecture notes".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(15),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 300).to_string(),
@@ -162,6 +177,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Design system token strategy".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(18),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 400).to_string(),
@@ -173,6 +190,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Q3 roadmap planning meeting".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(22),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 500).to_string(),
@@ -184,6 +203,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("CI/CD pipeline update".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(10),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 600).to_string(),
@@ -195,6 +216,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Grocery list reminder".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(8),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 700).to_string(),
@@ -206,6 +229,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Database performance improvements".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(14),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 800).to_string(),
@@ -217,6 +242,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Interview prep notes".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(16),
+            action: None,
+            action_params: None,
         },
     ];
     store::save(app, "history.json", &entries)

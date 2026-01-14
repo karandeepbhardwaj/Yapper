@@ -28,6 +28,49 @@ pub struct AppSettings {
     pub conversation_hotkey: String,
 }
 
+fn read_clipboard() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("pbpaste").output() {
+            Ok(output) => {
+                let text = String::from_utf8_lossy(&output.stdout).to_string();
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text.chars().take(10_000).collect())
+                }
+            }
+            Err(_) => None,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        match Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Get-Clipboard"])
+            .output()
+        {
+            Ok(output) => {
+                let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text.chars().take(10_000).collect())
+                }
+            }
+            Err(_) => None,
+        }
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+    }
+}
+
 fn default_stt_engine() -> String {
     "classic".to_string()
 }
@@ -108,7 +151,7 @@ async fn process_recording_result(
                 log::warn!("Auto-paste failed: {}", e);
             }
         });
-        let _ = history::add_entry(app, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs));
+        let _ = history::add_entry(app, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs), None, None);
         return Ok(());
     }
 
@@ -117,26 +160,49 @@ async fn process_recording_result(
 
     // Load style settings
     let settings = get_settings_internal(app);
-    let bridge_result = bridge::refine_text(
-        &processed_transcript,
+    let clipboard = read_clipboard();
+
+    // Try command flow first, fall back to refine_text
+    let (refined_text, category, title, action, action_params) = match bridge::send_command(
+        processed_transcript.clone(),
+        clipboard,
         Some(settings.default_style.clone()),
         if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
         if settings.code_mode { Some(true) } else { None },
-    ).await;
-
-    let (refined_text, category, title) = match bridge_result {
-        Ok(r) => (r.refined_text, r.category, r.title),
-        Err(e) => {
-            // Emit refinement-skipped event and fall back to raw transcript
-            #[derive(Clone, Serialize)]
-            struct RefinementSkipped {
-                reason: String,
+    ).await {
+        Ok(cmd) => {
+            let (cat, ttl) = if cmd.action == "dictation" {
+                let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
+                let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
+                (cat, ttl)
+            } else {
+                (Some(capitalize_first(&cmd.action)), None)
+            };
+            log::info!("Command flow succeeded: action={}", cmd.action);
+            (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
+        }
+        Err(cmd_err) => {
+            log::warn!("Command flow failed ({}), falling back to refine_text", cmd_err);
+            match bridge::refine_text(
+                &processed_transcript,
+                Some(settings.default_style.clone()),
+                if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+                if settings.code_mode { Some(true) } else { None },
+            ).await {
+                Ok(r) => (r.refined_text, r.category, r.title, None, None),
+                Err(e) => {
+                    // Emit refinement-skipped event and fall back to raw transcript
+                    #[derive(Clone, Serialize)]
+                    struct RefinementSkipped {
+                        reason: String,
+                    }
+                    app.emit("refinement-skipped", RefinementSkipped {
+                        reason: "Bridge unavailable".to_string(),
+                    }).ok();
+                    log::warn!("Bridge refinement failed, using raw transcript: {}", e);
+                    (raw_transcript.clone(), None, None, None, None)
+                }
             }
-            app.emit("refinement-skipped", RefinementSkipped {
-                reason: "Bridge unavailable".to_string(),
-            }).ok();
-            log::warn!("Bridge refinement failed, using raw transcript: {}", e);
-            (raw_transcript.clone(), None, None)
         }
     };
 
@@ -148,7 +214,16 @@ async fn process_recording_result(
         }
     });
 
-    let _ = history::add_entry(app, &raw_transcript, &refined_text, category.as_deref(), title.as_deref(), Some(duration_secs));
+    let _ = history::add_entry(
+        app,
+        &raw_transcript,
+        &refined_text,
+        category.as_deref(),
+        title.as_deref(),
+        Some(duration_secs),
+        action.as_deref(),
+        action_params.as_ref(),
+    );
 
     app.emit("refinement-complete", RecordingResult {
         raw_transcript,
