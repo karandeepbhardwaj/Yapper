@@ -795,8 +795,11 @@ export function MainWindow({
               <div style={{
                 display: "flex",
                 gap: 8,
-                flexWrap: "wrap",
+                flexWrap: "nowrap",
+                overflowX: "auto",
                 marginBottom: 2,
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
               }}>
                 <button
                   onClick={() => setActionFilter(null)}
@@ -807,6 +810,8 @@ export function MainWindow({
                     fontSize: 12,
                     fontWeight: 500,
                     cursor: "pointer",
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
                     background: !actionFilter ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
                     color: !actionFilter ? "#fff" : "var(--yapper-text-primary)",
                     transition: "background 0.2s, color 0.2s, border-color 0.2s",
@@ -825,6 +830,8 @@ export function MainWindow({
                       fontSize: 12,
                       fontWeight: 500,
                       cursor: "pointer",
+                      flexShrink: 0,
+                      whiteSpace: "nowrap",
                       background: actionFilter === action ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
                       color: actionFilter === action ? "#fff" : "var(--yapper-text-primary)",
                       transition: "background 0.2s, color 0.2s, border-color 0.2s",
