@@ -21,6 +21,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    // Kill any lingering recorder subprocess before exiting
+                    #[cfg(target_os = "macos")]
+                    stt::cleanup();
                     std::process::exit(0);
                 }
             }
@@ -106,6 +109,8 @@ pub fn run() {
             snippets::delete_snippet,
             snippets::toggle_snippet_favorite,
             metrics::get_metrics,
+            commands::check_bridge_status,
+            commands::open_vscode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

@@ -5,6 +5,8 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Fuse from "fuse.js";
 import type { HistoryItem } from "../lib/types";
 import { FONT_SIZE, ANIMATION } from "../lib/tokens";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 const isMac = navigator.platform.toUpperCase().includes("MAC");
 
@@ -492,9 +494,30 @@ export function MainWindow({
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [actionFilter, setActionFilter] = useState<string | null>(null);
+  const [bridgeConnected, setBridgeConnected] = useState<boolean | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const hoveredRef = useRef<string | null>(null);
+
+  // Poll bridge status every 5 seconds
+  useEffect(() => {
+    const check = () => {
+      invoke<boolean>("check_bridge_status").then(setBridgeConnected).catch(() => setBridgeConnected(false));
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Listen for refinement-skipped events to show toast
+  useEffect(() => {
+    const unlisten = listen<{ reason: string }>("refinement-skipped", (e) => {
+      setToast(e.payload.reason || "AI unavailable — text pasted as-is");
+      setTimeout(() => setToast(null), 4000);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const card = (e.target as HTMLElement).closest("[data-card-id]");
@@ -973,7 +996,7 @@ export function MainWindow({
       {/* Fixed bottom message — only when no recordings */}
       {filteredItems.length === 0 && !searchQuery && (
         <div style={{
-          position: "absolute", bottom: 0, left: 0, right: 0,
+          position: "absolute", bottom: 28, left: 0, right: 0,
           padding: "16px 0 20px",
           textAlign: "center",
         }}>
@@ -986,6 +1009,88 @@ export function MainWindow({
           }}>
             Press <span style={{ color: "#DA7756", opacity: 0.6 }}>{formatHotkey(hotkey)}</span> and start yapping
           </p>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.2 }}
+            style={{
+              position: "absolute",
+              top: isMac ? 36 : 40,
+              left: 20,
+              right: 20,
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: isDarkMode ? "#3a2218" : "#fef0e8",
+              border: "1px solid rgba(218,119,86,0.3)",
+              fontSize: 12,
+              fontWeight: 500,
+              color: "#DA7756",
+              textAlign: "center",
+              zIndex: 50,
+            }}
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bridge status bar */}
+      {bridgeConnected !== null && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 28,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            fontSize: 11,
+            fontWeight: 500,
+            color: "var(--yapper-text-secondary)",
+            background: "var(--yapper-surface-lowest)",
+            borderTop: "1px solid var(--yapper-border, rgba(0,0,0,0.06))",
+            userSelect: "none",
+          }}
+        >
+          <div style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: bridgeConnected ? "#34c759" : "#ff3b30",
+            flexShrink: 0,
+          }} />
+          {bridgeConnected ? (
+            <span>VS Code Connected</span>
+          ) : (
+            <>
+              <span>VS Code Disconnected</span>
+              <button
+                onClick={() => invoke("open_vscode").catch(console.error)}
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                  border: "1px solid var(--yapper-border, #e5e5e5)",
+                  background: "var(--yapper-surface-low, #f5f5f5)",
+                  color: "var(--yapper-accent)",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Open VS Code
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
