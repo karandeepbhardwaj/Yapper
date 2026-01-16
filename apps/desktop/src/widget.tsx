@@ -23,6 +23,7 @@ function WidgetApp() {
   const [hotkey, setHotkey] = useState("fn");
   const [convoHotkey, setConvoHotkey] = useState("Cmd+Shift+Y");
   const [actionLabel, setActionLabel] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
@@ -57,9 +58,14 @@ function WidgetApp() {
         setTimeout(() => setActionLabel(null), 2000);
       }
     });
+    const unsubSkipped = listen<{reason: string}>("refinement-skipped", (event) => {
+      setErrorMessage(event.payload?.reason || "AI unavailable");
+      setTimeout(() => setErrorMessage(null), 4000);
+    });
     return () => {
       unsub.then((fn) => fn());
       unsubAction.then((fn) => fn());
+      unsubSkipped.then((fn) => fn());
     };
   }, []);
 
@@ -109,8 +115,9 @@ function WidgetApp() {
   };
 
   // Determine pill dimensions
-  const pillW = isConversation ? HOVER_W : (isListening || isProcessing) ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
-  const pillH = isConversation ? HOVER_H : (isListening || isProcessing) ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
+  const showError = !!errorMessage && !isActive;
+  const pillW = showError ? 220 : isConversation ? HOVER_W : (isListening || isProcessing) ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
+  const pillH = showError ? 36 : isConversation ? HOVER_H : (isListening || isProcessing) ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
 
   return (
     <div
@@ -183,7 +190,34 @@ function WidgetApp() {
         }}
       >
         <AnimatePresence mode="wait">
-          {!isActive && isHovered && (
+          {showError && (
+            <motion.div
+              key="error"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                padding: "0 12px",
+              }}
+            >
+              <span style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#ff6b4a",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}>
+                {errorMessage}
+              </span>
+            </motion.div>
+          )}
+          {!isActive && !showError && isHovered && (
             <motion.div
               key="hover"
               initial={{ opacity: 0, scale: 0.7 }}

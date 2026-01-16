@@ -495,7 +495,6 @@ export function MainWindow({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [actionFilter, setActionFilter] = useState<string | null>(null);
   const [bridgeConnected, setBridgeConnected] = useState<boolean | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const hoveredRef = useRef<string | null>(null);
@@ -510,14 +509,6 @@ export function MainWindow({
     return () => clearInterval(interval);
   }, []);
 
-  // Listen for refinement-skipped events to show toast
-  useEffect(() => {
-    const unlisten = listen<{ reason: string }>("refinement-skipped", (e) => {
-      setToast(e.payload.reason || "AI unavailable — text pasted as-is");
-      setTimeout(() => setToast(null), 4000);
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const card = (e.target as HTMLElement).closest("[data-card-id]");
@@ -1011,35 +1002,6 @@ export function MainWindow({
           </p>
         </div>
       )}
-
-      {/* Toast notification */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2 }}
-            style={{
-              position: "absolute",
-              top: isMac ? 36 : 40,
-              left: 20,
-              right: 20,
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: isDarkMode ? "#3a2218" : "#fef0e8",
-              border: "1px solid rgba(218,119,86,0.3)",
-              fontSize: 12,
-              fontWeight: 500,
-              color: "#DA7756",
-              textAlign: "center",
-              zIndex: 50,
-            }}
-          >
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Bridge status bar */}
       {bridgeConnected !== null && (
