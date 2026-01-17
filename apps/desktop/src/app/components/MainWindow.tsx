@@ -987,7 +987,7 @@ export function MainWindow({
       {/* Fixed bottom message — only when no recordings */}
       {filteredItems.length === 0 && !searchQuery && (
         <div style={{
-          position: "absolute", bottom: 28, left: 0, right: 0,
+          position: "absolute", bottom: 40, left: 0, right: 0,
           padding: "16px 0 20px",
           textAlign: "center",
         }}>
@@ -1003,56 +1003,68 @@ export function MainWindow({
         </div>
       )}
 
-      {/* Bridge status bar */}
+      {/* Bridge status indicator */}
       {bridgeConnected !== null && (
         <div
           style={{
             position: "absolute",
-            bottom: 0,
+            bottom: 12,
             left: 0,
             right: 0,
-            height: 28,
             display: "flex",
-            alignItems: "center",
             justifyContent: "center",
-            gap: 8,
-            fontSize: 11,
-            fontWeight: 500,
-            color: "var(--yapper-text-secondary)",
-            background: "var(--yapper-surface-lowest)",
-            borderTop: "1px solid var(--yapper-border, rgba(0,0,0,0.06))",
+            pointerEvents: "none",
             userSelect: "none",
           }}
         >
-          <div style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: bridgeConnected ? "#34c759" : "#ff3b30",
-            flexShrink: 0,
-          }} />
-          {bridgeConnected ? (
-            <span>VS Code Connected</span>
-          ) : (
-            <>
-              <span>VS Code Disconnected</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 14px",
+              borderRadius: 20,
+              background: bridgeConnected
+                ? (isDarkMode ? "rgba(52,199,89,0.1)" : "rgba(52,199,89,0.08)")
+                : (isDarkMode ? "rgba(255,59,48,0.1)" : "rgba(255,59,48,0.08)"),
+              border: `1px solid ${bridgeConnected
+                ? "rgba(52,199,89,0.2)"
+                : "rgba(255,59,48,0.2)"}`,
+              pointerEvents: "auto",
+            }}
+          >
+            <div style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: bridgeConnected ? "#34c759" : "#ff3b30",
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: bridgeConnected ? "#34c759" : "#ff3b30",
+            }}>
+              {bridgeConnected ? "VS Code Connected" : "VS Code Disconnected"}
+            </span>
+            {!bridgeConnected && (
               <button
                 onClick={() => invoke("open_vscode").catch(console.error)}
                 style={{
                   padding: "2px 8px",
-                  borderRadius: 6,
-                  border: "1px solid var(--yapper-border, #e5e5e5)",
-                  background: "var(--yapper-surface-low, #f5f5f5)",
-                  color: "var(--yapper-accent)",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "rgba(255,59,48,0.15)",
+                  color: "#ff3b30",
                   fontSize: 10,
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
               >
-                Open VS Code
+                Open
               </button>
-            </>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
