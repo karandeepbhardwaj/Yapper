@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
-import { Home, BookOpen, FileText, ChevronRight, X, ExternalLink, HelpCircle } from "lucide-react";
+import { Home, BookOpen, FileText, ChevronRight, X, ExternalLink, Info } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";
 import { invoke } from "@tauri-apps/api/core";
@@ -115,16 +115,13 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 
 function HintBubble({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const timer = setTimeout(() => setOpen(false), 5000);
-    return () => clearTimeout(timer);
-  }, [open]);
   return (
-    <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-      <button
-        onClick={() => setOpen(!open)}
-        onBlur={() => setOpen(false)}
+    <span
+      style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -132,16 +129,13 @@ function HintBubble({ text }: { text: string }) {
           width: 16,
           height: 16,
           borderRadius: "50%",
-          border: "none",
-          background: "none",
-          cursor: "pointer",
-          padding: 0,
           color: "var(--yapper-text-secondary)",
-          opacity: 0.5,
+          opacity: 0.4,
+          cursor: "default",
         }}
       >
-        <HelpCircle style={{ width: 12, height: 12 }} />
-      </button>
+        <Info style={{ width: 12, height: 12 }} />
+      </span>
       <AnimatePresence>
         {open && (
           <motion.div
