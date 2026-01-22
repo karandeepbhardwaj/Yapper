@@ -314,12 +314,13 @@ function SegmentedControl({
   return (
     <div
       style={{
-        display: "inline-flex",
+        display: "flex",
         position: "relative",
         borderRadius: 10,
         background: "var(--yapper-surface-low, #f0f0f0)",
         border: "1px solid var(--yapper-border, #e5e5e5)",
         padding: 2,
+        minWidth: 160,
       }}
     >
       <motion.div
