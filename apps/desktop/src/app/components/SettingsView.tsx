@@ -310,40 +310,23 @@ function SegmentedControl({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const selectedIndex = options.findIndex((o) => o.value === value);
+  const id = options.map((o) => o.value).join("-");
   return (
     <div
       style={{
         display: "flex",
-        position: "relative",
         borderRadius: 10,
         background: "var(--yapper-surface-low, #f0f0f0)",
         border: "1px solid var(--yapper-border, #e5e5e5)",
         padding: 2,
-        minWidth: 160,
       }}
     >
-      <motion.div
-        layout
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        style={{
-          position: "absolute",
-          top: 2,
-          bottom: 2,
-          left: `calc(${(selectedIndex / options.length) * 100}% + 2px)`,
-          width: `calc(${100 / options.length}% - 4px)`,
-          borderRadius: 8,
-          background: "#DA7756",
-          zIndex: 0,
-        }}
-      />
       {options.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
           style={{
             position: "relative",
-            zIndex: 1,
             flex: 1,
             padding: "6px 16px",
             borderRadius: 8,
@@ -356,8 +339,22 @@ function SegmentedControl({
             transition: "color 0.2s",
             whiteSpace: "nowrap",
             textAlign: "center",
+            zIndex: 1,
           }}
         >
+          {opt.value === value && (
+            <motion.div
+              layoutId={`seg-${id}`}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              style={{
+                position: "absolute",
+                inset: 0,
+                borderRadius: 8,
+                background: "#DA7756",
+                zIndex: -1,
+              }}
+            />
+          )}
           {opt.label}
         </button>
       ))}
