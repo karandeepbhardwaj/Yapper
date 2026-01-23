@@ -309,7 +309,7 @@ function SegmentedControl({
 }: {
   options: { label: string; value: string }[];
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, e?: React.MouseEvent) => void;
 }) {
   const id = options.map((o) => o.value).join("-");
   return (
@@ -325,7 +325,7 @@ function SegmentedControl({
       {options.map((opt) => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={(e) => onChange(opt.value, e)}
           style={{
             position: "relative",
             flex: 1,
@@ -655,9 +655,12 @@ export function SettingsView({
                 { label: "Auto", value: "system" },
               ]}
               value={settings.theme || "system"}
-              onChange={(v) => {
+              onChange={(v, e) => {
                 update({ theme: v });
-                emit("theme-setting-changed", v).catch(console.error);
+                const rect = (e?.currentTarget as HTMLElement)?.getBoundingClientRect();
+                const x = rect ? Math.round(rect.left + rect.width / 2) : window.innerWidth / 2;
+                const y = rect ? Math.round(rect.top + rect.height / 2) : 40;
+                emit("theme-setting-changed", { theme: v, x, y }).catch(console.error);
               }}
             />
           </SettingRow>

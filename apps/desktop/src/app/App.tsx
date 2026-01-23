@@ -53,6 +53,7 @@ export default function App() {
   const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, refresh, clearAll, deleteItem, togglePin } = useHistory();
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
+  const themeOriginRef = useRef<{ x: number; y: number }>({ x: window.innerWidth / 2, y: 40 });
   const isDarkMode = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const [activeView, setActiveView] = useState<"history" | "conversation" | "settings" | "dictionary" | "snippets" | "help">("history");
   const [hasOnboarded, setHasOnboarded] = useState(() => {
@@ -201,9 +202,9 @@ export default function App() {
 
     emit("theme-changed", isDarkMode ? "dark" : "light");
 
-    // Circle reveal from center-top (where settings would be)
-    const x = Math.round(window.innerWidth / 2);
-    const y = 40;
+    // Circle reveal from the button that was clicked
+    const x = themeOriginRef.current.x;
+    const y = themeOriginRef.current.y;
     const maxRadius = Math.ceil(Math.hypot(
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y),
@@ -272,8 +273,9 @@ export default function App() {
 
   // Listen for theme changes from Settings page
   useEffect(() => {
-    const unsub = listen<string>("theme-setting-changed", (e) => {
-      setTheme(e.payload as "light" | "dark" | "system");
+    const unsub = listen<{ theme: string; x: number; y: number }>("theme-setting-changed", (e) => {
+      themeOriginRef.current = { x: e.payload.x, y: e.payload.y };
+      setTheme(e.payload.theme as "light" | "dark" | "system");
     });
     return () => { unsub.then((fn) => fn()); };
   }, []);
