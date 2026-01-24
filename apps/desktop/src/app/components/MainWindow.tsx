@@ -491,9 +491,22 @@ export function MainWindow({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [actionFilters, setActionFilters] = useState<Set<string>>(new Set());
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const hoveredRef = useRef<string | null>(null);
+
+  // Close filter dropdown on outside click
+  useEffect(() => {
+    if (!showFilterDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowFilterDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showFilterDropdown]);
 
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -757,35 +770,10 @@ export function MainWindow({
         )}
       </div>
 
-      {/* Scrollable card list */}
-      <div ref={scrollRef} onScroll={clearHover} onMouseMove={handleMouseMove} onMouseLeave={clearHover} className={`flex-1 yapper-scroll`} style={{ padding: "12px 20px 20px 20px", display: "flex", flexDirection: "column", alignItems: "center", overflowY: filteredItems.length > 0 ? "auto" : "hidden", overflowX: "hidden", willChange: filteredItems.length > 0 ? "scroll-position" : undefined, WebkitOverflowScrolling: filteredItems.length > 0 ? "touch" : undefined, transform: "translateZ(0)" }}>
-        <div style={{ width: "100%", maxWidth: 720 }}>
-        {filteredItems.length === 0 ? (
-          searchQuery ? (
-            <div
-              className="text-center"
-              style={{
-                padding: "48px 24px",
-                borderRadius: 16,
-                background: "var(--yapper-surface-lowest, var(--yapper-bg-lighter))",
-                boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-              }}
-            >
-              <p style={{
-                color: "var(--yapper-text-secondary)",
-                fontSize: 13,
-                fontWeight: 400,
-              }}>
-                No results for &ldquo;{searchQuery}&rdquo;. Try a different search.
-              </p>
-            </div>
-          ) : (
-            <OnboardingTutorial hotkey={hotkey} conversationHotkey={conversationHotkey} formatHotkey={formatHotkey} isDarkMode={isDarkMode} />
-          )
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* Action filter chips */}
-            {/* Toolbar: sort + filter + clear */}
+      {/* Sticky toolbar: sort + filter + clear */}
+      {historyItems.length > 0 && filteredItems.length > 0 && (
+        <div className="shrink-0" style={{ padding: "0 20px 8px" }}>
+          {/* Toolbar: sort + filter + clear */}
             <div style={{
               display: "flex",
               alignItems: "center",
@@ -820,10 +808,9 @@ export function MainWindow({
                 </motion.button>
 
                 {availableActions.length > 1 && (
-                  <div style={{ position: "relative" }}>
+                  <div ref={filterRef} style={{ position: "relative" }}>
                     <button
                       onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                      onBlur={() => setTimeout(() => setShowFilterDropdown(false), 150)}
                       className="flex items-center gap-1.5 hover:opacity-70"
                       style={{
                         fontSize: 12,
@@ -959,6 +946,36 @@ export function MainWindow({
                 <span>Clear all</span>
               </button>
             </div>
+        </div>
+      )}
+
+      {/* Scrollable card list */}
+      <div ref={scrollRef} onScroll={clearHover} onMouseMove={handleMouseMove} onMouseLeave={clearHover} className={`flex-1 yapper-scroll`} style={{ padding: "4px 20px 20px 20px", display: "flex", flexDirection: "column", alignItems: "center", overflowY: filteredItems.length > 0 ? "auto" : "hidden", overflowX: "hidden", willChange: filteredItems.length > 0 ? "scroll-position" : undefined, WebkitOverflowScrolling: filteredItems.length > 0 ? "touch" : undefined, transform: "translateZ(0)" }}>
+        <div style={{ width: "100%", maxWidth: 720 }}>
+        {filteredItems.length === 0 ? (
+          searchQuery ? (
+            <div
+              className="text-center"
+              style={{
+                padding: "48px 24px",
+                borderRadius: 16,
+                background: "var(--yapper-surface-lowest, var(--yapper-bg-lighter))",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+              }}
+            >
+              <p style={{
+                color: "var(--yapper-text-secondary)",
+                fontSize: 13,
+                fontWeight: 400,
+              }}>
+                No results for &ldquo;{searchQuery}&rdquo;. Try a different search.
+              </p>
+            </div>
+          ) : (
+            <OnboardingTutorial hotkey={hotkey} conversationHotkey={conversationHotkey} formatHotkey={formatHotkey} isDarkMode={isDarkMode} />
+          )
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <AnimatePresence>
             {filteredItems.map((item, index) => (
               <motion.div
