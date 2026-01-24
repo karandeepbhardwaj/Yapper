@@ -6,7 +6,7 @@ See also: `AGENTS.md` (full agent guidelines), `DESIGN.md` (design principles + 
 
 ## Project Overview
 
-Yapper is a cross-platform voice-to-text desktop app built with Tauri v2 (Rust backend) + React 18 (frontend). It captures speech via native OS APIs, optionally refines transcripts through AI (multi-provider: Groq, Gemini, Claude, Copilot) via a VS Code extension bridge, and auto-pastes refined text at the active cursor. Includes conversation mode for back-and-forth AI chat, dictionary/snippets for text expansion, per-category style settings, metrics tracking, and code reference detection.
+Yapper is a cross-platform voice-to-text desktop app built with Tauri v2 (Rust backend) + React 18 (frontend). It captures speech via native OS APIs, optionally refines transcripts through AI, and auto-pastes refined text at the active cursor. Supports two AI provider modes: **VS Code mode** (routes through the local VS Code extension using `vscode.lm` / Copilot) and **API Key mode** (direct calls to Groq or Anthropic — no VS Code required). Includes voice commands (translate, summarize, draft, explain, chain), conversation mode for back-and-forth AI chat, dictionary/snippets for text expansion, per-category style settings, metrics tracking, and code reference detection.
 
 ## Commands
 
@@ -33,20 +33,21 @@ Rust 1.75+, Node.js 20+, Bun (latest). macOS requires Xcode CLI Tools (`xcode-se
 apps/desktop/          — Tauri desktop app
   src/                 — React frontend (Vite + Tailwind CSS v4)
     app/components/    — UI components:
-      MainWindow.tsx   — History dashboard with search, sort, cards
+      MainWindow.tsx   — History dashboard with search, sort, filter dropdown, action badges on cards
       ConversationView.tsx — Chat mode with AI
-      SettingsView.tsx — Settings page (style, metrics, code mode, hotkey)
-      DictionaryView.tsx — Text replacement management
-      SnippetsView.tsx — Text expansion management
-      HistoryCard.tsx  — History item cards (pinned, conversation, normal)
+      SettingsView.tsx — Settings page (style, metrics, code mode, hotkey, AI provider, theme; segmented controls; hint tooltips)
+      DictionaryView.tsx — Text replacement management (empty state examples)
+      SnippetsView.tsx — Text expansion management (empty state examples)
+      HistoryCard.tsx  — History item cards (pinned, conversation, normal; action badges)
       MetricsBadges.tsx — Usage statistics display
+      HelpView.tsx     — "How to Yapp" help screen with voice command reference
     app/hooks/         — Custom hooks (useTauriEvents, useHistory, useSettings)
     app/lib/           — Tauri bridge, types
     widget.tsx         — Floating pill widget (separate webview)
     styles/            — CSS custom properties + dark mode tokens + DM Serif Display font
   src-tauri/src/       — Rust backend
     lib.rs             — Entry point: mod declarations + run()
-    commands.rs        — All Tauri commands, toggle_recording, AppSettings (hotkey, stt_engine, default_style, style_overrides, metrics_enabled, code_mode, recording_mode, conversation_hotkey), change_recording_mode, change_conversation_hotkey
+    commands.rs        — All Tauri commands, toggle_recording, AppSettings (hotkey, stt_engine, default_style, style_overrides, metrics_enabled, code_mode, recording_mode, conversation_hotkey, ai_provider_mode, ai_provider, ai_api_key [encrypted], theme), change_recording_mode, change_conversation_hotkey, check_bridge_status, open_vscode, test_api_key
     conversation.rs    — Conversation mode: start/send_turn/end/discard sessions
     dictionary.rs      — Dictionary CRUD + text replacement before AI refinement (handles trailing punctuation)
     snippets.rs        — Snippets CRUD + trigger detection using word boundary matching (bypasses AI)
@@ -58,27 +59,32 @@ apps/desktop/          — Tauri desktop app
     stt/mod.rs         — STT state machine dispatcher
     stt/macos.rs       — Speech-to-text via Swift subprocess
     stt/windows.rs     — Speech-to-text via Windows.Media.SpeechRecognition
-    bridge.rs          — WebSocket client to VS Code extension (127.0.0.1:9147), supports refine/conversation/summarize with style + code mode, authenticated via random token from ~/.yapper/bridge-token, circuit breaker (3 failures → 30s cooldown)
+    bridge.rs          — WebSocket client to VS Code extension (127.0.0.1:9147), supports refine/conversation/summarize with style + code mode, authenticated via random token from ~/.yapper/bridge-token, circuit breaker (3 failures → 30s cooldown); used only in VS Code provider mode
+    ai_provider.rs     — Direct Groq/Anthropic HTTP calls for API Key provider mode; handles voice command routing (translate, summarize, draft, explain, chain) and intent classification
     hotkey.rs          — Global shortcut + Fn key monitoring (macOS), separate conversation hotkey (Cmd+Shift+Y / Ctrl+Shift+Y)
     history.rs         — History persistence (JSON, supports conversation entries with turns/keyPoints/duration)
     autopaste.rs       — Cross-platform paste: pbcopy+osascript (macOS) / PowerShell (Windows)
 
-extensions/vscode-bridge/  — VS Code extension
+extensions/vscode-bridge/  — VS Code extension (Copilot-only; no API key fallback in bridge)
   src/extension.ts         — WebSocket server, routes refine/conversation/summarize messages
-  src/copilot-bridge.ts    — Multi-provider LLM (vscode.lm, Groq, Gemini, Anthropic), conversation handler, summarize handler, code reference detection, style overrides
+  src/copilot-bridge.ts    — vscode.lm provider only; conversation handler, summarize handler, code reference detection, style overrides
   src/protocol.ts          — Message types: RefineRequest (with styleOverrides, codeMode), ConversationRequest, SummarizeRequest
 ```
 
 ## Key Constraints
 
-- **Zero network egress** from the desktop app. All STT is on-device. AI refinement calls go through the local VS Code extension bridge only.
+- **Two AI provider modes**: **VS Code mode** routes through the local VS Code bridge (vscode.lm / Copilot only — no API key fallback in the bridge). **API Key mode** makes direct HTTPS calls to Groq or Anthropic from the Rust backend (`ai_provider.rs`) — no VS Code required.
+- **Zero network egress in VS Code mode** from the desktop app. All STT is on-device. AI refinement calls go through the local VS Code extension bridge only.
 - **Cross-platform**: macOS (primary) and Windows. Platform-specific code isolated in `widget/macos.rs` vs `widget/windows.rs` and `stt/macos.rs` vs `stt/windows.rs`.
 - **macOS interop**: Uses `objc2` + `objc2-app-kit` + `block2` crates (NOT deprecated `cocoa`/`objc`).
 - **Windows interop**: Uses `windows` crate for Win32 APIs and WinRT.
 - **Swift subprocesses** (macOS only): STT uses runtime-compiled Swift scripts in `/tmp/`.
 - **Main thread requirement** (macOS): All AppKit calls via `run_on_main_thread` with `MainThreadMarker`. Widget position calculation also runs on the main thread for accurate `visibleFrame()` values.
 - **Widget is a separate webview** (`widget.html` / `widget.tsx`) — communicates via Tauri events, `pointer-events: none` on root for click passthrough, `setIgnoresMouseEvents` toggled by hover detection. `useSettings` hook listens for `hotkey-changed` events to keep the UI in sync when hotkeys are changed.
-- **Bridge is optional**: Falls back to raw transcript if VS Code isn't running. Circuit breaker skips bridge attempts for 30s after 3 consecutive failures. Authentication via random token in `~/.yapper/bridge-token`.
+- **Bridge is optional**: Falls back to raw transcript if VS Code isn't running (VS Code mode). Circuit breaker skips bridge attempts for 30s after 3 consecutive failures. Authentication via random token in `~/.yapper/bridge-token`.
+- **API key encryption**: `ai_api_key` in `AppSettings` is stored encrypted on disk. The `test_api_key` command validates a key before saving.
+- **Voice commands**: The recording pipeline runs AI-first intent classification to detect voice commands (translate, summarize, draft, explain, chain) and dispatches them to the appropriate handler before standard refinement.
+- **Theme persistence**: `theme` field in `AppSettings` supports "Light", "Dark", and "Auto". Theme changes use a circle-reveal CSS animation.
 - **Recording modes**: "Press" (toggle, default) starts/stops on hotkey press. "Hold" starts on press, stops on release (including Fn key release on macOS).
 - **Conversation hotkey**: Separate hotkey for starting conversations, default `Cmd+Shift+Y` (macOS) / `Ctrl+Shift+Y` (Windows). Configurable in settings.
 - **Atomic writes**: All persistence (history, dictionary, snippets, settings) uses write-to-tmp-then-rename via `store.rs` to prevent data corruption on crash.
@@ -91,11 +97,16 @@ extensions/vscode-bridge/  — VS Code extension
 3. stop_recording →
    a. Check snippets (detect_and_expand, word boundary matching) → if match, paste directly, skip AI
    b. Apply dictionary replacements (word-by-word, handles trailing punctuation)
-   c. Send to bridge with style + styleOverrides + codeMode (bridge authenticated via token)
-   d. Bridge refines via LLM → returns refinedText + category + title
-   e. If bridge unavailable → emit `refinement-skipped` event, fall back to raw transcript
-   f. Auto-paste refined text
-   g. Save to history with duration_seconds
+   c. AI-first intent classification → detect voice commands (translate, summarize, draft, explain, chain)
+      - If voice command detected → dispatch to voice command handler → execute → paste result
+   d. (Non-command path) Route by provider mode:
+      - VS Code mode: send to bridge with style + styleOverrides + codeMode (token auth)
+        → Bridge refines via vscode.lm → returns refinedText + category + title
+        → If bridge unavailable → emit `refinement-skipped` event, fall back to raw transcript
+      - API Key mode: send to ai_provider.rs (Groq or Anthropic direct call)
+        → Returns refinedText + category + title
+   e. Auto-paste refined text
+   f. Save to history with duration_seconds
 ```
 
 ## Conversation Mode
@@ -142,7 +153,7 @@ Idle → start_recording → Recording → stop_recording → Processing → (pa
 
 ## App Views
 
-App.tsx router: `history | conversation | settings | dictionary | snippets`
+App.tsx router: `history | conversation | settings | dictionary | snippets | help`
 
 ## Testing
 
