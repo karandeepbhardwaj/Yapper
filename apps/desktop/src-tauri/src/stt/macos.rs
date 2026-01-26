@@ -100,6 +100,16 @@ fn write_temp_swift(prefix: &str, content: &str) -> Result<std::path::PathBuf, S
     Ok(path)
 }
 
+/// Kill any lingering recorder subprocess (called on app shutdown).
+pub fn cleanup() {
+    if let Ok(mut guard) = RECORDER_PROCESS.lock() {
+        if let Some(mut child) = guard.take() {
+            unsafe { libc::kill(child.id() as i32, libc::SIGKILL); }
+            let _ = child.wait();
+        }
+    }
+}
+
 pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
     let _ = app;
 

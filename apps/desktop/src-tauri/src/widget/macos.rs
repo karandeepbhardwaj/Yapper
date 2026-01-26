@@ -165,15 +165,15 @@ fn create_panel(handle: &tauri::AppHandle) {
     panel.setCollectionBehavior(behavior);
 
     // Position above dock — panel is tall (300px) but pill sits at bottom
-    let panel_w = 220.0;
-    let panel_h = 80.0;
+    let panel_w = 280.0;
+    let panel_h = 110.0;
     if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
         let primary_h = get_primary_screen_height();
         let origin = NSPoint::new(x, primary_h - y - panel_h);
         let new_frame = NSRect::new(origin, NSSize::new(panel_w, panel_h));
         panel.setFrame_display_animate(new_frame, true, false);
         // Hover center is at the pill at the bottom of the panel
-        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h - 17.0);
+        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h - 28.0);
     }
 
     // Start with mouse events ignored — clicks pass through to dock/desktop
@@ -263,7 +263,7 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
 
             if tick % 6 == 0 {
                 let _ = hover_handle.run_on_main_thread(move || {
-                    let panel_w = 220.0;
+                    let panel_w = 280.0;
                     let panel_h = 300.0;
                     if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
                         if let Some(panel_ptr) = load_panel_ptr() {
@@ -272,7 +272,7 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
                             let origin = NSPoint::new(x, primary_h - y - panel_h);
                             panel.setFrameOrigin(origin);
                         }
-                        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h - 17.0);
+                        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h - 28.0);
                     }
                 });
             }
