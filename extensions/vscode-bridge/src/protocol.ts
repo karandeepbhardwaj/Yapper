@@ -9,6 +9,7 @@ export interface RefineRequest {
   style?: "Professional" | "Casual" | "Technical" | "Creative";
   styleOverrides?: Record<string, string>;
   codeMode?: boolean;
+  model?: string;
 }
 
 export interface ChunkResponse {
@@ -44,6 +45,7 @@ export interface ConversationRequest {
   turnId: string;
   history: ConversationTurn[];
   userMessage: string;
+  model?: string;
 }
 
 export interface ConversationChunkResponse {
@@ -66,6 +68,7 @@ export interface SummarizeRequest {
   type: "summarize";
   id: string;
   history: ConversationTurn[];
+  model?: string;
 }
 
 export interface SummarizeResultResponse {
@@ -86,6 +89,7 @@ export interface CommandRequest {
   style?: "Professional" | "Casual" | "Technical" | "Creative";
   styleOverrides?: Record<string, string>;
   codeMode?: boolean;
+  model?: string;
 }
 
 export interface ClassifiedAction {
@@ -111,9 +115,29 @@ export interface CommandResultResponse {
   params?: Record<string, string>;
 }
 
+// --- Model listing ---
+
+export interface ListModelsRequest {
+  type: "list-models";
+  id: string;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  vendor: string;
+  family: string;
+}
+
+export interface ListModelsResponse {
+  type: "models-list";
+  id: string;
+  models: ModelInfo[];
+}
+
 // --- Union types ---
 
-export type IncomingMessage = RefineRequest | ConversationRequest | SummarizeRequest | CommandRequest;
+export type IncomingMessage = RefineRequest | ConversationRequest | SummarizeRequest | CommandRequest | ListModelsRequest;
 export type OutgoingMessage =
   | ChunkResponse
   | ResultResponse
@@ -121,7 +145,8 @@ export type OutgoingMessage =
   | ConversationChunkResponse
   | ConversationResultResponse
   | SummarizeResultResponse
-  | CommandResultResponse;
+  | CommandResultResponse
+  | ListModelsResponse;
 
 export const BRIDGE_PORT = 9147;
 export const BRIDGE_HOST = "127.0.0.1";
