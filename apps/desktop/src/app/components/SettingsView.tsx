@@ -535,6 +535,27 @@ export function SettingsView({
     return () => clearInterval(interval);
   }, [settings.ai_provider_mode]);
 
+  // AI Provider: bridge models
+  const [bridgeModels, setBridgeModels] = useState<{id: string; name: string; vendor: string; family: string}[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  const fetchBridgeModels = useCallback(() => {
+    setModelsLoading(true);
+    invoke<{id: string; name: string; vendor: string; family: string}[]>("list_bridge_models")
+      .then((models) => setBridgeModels(models))
+      .catch((e) => {
+        console.error("Failed to list models:", e);
+        setBridgeModels([]);
+      })
+      .finally(() => setModelsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (bridgeConnected && settings.ai_provider_mode === "vscode") {
+      fetchBridgeModels();
+    }
+  }, [bridgeConnected, settings.ai_provider_mode, fetchBridgeModels]);
+
   // AI Provider: API key test
   const [keyTestResult, setKeyTestResult] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [showKey, setShowKey] = useState(false);
@@ -843,6 +864,51 @@ export function SettingsView({
             </SettingRow>
           )}
 
+          {settings.ai_provider_mode === "vscode" && (
+            <SettingRow label="Model" description={!bridgeConnected ? "Connect VS Code to see available models" : undefined}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <select
+                  value={settings.vscode_model}
+                  onChange={(e) => update({ vscode_model: e.target.value })}
+                  disabled={!bridgeConnected || modelsLoading}
+                  style={{
+                    flex: 1,
+                    padding: "7px 10px",
+                    borderRadius: 10,
+                    border: "1px solid var(--yapper-border, #ddd)",
+                    background: "var(--yapper-surface-low, #f5f5f5)",
+                    color: "var(--yapper-text-primary)",
+                    fontSize: 13,
+                    cursor: bridgeConnected ? "pointer" : "not-allowed",
+                    opacity: bridgeConnected ? 1 : 0.5,
+                  }}
+                >
+                  <option value="">Auto (first available)</option>
+                  {bridgeModels.map((m) => (
+                    <option key={m.id} value={m.family}>{m.name} ({m.vendor})</option>
+                  ))}
+                </select>
+                {bridgeConnected && (
+                  <button
+                    onClick={fetchBridgeModels}
+                    disabled={modelsLoading}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 10,
+                      border: "1px solid var(--yapper-border, #ddd)",
+                      background: "var(--yapper-surface-low, #f5f5f5)",
+                      color: "var(--yapper-text-secondary)",
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {modelsLoading ? "..." : "Refresh"}
+                  </button>
+                )}
+              </div>
+            </SettingRow>
+          )}
+
           {settings.ai_provider_mode === "apikey" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <SettingRow label="Provider">
@@ -851,6 +917,35 @@ export function SettingsView({
                   value={settings.ai_provider || "groq"}
                   onChange={(v) => update({ ai_provider: v })}
                 />
+              </SettingRow>
+
+              <SettingRow label="Model">
+                <select
+                  value={settings.ai_model}
+                  onChange={(e) => update({ ai_model: e.target.value })}
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 10,
+                    border: "1px solid var(--yapper-border, #ddd)",
+                    background: "var(--yapper-surface-low, #f5f5f5)",
+                    color: "var(--yapper-text-primary)",
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  {(settings.ai_provider || "groq") === "anthropic" ? (
+                    <>
+                      <option value="">Claude Haiku 4.5 (default)</option>
+                      <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                      <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="">Llama 3.3 70B (default)</option>
+                      <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                    </>
+                  )}
+                </select>
               </SettingRow>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

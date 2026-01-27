@@ -46,6 +46,8 @@ export interface AppSettings {
   ai_provider_mode: string;    // "vscode" | "apikey"
   ai_provider: string;         // "groq" | "anthropic"
   ai_api_key: string;          // the actual key
+  vscode_model: string;
+  ai_model: string;
   theme: string;               // "light" | "dark" | "system"
 }
 
@@ -61,6 +63,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai_provider_mode: "vscode",
   ai_provider: "",
   ai_api_key: "",
+  vscode_model: "",
+  ai_model: "",
   theme: "system",
 };
 
