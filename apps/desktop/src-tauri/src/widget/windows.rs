@@ -189,8 +189,8 @@ pub fn setup(app: &tauri::App) {
         let _ = widget.set_size(tauri::LogicalSize::new(280.0, 110.0));
 
         // Set initial position (physical pixels)
-        let panel_w = 180.0;
-        let panel_h = 34.0;
+        let panel_w = 280.0;
+        let panel_h = 110.0;
         if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
             let sf = load_scale();
             log::info!("[Widget] Positioning at ({}, {}), scale={}", x, y, sf);

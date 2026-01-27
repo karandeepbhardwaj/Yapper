@@ -3,6 +3,7 @@ use once_cell::sync::Lazy;
 
 static RECORDER_PROCESS: Lazy<Mutex<Option<std::process::Child>>> = Lazy::new(|| Mutex::new(None));
 static AUDIO_FILE: &str = "/tmp/yapper_recording.wav";
+static PID_FILE: &str = "/tmp/yapper_recorder.pid";
 
 // Swift recorder script -- uses native sample rate, records until killed
 static SWIFT_RECORDER: &str = r#"
@@ -100,14 +101,26 @@ fn write_temp_swift(prefix: &str, content: &str) -> Result<std::path::PathBuf, S
     Ok(path)
 }
 
-/// Kill any lingering recorder subprocess (called on app shutdown).
+/// Kill any lingering recorder subprocess (called on app shutdown and startup).
 pub fn cleanup() {
+    // Kill the process we're tracking in memory
     if let Ok(mut guard) = RECORDER_PROCESS.lock() {
         if let Some(mut child) = guard.take() {
             unsafe { libc::kill(child.id() as i32, libc::SIGKILL); }
             let _ = child.wait();
         }
     }
+    // Kill any orphaned recorder from a previous crash/force-quit
+    if let Ok(pid_str) = std::fs::read_to_string(PID_FILE) {
+        if let Ok(pid) = pid_str.trim().parse::<i32>() {
+            // Only kill if the process is still alive (kill with signal 0 checks existence)
+            if unsafe { libc::kill(pid, 0) } == 0 {
+                unsafe { libc::kill(pid, libc::SIGKILL); }
+            }
+        }
+    }
+    let _ = std::fs::remove_file(PID_FILE);
+    let _ = std::fs::remove_file(AUDIO_FILE);
 }
 
 pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
@@ -134,8 +147,11 @@ pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to start recorder: {}", e))?;
 
+    // Write PID so orphaned recorders can be killed on next launch
+    let _ = std::fs::write(PID_FILE, child.id().to_string());
+
     // Give Swift time to compile (first run) and start recording
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
     // Clean up the temp script file after Swift has compiled it
     let _ = std::fs::remove_file(&script_path);
@@ -157,12 +173,13 @@ pub async fn stop_recognition() -> Result<String, String> {
                 let _ = child.wait();
             }
         }
+        let _ = std::fs::remove_file(PID_FILE);
     } else {
         return Err("No recording in progress".to_string());
     }
 
     // Wait for file to be fully written
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Check file
     match std::fs::metadata(AUDIO_FILE) {
