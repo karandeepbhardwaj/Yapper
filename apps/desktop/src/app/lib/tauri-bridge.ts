@@ -37,10 +37,16 @@ export async function changeHotkey(hotkey: string): Promise<void> {
   await invoke("change_hotkey", { hotkey });
 }
 
-export async function changeSttEngine(engine: "classic" | "modern"): Promise<void> {
-  await invoke("change_stt_engine", { engine });
-}
-
 export async function checkSpeechPermission(): Promise<boolean> {
   return await invoke("check_speech_permission");
+}
+
+/** Whether the local Ollama server is reachable. */
+export async function checkOllamaStatus(): Promise<boolean> {
+  return await invoke("check_ollama_status");
+}
+
+/** Test that the configured local model responds. */
+export async function testOllama(model: string): Promise<boolean> {
+  return await invoke("test_ollama", { model });
 }
