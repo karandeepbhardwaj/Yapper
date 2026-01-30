@@ -32,7 +32,7 @@
 - **Voice capture** -- press a global hotkey and start talking
 - **Voice commands** -- speak `translate`, `summarize`, `draft`, `explain`, or `chain` to trigger AI actions directly; classified before refinement
 - **Local speech-to-text (Whisper)** -- on-device transcription via [whisper.cpp](https://github.com/ggerganov/whisper.cpp); the model is bundled with the app, nothing to download
-- **Local AI refinement (bundled)** -- transcripts are cleaned up by a small LLM (Qwen2.5-0.5B) bundled inside the app via an embedded [Ollama](https://ollama.com) runtime; no install, no API key, no internet
+- **Local AI refinement (bundled)** -- transcripts are cleaned up by a small LLM (Qwen2.5-1.5B) bundled inside the app via an embedded [Ollama](https://ollama.com) runtime; no install, no API key, no internet
 - **Auto-paste** refined text at your active cursor position
 - **Conversation mode** -- back-and-forth AI chat with a dedicated hotkey (`Cmd+Shift+Y` / `Ctrl+Shift+Y`), session summaries saved to history
 - **Recording modes** -- "Press" (toggle, default) or "Hold" (press-and-hold to record, release to stop; Fn key release supported on macOS)
@@ -79,7 +79,7 @@ Everything runs locally — no network calls leave your machine.
           |           | HTTP (127.0.0.1:11435, private port)
    +------v-----+  +--v------------------------+
    | Whisper    |  | Bundled Ollama sidecar    |
-   | tiny model |  | qwen2.5:0.5b (auto-start) |
+   | base model |  | qwen2.5:1.5b (auto-start) |
    | (bundled)  |  | OpenAI-compatible API     |
    +------------+  +---------------------------+
 
@@ -154,9 +154,9 @@ Build output: `apps/desktop/src-tauri/target/release/bundle/`
 ```
  Speak  -->  Record  -->  Transcribe  -->  Classify  -->  Refine/Execute  -->  Paste
   |            |              |               |                 |                 |
-  |       Microphone     whisper.cpp     Voice cmd?        local Ollama       Keystroke
-  |       (cpal)         (on-device)    (translate,       (llama3.2)         simulation
-  |                                      summarize,       on localhost      (auto-paste)
+  |       Microphone     whisper.cpp     Voice cmd?      bundled sidecar      Keystroke
+  |       (cpal)         (on-device)    (translate,      (qwen2.5:1.5b)       simulation
+  |                                      summarize,      127.0.0.1:11435      (auto-paste)
   |                                       draft…)
 ```
 
@@ -171,7 +171,7 @@ Build output: `apps/desktop/src-tauri/target/release/bundle/`
 
 ## AI refinement
 
-Yapper bundles a small local LLM (**Qwen2.5-0.5B**, served by an embedded **[Ollama](https://ollama.com)** runtime) to clean up transcripts — no API keys, no cloud, no setup. The server starts automatically on a private local port when the app launches and shuts down when it exits.
+Yapper bundles a small local LLM (**Qwen2.5-1.5B**, served by an embedded **[Ollama](https://ollama.com)** runtime) to clean up transcripts — no API keys, no cloud, no setup. The server starts automatically on a private local port when the app launches and shuts down when it exits.
 
 > It's a small model chosen to keep the app lightweight, so refinement is good-but-basic. There are no AI settings to configure.
 
@@ -259,7 +259,7 @@ Settings are persisted per-platform in the app config directory using atomic fil
 | Animations | Motion (Framer Motion) |
 | Speech-to-text | [whisper.cpp](https://github.com/ggerganov/whisper.cpp) via `whisper-rs` (on-device, all platforms) |
 | Audio capture | `cpal` (cross-platform, 16 kHz mono) |
-| AI refinement | Bundled [Ollama](https://ollama.com) runtime + Qwen2.5-0.5B, auto-started as a private local sidecar |
+| AI refinement | Bundled [Ollama](https://ollama.com) runtime + Qwen2.5-1.5B, auto-started as a private local sidecar |
 | Search | Fuse.js (fuzzy search) |
 | macOS interop | `objc2` + `objc2-app-kit` + `block2` |
 | Windows interop | `windows` crate (Win32 + WinRT) |

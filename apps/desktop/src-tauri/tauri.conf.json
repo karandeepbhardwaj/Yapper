@@ -47,7 +47,7 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "resources/models/ggml-tiny.bin",
+      "resources/models/*.bin",
       "resources/ollama/**/*",
       "resources/ollama-models/**/*"
     ],

@@ -195,41 +195,60 @@ fn ollama_base_url() -> String {
         .unwrap_or_else(|_| format!("http://{}", crate::sidecar::OLLAMA_HOST))
 }
 
-/// Call a local Ollama model via its OpenAI-compatible chat endpoint.
+/// POST a chat-completions request to the bundled Ollama server, retrying on
+/// transport errors so a recording made during the sidecar's cold start isn't
+/// dropped to "unrefined".
+fn ollama_chat(messages: serde_json::Value, temperature: f64, model: &str) -> Result<String, String> {
+    let body = serde_json::json!({
+        "model": model,
+        "temperature": temperature,
+        "stream": false,
+        "messages": messages,
+    })
+    .to_string();
+    let url = format!("{}/v1/chat/completions", ollama_base_url());
+
+    let mut last_err = String::new();
+    for attempt in 0..5 {
+        match ureq::post(&url)
+            .header("Content-Type", "application/json")
+            .send(body.as_str())
+        {
+            Ok(mut response) => {
+                let resp_body = response
+                    .body_mut()
+                    .read_to_string()
+                    .map_err(|e| format!("Local AI read response failed: {e}"))?;
+                let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+                    .map_err(|e| format!("Local AI JSON parse failed: {e}"))?;
+                return parsed["choices"][0]["message"]["content"]
+                    .as_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("Local AI response missing content. Body: {}", resp_body));
+            }
+            Err(e) => {
+                last_err = format!("Local AI call failed: {e}");
+                if attempt < 4 {
+                    std::thread::sleep(std::time::Duration::from_millis(1200));
+                }
+            }
+        }
+    }
+    Err(last_err)
+}
+
+/// Single system+user turn.
 fn call_ollama(
     system_prompt: &str,
     user_prompt: &str,
     temperature: f64,
     model: &str,
 ) -> Result<String, String> {
-    let body = serde_json::json!({
-        "model": model,
-        "temperature": temperature,
-        "stream": false,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    });
-
-    let url = format!("{}/v1/chat/completions", ollama_base_url());
-    let mut response = ureq::post(&url)
-        .header("Content-Type", "application/json")
-        .send(body.to_string().as_str())
-        .map_err(|e| format!("Local AI call failed: {e}"))?;
-
-    let resp_body = response
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Local AI read response failed: {e}"))?;
-
-    let parsed: serde_json::Value =
-        serde_json::from_str(&resp_body).map_err(|e| format!("Local AI JSON parse failed: {e}"))?;
-
-    parsed["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("Local AI response missing content. Body: {}", resp_body))
+    let messages = serde_json::json!([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]);
+    ollama_chat(messages, temperature, model)
 }
 
 fn call_provider_blocking(
@@ -251,37 +270,11 @@ fn call_provider_with_messages_blocking(
     temperature: f64,
     model: &str,
 ) -> Result<String, String> {
-    let mut msgs = vec![serde_json::json!({
-        "role": "system",
-        "content": system_prompt
-    })];
+    let mut msgs = vec![serde_json::json!({"role": "system", "content": system_prompt})];
     for m in messages {
-        msgs.push(serde_json::json!({
-            "role": m.role,
-            "content": m.content
-        }));
+        msgs.push(serde_json::json!({"role": m.role, "content": m.content}));
     }
-    let body = serde_json::json!({
-        "model": model,
-        "temperature": temperature,
-        "stream": false,
-        "messages": msgs
-    });
-    let url = format!("{}/v1/chat/completions", ollama_base_url());
-    let mut response = ureq::post(&url)
-        .header("Content-Type", "application/json")
-        .send(body.to_string().as_str())
-        .map_err(|e| format!("Local AI call failed: {e}"))?;
-    let resp_body = response
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Local AI read response failed: {e}"))?;
-    let parsed: serde_json::Value = serde_json::from_str(&resp_body)
-        .map_err(|e| format!("Local AI JSON parse failed: {e}"))?;
-    parsed["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("Local AI response missing content. Body: {}", resp_body))
+    ollama_chat(serde_json::Value::Array(msgs), temperature, model)
 }
 
 // ---------------------------------------------------------------------------
@@ -401,9 +394,30 @@ fn send_command_blocking(
     api_key: &str,
     model: &str,
 ) -> Result<CommandResult, String> {
-    log::info!("[ai_provider] send_command: classifying intent via provider={}", provider);
-
     let resolved_model = resolve_model(provider, model);
+
+    // Conservative gate: only run the (small, error-prone) intent classifier when
+    // the utterance actually starts with a command word. Otherwise treat it as
+    // plain dictation, so ordinary speech is never misfired into a command.
+    if !starts_with_command_word(raw_text) {
+        let refined = refine_text_blocking(
+            raw_text, style, style_overrides, code_mode, provider, api_key, model,
+        )?;
+        let mut params = HashMap::new();
+        if let Some(cat) = &refined.category {
+            params.insert("category".to_string(), cat.clone());
+        }
+        if let Some(ttl) = &refined.title {
+            params.insert("title".to_string(), ttl.clone());
+        }
+        return Ok(CommandResult {
+            result: refined.refined_text,
+            action: "dictation".to_string(),
+            params: if params.is_empty() { None } else { Some(params) },
+        });
+    }
+
+    log::info!("[ai_provider] send_command: classifying intent via provider={}", provider);
 
     // Step 1: Classify intent
     let classify_response =
@@ -490,6 +504,22 @@ fn send_command_blocking(
             })
         }
     }
+}
+
+/// True if the transcript begins with a recognized voice-command word. Gates the
+/// intent classifier so ordinary dictation is never misclassified as a command.
+fn starts_with_command_word(text: &str) -> bool {
+    const TRIGGERS: &[&str] = &[
+        "translate", "summarize", "summarise", "draft", "explain", "chain", "rewrite", "write",
+    ];
+    let first = text
+        .trim_start()
+        .split(|c: char| c.is_whitespace() || c == ',' || c == ':')
+        .next()
+        .unwrap_or("")
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    TRIGGERS.contains(&first.as_str())
 }
 
 fn build_action_user_prompt(

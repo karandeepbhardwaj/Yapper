@@ -9,8 +9,8 @@ See also: `AGENTS.md` (full agent guidelines), `DESIGN.md` (design principles + 
 Yapper is a cross-platform voice-to-text desktop app built with Tauri v2 (Rust backend) + React 18 (frontend). It captures speech, transcribes it **fully on-device** with whisper.cpp, refines the transcript with a **bundled local LLM**, and auto-pastes the result at the active cursor.
 
 **The app is fully self-contained and offline.** Both the Whisper model and the refinement LLM ship inside the app — there is no install step, no API keys, no internet, and no external Ollama dependency:
-- **STT:** whisper.cpp via `whisper-rs`, using a bundled `ggml-tiny.bin`.
-- **Refinement:** a bundled Ollama server runtime + **Qwen2.5-0.5B** (`qwen2.5:0.5b`), auto-started as a private sidecar on `127.0.0.1:11435`. If the sidecar isn't reachable, dictation still works and the raw transcript is pasted (`refinement-skipped`).
+- **STT:** whisper.cpp via `whisper-rs`, using a bundled `ggml-base.bin`.
+- **Refinement:** a bundled Ollama server runtime + **Qwen2.5-1.5B** (`qwen2.5:1.5b`), auto-started as a private sidecar on `127.0.0.1:11435`. If the sidecar isn't reachable, dictation still works and the raw transcript is pasted (`refinement-skipped`).
 
 > **History note:** Earlier versions had a VS Code/Copilot bridge, a Groq/Anthropic API-key mode, a screen-capture/vision feature, and a Whisper model downloader/picker — **all removed**. The model is small for app-size reasons, so refinement is good-but-basic.
 
@@ -33,16 +33,16 @@ YAPPER_SAMPLE_DATA=1 bun tauri dev
 
 ### Prerequisites
 
-Rust 1.75+, Node.js 20+, Bun, **CMake** (compiles whisper.cpp on first build — `brew install cmake`), Xcode CLI Tools (macOS). No Ollama install needed — it's bundled. `fetch-models.sh` needs internet **at build time only** (downloads the Whisper model, the Ollama runtime, and pulls `qwen2.5:0.5b` into a bundled store).
+Rust 1.75+, Node.js 20+, Bun, **CMake** (compiles whisper.cpp on first build — `brew install cmake`), Xcode CLI Tools (macOS). No Ollama install needed — it's bundled. `fetch-models.sh` needs internet **at build time only** (downloads the Whisper model, the Ollama runtime, and pulls `qwen2.5:1.5b` into a bundled store).
 
 ## Bundled assets (offline)
 
 Fetched by `scripts/fetch-models.sh` into `src-tauri/resources/` (all git-ignored) and shipped via `tauri.conf.json` → `bundle.resources`:
-- `resources/models/ggml-tiny.bin` — Whisper model.
+- `resources/models/ggml-base.bin` — Whisper model.
 - `resources/ollama/` — Ollama server runtime (binary + libs).
-- `resources/ollama-models/` — pre-pulled `qwen2.5:0.5b` model store.
+- `resources/ollama-models/` — pre-pulled `qwen2.5:1.5b` model store.
 
-`bundle.resources` uses the **directory map form** (`"resources/ollama": "ollama"`); the `**/*` glob form FLATTENS subdirectories and breaks the model store — don't use it. At runtime, resources resolve under `app.path().resource_dir()`.
+`bundle.resources` uses the **array + recursive-glob form** (`["resources/models/*.bin", "resources/ollama/**/*", "resources/ollama-models/**/*"]`). This preserves the nested model-store structure AND actually bundles into the production `.app`. Pitfalls learned the hard way: the **map form** (`{"resources/ollama":"ollama"}`) staged in `tauri dev` but silently bundled **nothing** in `tauri build`; the **map + `**/*` glob** form FLATTENS subdirectories and breaks the Ollama model store. At runtime the array form preserves the source path, so resources resolve under `app.path().resource_dir()/resources/...` (note the extra `resources/` segment).
 
 ## Architecture
 
@@ -62,7 +62,7 @@ apps/desktop/          — Tauri desktop app
     main.rs            — Binary shim → yapper_lib::run()
     commands.rs        — All Tauri commands, recording pipeline, AppSettings (see below)
     sidecar.rs         — Bundled Ollama lifecycle: stages model store to app-data, spawns
-                         `ollama serve` on 127.0.0.1:11435, kills on exit. MODEL = "qwen2.5:0.5b".
+                         `ollama serve` on 127.0.0.1:11435, kills on exit. MODEL = "qwen2.5:1.5b".
     ai_provider.rs     — Local LLM calls (call_ollama → POST /v1/chat/completions on the sidecar);
                          intent classification + voice-command routing. Ollama-only.
     conversation.rs    — Conversation mode: start / send_turn / end / discard sessions
@@ -84,7 +84,7 @@ apps/desktop/          — Tauri desktop app
 
 `hotkey`, `default_style` (Professional), `style_overrides`, `metrics_enabled`, `code_mode`,
 `recording_mode` ("toggle" default | "hold"), `conversation_hotkey` (Cmd/Ctrl+Shift+Y),
-`theme` ("system"), `whisper_model` (unused legacy default; model is the bundled `tiny`),
+`theme` ("system"), `whisper_model` (unused legacy default; model is the bundled `base`),
 `whisper_language` ("auto"), `streaming_enabled`. Persisted via `store.rs` atomic writes.
 There are no AI/model/server settings — refinement is fixed to the bundled model.
 
@@ -92,7 +92,7 @@ There are no AI/model/server settings — refinement is fixed to the bundled mod
 
 - **100% local & offline.** STT on-device; refinement via the bundled Ollama sidecar at `127.0.0.1:11435/v1/chat/completions`. No cloud, no API keys, no downloads at runtime. Override the URL with `YAPPER_OLLAMA_URL` (dev only).
 - **Sidecar lifecycle** (`sidecar.rs`): on `setup()` the app copies the read-only bundled model store to a writable app-data dir (first run), then spawns `ollama serve` on a **private** port (never 11434, so it can't clash with a user's own Ollama); killed on window close. `MODEL`/`OLLAMA_HOST` constants live here and are referenced by `ai_provider.rs`, `commands.rs`, `conversation.rs`.
-- **Whisper STT only.** `whisper-rs` with the bundled `tiny` model resolved via `model_manager::resolve_model_path` (bundled resource first, `~/.yapper/models` fallback). No native STT, no downloader, no picker.
+- **Whisper STT only.** `whisper-rs` with the bundled `base` model resolved via `model_manager::resolve_model_path` (bundled resource first, `~/.yapper/models` fallback). No native STT, no downloader, no picker.
 - **Cross-platform**: macOS (primary, current bundling target) and Windows. The bundled Ollama runtime is currently macOS; Windows sidecar is a follow-up. Platform code isolated in `widget/macos.rs` vs `widget/windows.rs`.
 - **macOS interop**: `objc2` + `objc2-app-kit` + `block2` (NOT deprecated `cocoa`/`objc`). AppKit calls on the main thread via `run_on_main_thread`.
 - **Widget is a separate webview** (`widget.html` / `widget.tsx`) — Tauri events; `pointer-events: none` on root, `setIgnoresMouseEvents` toggled by Rust hover detection.
@@ -141,7 +141,7 @@ Misc: `get_metrics`, `check_speech_permission`, `debug_log`, `open_main_window`,
 
 - Don't add `Co-Authored-By` lines to commits.
 - Don't use `git add -A` blindly — `target/`, `dist/`, and the large bundled assets in `resources/` are git-ignored.
-- Bundled `resources/` directories use the directory map form in `tauri.conf.json`; the `**/*` glob flattens subdirs and breaks the Ollama model store.
+- Bundled `resources/` use the array + `**/*` glob form in `tauri.conf.json` (preserves structure AND bundles in `tauri build`). Don't switch to the map form — it silently bundles nothing in production; and the map+glob form flattens the model store.
 - Don't use `enigo` (crashes on macOS) — use `autopaste.rs`. Don't use the Web Speech API (no WKWebView support).
 - whisper-rs requires **CMake** on first build. cpal needs microphone permission (macOS).
 - Don't resize the NSPanel dynamically — crashes. Widget is fixed at 220×80 (recording height 62).
@@ -152,7 +152,7 @@ Misc: `get_metrics`, `check_speech_permission`, `debug_log`, `open_main_window`,
 
 No automated test suite. Manual testing:
 1. `apps/desktop/scripts/fetch-models.sh` (once), then `bun tauri dev`.
-2. Confirm the sidecar is up: `curl 127.0.0.1:11435/api/tags` lists `qwen2.5:0.5b`.
+2. Confirm the sidecar is up: `curl 127.0.0.1:11435/api/tags` lists `qwen2.5:1.5b`.
 3. Click widget or press hotkey → speak → stop → verify transcript pastes **refined** (no `unrefined` badge).
 4. Conversation mode: `Cmd+Shift+Y` → record turns → End to save.
 5. Settings: language / hotkeys / style / dictionary / snippets.

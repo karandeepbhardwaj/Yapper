@@ -15,7 +15,7 @@ use tauri::Manager;
 pub const OLLAMA_HOST: &str = "127.0.0.1:11435";
 
 /// The single refinement model bundled with the app.
-pub const MODEL: &str = "qwen2.5:0.5b";
+pub const MODEL: &str = "qwen2.5:1.5b";
 
 static CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
@@ -98,9 +98,35 @@ pub fn start(app: &tauri::AppHandle) {
         Ok(child) => {
             log::info!("[sidecar] ollama serve started on {OLLAMA_HOST}");
             *CHILD.lock().unwrap() = Some(child);
+            prewarm();
         }
         Err(e) => log::error!("[sidecar] failed to start ollama: {e}"),
     }
+}
+
+/// Wait for the server to accept connections, then load the model into memory
+/// so the user's first recording doesn't race a cold start (which would skip
+/// refinement and tag the result "unrefined").
+fn prewarm() {
+    std::thread::spawn(|| {
+        let base = format!("http://{OLLAMA_HOST}");
+        // Wait up to ~30s for the server to bind its port.
+        for _ in 0..60 {
+            if ureq::get(&format!("{base}/api/tags")).call().is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        // Trigger a tiny generation to load the model weights into memory.
+        let body = serde_json::json!({ "model": MODEL, "prompt": "ok", "stream": false });
+        match ureq::post(&format!("{base}/api/generate"))
+            .header("Content-Type", "application/json")
+            .send(body.to_string().as_str())
+        {
+            Ok(_) => log::info!("[sidecar] model pre-warmed and ready"),
+            Err(e) => log::warn!("[sidecar] pre-warm failed: {e}"),
+        }
+    });
 }
 
 /// Stop the bundled server. Call on app exit.
