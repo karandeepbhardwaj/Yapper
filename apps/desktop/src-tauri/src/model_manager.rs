@@ -24,7 +24,7 @@ pub fn resolve_model_path(app: &tauri::AppHandle, model_name: &str) -> Option<Pa
 
     // 1. Bundled resource (read-only, shipped inside the app).
     if let Ok(res_dir) = app.path().resource_dir() {
-        let bundled = res_dir.join("models").join(&filename);
+        let bundled = res_dir.join("resources").join("models").join(&filename);
         if bundled.exists() {
             return Some(bundled);
         }
