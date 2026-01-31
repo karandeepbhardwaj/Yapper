@@ -792,21 +792,6 @@ export function SettingsView({
               <option value="hi">Hindi</option>
             </select>
           </SettingRow>
-
-          <div style={{ height: 1, background: "var(--yapper-border, #eee)", margin: "2px 0" }} />
-
-          {/* Live Transcription toggle */}
-          <SettingRow
-            label="Live Transcription"
-            description="Stream partial results while recording"
-            hint="Shows transcription in real-time as you speak. Disable for lower latency on slower devices."
-          >
-            <Toggle
-              checked={settings.streaming_enabled}
-              onChange={(val) => update({ streaming_enabled: val })}
-              label="Live transcription"
-            />
-          </SettingRow>
         </SectionCard>
 
         {/* Style */}
