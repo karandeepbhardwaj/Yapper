@@ -66,6 +66,11 @@ fn refine_text_blocking(raw_text: &str) -> Result<RefinementResult, String> {
     let (mut socket, _response) = connect(VSCODE_BRIDGE_URL)
         .map_err(|e| format!("Failed to connect to VS Code bridge: {}", e))?;
 
+    // Set read timeout — Copilot can take up to 30 seconds to respond
+    if let tungstenite::stream::MaybeTlsStream::Plain(ref s) = socket.get_ref() {
+        let _ = s.set_read_timeout(Some(Duration::from_secs(30)));
+    }
+
     socket.send(Message::Text(request_json))
         .map_err(|e| format!("Failed to send message: {}", e))?;
 

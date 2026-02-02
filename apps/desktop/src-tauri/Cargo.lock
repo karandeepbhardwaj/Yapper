@@ -5678,6 +5678,7 @@ dependencies = [
  "chrono",
  "cocoa",
  "enigo",
+ "libc",
  "log",
  "objc",
  "objc2 0.6.4",

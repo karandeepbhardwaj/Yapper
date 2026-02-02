@@ -21,7 +21,9 @@ function WidgetApp() {
   const [state, setState] = useState<WidgetState>("idle");
   const [isHovered, setIsHovered] = useState(false);
 
-  const isRecording = state === "listening" || state === "processing";
+  const isListening = state === "listening";
+  const isProcessing = state === "processing";
+  const isActive = isListening || isProcessing;
 
   // Rust-polled hover
   useEffect(() => {
@@ -41,7 +43,7 @@ function WidgetApp() {
 
   const handlePillClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isRecording) {
+    if (!isActive) {
       await invoke("start_recording");
     }
   };
@@ -60,8 +62,8 @@ function WidgetApp() {
   };
 
   // Determine pill dimensions
-  const pillW = isRecording ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
-  const pillH = isRecording ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
+  const pillW = isActive ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
+  const pillH = isActive ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
 
   return (
     <div
@@ -77,12 +79,12 @@ function WidgetApp() {
       <motion.div
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        onMouseDown={!isRecording ? handlePillClick : undefined}
+        onMouseDown={!isActive ? handlePillClick : undefined}
         animate={{
           width: pillW,
           height: pillH,
           borderRadius: pillH / 2,
-          opacity: !isRecording && !isHovered ? 0.5 : 1,
+          opacity: !isActive && !isHovered ? 0.5 : 1,
         }}
         transition={{
           duration: 0.35,
@@ -95,13 +97,13 @@ function WidgetApp() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          cursor: isRecording ? "default" : "pointer",
+          cursor: isActive ? "default" : "pointer",
           overflow: "hidden",
           position: "relative",
         }}
       >
         <AnimatePresence mode="wait">
-          {!isRecording && isHovered && (
+          {!isActive && isHovered && (
             <motion.div
               key="hover"
               initial={{ opacity: 0, scale: 0.7 }}
@@ -113,7 +115,7 @@ function WidgetApp() {
               <Mic style={{ width: 14, height: 14, color: "#e5383b" }} />
             </motion.div>
           )}
-          {isRecording && (
+          {isListening && (
             <motion.div
               key="recording"
               initial={{ opacity: 0 }}
@@ -204,6 +206,41 @@ function WidgetApp() {
                   }}
                 />
               </motion.button>
+            </motion.div>
+          )}
+          {isProcessing && (
+            <motion.div
+              key="processing"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: "inherit",
+                overflow: "hidden",
+                position: "relative",
+              }}
+            >
+              {/* Animated hue wave */}
+              <motion.div
+                animate={{
+                  backgroundPosition: ["0% 50%", "200% 50%"],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "linear",
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  borderRadius: "inherit",
+                  background: "linear-gradient(90deg, #1a1a1a, #4a6cf7, #9b59b6, #e74c3c, #f39c12, #4a6cf7, #1a1a1a)",
+                  backgroundSize: "200% 100%",
+                }}
+              />
             </motion.div>
           )}
         </AnimatePresence>
