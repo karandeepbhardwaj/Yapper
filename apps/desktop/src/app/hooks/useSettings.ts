@@ -1,28 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
-import type { AppSettings } from "../lib/types";
 import { DEFAULT_SETTINGS } from "../lib/types";
-import { getSettings, saveSettings } from "../lib/tauri-bridge";
+import { getSettings, changeHotkey } from "../lib/tauri-bridge";
 
 export function useSettings() {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [hotkey, setHotkeyState] = useState(DEFAULT_SETTINGS.hotkey);
 
   useEffect(() => {
     getSettings()
-      .then(setSettings)
-      .catch(() => {
-        // Backend not ready, use defaults
-      });
+      .then((s) => setHotkeyState(s.hotkey))
+      .catch(() => {});
   }, []);
 
-  const updateSettings = useCallback(async (updates: Partial<AppSettings>) => {
-    const newSettings = { ...settings, ...updates };
-    setSettings(newSettings);
+  const setHotkey = useCallback(async (newHotkey: string) => {
     try {
-      await saveSettings(newSettings);
+      await changeHotkey(newHotkey);
+      setHotkeyState(newHotkey);
     } catch {
-      // Backend not ready
+      // If registration fails (e.g. invalid combo), don't update the UI
     }
-  }, [settings]);
+  }, []);
 
-  return { settings, updateSettings };
+  return { hotkey, setHotkey };
 }

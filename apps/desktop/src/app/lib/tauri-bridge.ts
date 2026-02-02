@@ -17,10 +17,18 @@ export async function clearHistory(): Promise<void> {
   await invoke("clear_history");
 }
 
+export async function deleteHistoryItem(id: string): Promise<void> {
+  await invoke("delete_history_item", { id });
+}
+
 export async function getSettings(): Promise<AppSettings> {
   return await invoke("get_settings");
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await invoke("save_settings", { settings });
+}
+
+export async function changeHotkey(hotkey: string): Promise<void> {
+  await invoke("change_hotkey", { hotkey });
 }

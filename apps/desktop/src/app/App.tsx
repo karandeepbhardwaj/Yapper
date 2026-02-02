@@ -46,9 +46,9 @@ declare global {
 }
 
 export default function App() {
-  const { settings, updateSettings } = useSettings();
+  const { hotkey, setHotkey } = useSettings();
   const { widgetState, latestResult, error, setError } = useTauriEvents();
-  const { historyItems, addItem, clearAll, togglePin } = useHistory();
+  const { historyItems, addItem, clearAll, deleteItem, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
@@ -205,9 +205,10 @@ export default function App() {
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
               historyItems={historyItems}
-              settings={settings}
-              onUpdateSettings={updateSettings}
+              hotkey={hotkey}
+              onHotkeyChange={setHotkey}
               onClearHistory={clearAll}
+              onDeleteItem={deleteItem}
               onTogglePin={togglePin}
             />
           </motion.div>
@@ -230,10 +231,9 @@ export default function App() {
       )}
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--yapper-border); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--yapper-accent); }
+        .yapper-scroll::-webkit-scrollbar { display: none; }
+        .yapper-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes blink { 0%, 100% { opacity: 0.6; } 50% { opacity: 0; } }
       `}</style>
     </div>
   );

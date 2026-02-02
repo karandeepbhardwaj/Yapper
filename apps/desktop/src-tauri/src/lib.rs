@@ -211,24 +211,13 @@ fn is_mouse_near(center_x_logical: f64, center_y_logical: f64, radius_logical: f
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
-    #[serde(rename = "autoStopAfterSilence")]
-    pub auto_stop_after_silence: bool,
-    #[serde(rename = "showFloatingWidget")]
-    pub show_floating_widget: bool,
-    pub language: String,
-    #[serde(rename = "refinementStyle")]
-    pub refinement_style: String,
     pub hotkey: String,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            auto_stop_after_silence: true,
-            show_floating_widget: true,
-            language: "en-US".to_string(),
-            refinement_style: "Professional".to_string(),
-            hotkey: "Alt+Space".to_string(),
+            hotkey: "Cmd+Shift+.".to_string(),
         }
     }
 }
@@ -353,6 +342,24 @@ async fn get_history(app: tauri::AppHandle) -> Result<Vec<history::HistoryEntry>
 #[tauri::command]
 async fn clear_history(app: tauri::AppHandle) -> Result<(), String> {
     history::clear(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_history_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    history::delete_entry(&app, &id)
+}
+
+#[tauri::command]
+async fn change_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<(), String> {
+    // Re-register the global shortcut
+    hotkey::update(&app, &hotkey)?;
+    // Save to settings
+    let settings = AppSettings { hotkey };
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    let settings_path = path.join("settings.json");
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&settings_path, data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -734,6 +741,8 @@ pub fn run() {
             set_transcript,
             get_history,
             clear_history,
+            delete_history_item,
+            change_hotkey,
             get_settings,
             save_settings,
         ])

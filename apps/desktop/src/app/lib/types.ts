@@ -11,17 +11,9 @@ export interface HistoryItem {
 }
 
 export interface AppSettings {
-  autoStopAfterSilence: boolean;
-  showFloatingWidget: boolean;
-  language: string;
-  refinementStyle: string;
   hotkey: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  autoStopAfterSilence: true,
-  showFloatingWidget: true,
-  language: "en-US",
-  refinementStyle: "Professional",
   hotkey: "Cmd+Shift+.",
 };
