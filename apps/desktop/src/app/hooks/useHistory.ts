@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { HistoryItem } from "../lib/types";
-import { getHistory, clearHistory as clearHistoryApi, deleteHistoryItem as deleteHistoryItemApi } from "../lib/tauri-bridge";
+import { getHistory, clearHistory as clearHistoryApi, deleteHistoryItem as deleteHistoryItemApi, togglePinItem as togglePinItemApi } from "../lib/tauri-bridge";
 
 const SAMPLE_DATA: HistoryItem[] = [
   {
@@ -122,7 +122,10 @@ export function useHistory() {
     setHistoryItems((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const togglePin = useCallback((id: string) => {
+  const togglePin = useCallback(async (id: string) => {
+    try {
+      await togglePinItemApi(id);
+    } catch {}
     setHistoryItems((prev) =>
       prev.map((item) =>
         item.id === id ? { ...item, isPinned: !item.isPinned } : item

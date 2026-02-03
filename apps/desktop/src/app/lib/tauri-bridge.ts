@@ -29,6 +29,10 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   await invoke("save_settings", { settings });
 }
 
+export async function togglePinItem(id: string): Promise<void> {
+  await invoke("toggle_pin_item", { id });
+}
+
 export async function changeHotkey(hotkey: string): Promise<void> {
   await invoke("change_hotkey", { hotkey });
 }

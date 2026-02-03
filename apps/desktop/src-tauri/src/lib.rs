@@ -114,7 +114,7 @@ async fn toggle_recording(handle: &tauri::AppHandle) {
                 }
             });
 
-            let _ = history::add_entry(handle, &raw_transcript, &refined_text);
+            let _ = history::add_entry(handle, &raw_transcript, &refined_text, category.as_deref(), title.as_deref());
 
             #[derive(Clone, Serialize)]
             struct ToggleResult {
@@ -293,7 +293,7 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
     });
 
     // Save to history
-    history::add_entry(&app, &raw_transcript, &refined_text)?;
+    history::add_entry(&app, &raw_transcript, &refined_text, category.as_deref(), title.as_deref())?;
 
     // Notify frontend
     #[derive(Clone, Serialize)]
@@ -347,6 +347,11 @@ async fn clear_history(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn delete_history_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
     history::delete_entry(&app, &id)
+}
+
+#[tauri::command]
+async fn toggle_pin_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    history::toggle_pin(&app, &id)
 }
 
 #[tauri::command]
@@ -742,6 +747,7 @@ pub fn run() {
             get_history,
             clear_history,
             delete_history_item,
+            toggle_pin_item,
             change_hotkey,
             get_settings,
             save_settings,
