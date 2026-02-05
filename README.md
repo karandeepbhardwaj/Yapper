@@ -4,88 +4,91 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Status" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-0.0.3-blue" alt="Version" /></a>
+  <a href="https://github.com/karandeepbhardwaj/Yapper/actions"><img src="https://github.com/karandeepbhardwaj/Yapper/actions/workflows/build.yml/badge.svg" alt="Build Status" /></a>
+  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.0.9-blue" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform" /></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
 </p>
 
-<!-- TODO: Add screenshot/demo GIF here -->
-<!-- ![Yapper Demo](docs/assets/demo.gif) -->
-
 ---
 
-## :sparkles: Features
+## Features
 
 - **Voice capture** -- press a global hotkey and start talking
-- **On-device speech recognition** via macOS `SFSpeechRecognizer` (fully offline)
-- **AI transcript refinement** through GitHub Copilot (VS Code extension bridge)
+- **On-device speech recognition** -- macOS `SFSpeechRecognizer` (offline) / Windows `SpeechRecognizer`
+- **AI transcript refinement** -- multi-provider support (Groq, Gemini, Claude, GitHub Copilot) via VS Code extension bridge
 - **Auto-paste** refined text at your active cursor position
-- **Floating widget** that follows you across macOS Spaces
+- **Floating widget** -- follows you across macOS Spaces, positioned above taskbar on Windows
 - **History dashboard** with bento grid layout, fuzzy search (Fuse.js), pin/copy/expand
 - **Dark/light mode** with smooth transitions
-- **Landing/onboarding page** for first-time users
-- **Global hotkey** (`Cmd+Shift+.`) to start/stop recording from anywhere
+- **Customizable hotkey** -- `Cmd+Shift+.` (macOS) / `Ctrl+Shift+.` (Windows), or set your own
+- **Fn key recording** (macOS) -- use the Globe/Fn key as your trigger
 - **Zero egress** -- the desktop app makes no external network requests
 
 ---
 
-## :building_construction: Architecture
+## Architecture
 
 ```
-┌─────────────────────────────┐   WebSocket (127.0.0.1:9147)   ┌─────────────────────────┐
-│     Desktop App (Tauri)     │ ◄────────────────────────────► │   VS Code Extension     │
-│                             │         local only              │                         │
-│  ┌───────────────────────┐  │                                 │  ┌───────────────────┐  │
-│  │   React Frontend      │  │                                 │  │  WebSocket Server │  │
-│  │  (Tailwind + Motion)  │  │                                 │  │  (ws, 127.0.0.1)  │  │
-│  └──────────┬────────────┘  │                                 │  └─────────┬─────────┘  │
-│             │ IPC           │                                 │            │             │
-│  ┌──────────┴────────────┐  │                                 │  ┌─────────┴─────────┐  │
-│  │   Rust Backend        │  │                                 │  │   vscode.lm API   │  │
-│  │   - Global Hotkey     │  │                                 │  │   (Copilot LLM)   │  │
-│  │   - Native STT        │  │                                 │  └───────────────────┘  │
-│  │   - Auto-paste        │  │                                 │                         │
-│  │   - History           │  │                                 └─────────────────────────┘
-│  └───────────────────────┘  │
-└──────────────┬──────────────┘
-               ▼
-        ┌──────────────┐
-        │  macOS Native │
-        │  STT APIs     │
-        │  (offline)    │
-        └──────────────┘
++--------------------------+   WebSocket (127.0.0.1:9147)   +-------------------------+
+|    Desktop App (Tauri)   | <----------------------------> |   VS Code Extension     |
+|                          |         local only              |                         |
+|  +--------------------+  |                                 |  +-------------------+  |
+|  |  React Frontend    |  |                                 |  | WebSocket Server  |  |
+|  |  (Tailwind+Motion) |  |                                 |  | (ws, 127.0.0.1)   |  |
+|  +---------+----------+  |                                 |  +--------+----------+  |
+|            | IPC          |                                 |           |              |
+|  +---------+----------+  |                                 |  +--------+----------+  |
+|  |  Rust Backend       |  |                                 |  | LLM Providers     |  |
+|  |  - Global Hotkey    |  |                                 |  | Groq / Gemini /   |  |
+|  |  - Native STT       |  |                                 |  | Claude / Copilot  |  |
+|  |  - Auto-paste       |  |                                 |  +-------------------+  |
+|  |  - History          |  |                                 |                         |
+|  +--------------------+  |                                 +-------------------------+
++-----------+--------------+
+            |
+     +------+-------+
+     | Native STT   |
+     | macOS: Swift  |
+     | Win: WinRT   |
+     | (on-device)  |
+     +--------------+
 ```
 
 ---
 
-## :package: Installation
+## Installation
 
-### Desktop App (macOS)
+### Desktop App
 
-1. Download `Yapper_x.x.x_aarch64.dmg` from the [latest release](https://github.com/karandeepbhardwaj/Yapper/releases)
-2. Open the `.dmg` and drag **Yapper** to your Applications folder
-3. Launch Yapper
+Download from the [latest release](https://github.com/karandeepbhardwaj/Yapper/releases):
 
-> **"Yapper is damaged and can't be opened"** -- this happens because the app is not notarized with Apple. To fix it, open Terminal and run:
-> ```bash
-> xattr -cr /Applications/Yapper.app
-> ```
-> Then launch Yapper again. This only needs to be done once.
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | `Yapper_x.x.x_aarch64.dmg` |
+| macOS (Intel) | `Yapper_x.x.x_x64.dmg` |
+| Windows (installer) | `Yapper_x.x.x_x64-setup.exe` |
+| Windows (MSI) | `Yapper_x.x.x_x64_en-US.msi` |
+
+**macOS Gatekeeper fix** (unsigned app):
+```bash
+xattr -cr /Applications/Yapper.app
+```
+
+**Windows permissions**: Grant microphone access in Settings > Privacy > Microphone. Grant accessibility for auto-paste if prompted.
 
 ### VS Code Extension
 
 1. Download `yapper-bridge-x.x.x.vsix` from the [latest release](https://github.com/karandeepbhardwaj/Yapper/releases)
-2. In VS Code: `Cmd+Shift+P` > **Extensions: Install from VSIX...** > select the `.vsix` file
-3. Make sure [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) is installed and signed in
-4. The bridge auto-starts when VS Code opens -- look for the radio tower icon in the status bar
+2. In VS Code: `Cmd+Shift+P` / `Ctrl+Shift+P` > **Extensions: Install from VSIX...** > select the `.vsix` file
+3. The bridge auto-starts when VS Code opens -- look for the radio tower icon in the status bar
 
 > **Note:** VS Code must be open for AI refinement to work. Without it, Yapper still captures and pastes raw transcripts.
 
 ---
 
-## :rocket: Building from Source
+## Building from Source
 
 ### Prerequisites
 
@@ -94,153 +97,136 @@
 | Rust | 1.75+ | [rustup.rs](https://rustup.rs) |
 | Node.js | 20+ | [nodejs.org](https://nodejs.org) |
 | pnpm | 9+ | `npm install -g pnpm` |
-| Xcode CLI Tools | latest | `xcode-select --install` |
-| VS Code | latest | With GitHub Copilot extension active |
+| Xcode CLI Tools (macOS) | latest | `xcode-select --install` |
+| VS Code | latest | For testing the bridge |
 
 ### Build & Run
 
 ```bash
-# Clone the repo
 git clone https://github.com/karandeepbhardwaj/Yapper.git
-cd yapper
+cd Yapper
 
-# Install dependencies
 pnpm install
 
-# Run in development mode (hot reload)
+# Development mode (hot reload)
 pnpm tauri dev
 
 # Production build
 pnpm tauri build
 ```
 
-The production `.app` bundle will be in `apps/desktop/src-tauri/target/release/bundle/`.
+Build output: `apps/desktop/src-tauri/target/release/bundle/`
 
 ---
 
-## :gear: How It Works
-
-Yapper follows a five-stage pipeline:
+## How It Works
 
 ```
- 🎙 Speak  ──►  🔴 Record  ──►  📝 Transcribe  ──►  ✨ Refine  ──►  📋 Paste
-   │               │                  │                   │               │
-   │          Microphone         SFSpeech           Copilot LLM      Keystroke
-   │          capture            Recognizer         via VS Code      simulation
-   │                             (on-device)        extension        (auto-paste)
+ Speak  -->  Record  -->  Transcribe  -->  Refine  -->  Paste
+  |            |              |               |            |
+  |       Microphone     Native STT       LLM via      Keystroke
+  |       capture        (on-device)      VS Code      simulation
+  |                                       extension    (auto-paste)
 ```
 
-1. **Speak** -- press `Cmd+Shift+.` (or click the floating widget) to begin
-2. **Record** -- audio is captured from the microphone in real time
-3. **Transcribe** -- macOS `SFSpeechRecognizer` converts speech to text on-device
-4. **Refine** -- the raw transcript is sent over a local WebSocket to the VS Code extension, which uses the `vscode.lm` API (GitHub Copilot) to clean up grammar, filler words, and formatting
-5. **Paste** -- the refined text is automatically typed at your current cursor position via keystroke simulation
+1. **Speak** -- press `Cmd+Shift+.` / `Ctrl+Shift+.` (or click the floating widget)
+2. **Record** -- audio is captured from the microphone
+3. **Transcribe** -- native speech recognition converts speech to text on-device
+4. **Refine** -- the raw transcript is sent over a local WebSocket to the VS Code extension, which refines it with an AI model
+5. **Paste** -- the refined text is automatically pasted at your current cursor position
 
 ---
 
-## :jigsaw: VS Code Extension Setup
+## AI Model Configuration
 
-The companion extension (`extensions/vscode-bridge/`) bridges Yapper to GitHub Copilot.
+The VS Code extension supports multiple LLM providers with automatic fallback:
 
-```bash
-cd extensions/vscode-bridge
+| Priority | Provider | Model | Setup |
+|----------|----------|-------|-------|
+| 1 | vscode.lm | Any registered model | Install GitHub Copilot or Claude for VS Code |
+| 2 | Groq | Llama 3.3 70B | Set `yapper.groqApiKey` (free at [console.groq.com](https://console.groq.com)) |
+| 3 | Gemini | Gemini 2.0 Flash | Set `yapper.geminiApiKey` (free at [aistudio.google.com](https://aistudio.google.com/apikey)) |
+| 4 | Anthropic | Claude Sonnet 4 | Set `yapper.anthropicApiKey` |
 
-# Install dependencies
-npm install
-
-# Compile TypeScript
-npm run compile
-
-# Package as .vsix
-npm run package
-```
-
-Install the `.vsix` in VS Code: **Extensions panel** > `...` menu > **Install from VSIX...**
-
-The extension auto-starts on VS Code launch and exposes these commands:
-
-| Command | Description |
-|---|---|
-| `Yapper: Start Bridge` | Start the WebSocket server |
-| `Yapper: Stop Bridge` | Stop the WebSocket server |
-| `Yapper: Show Status` | Show connection status |
-
----
-
-## :wrench: Configuration
-
-### Settings
-
-Settings are persisted to the macOS app config directory:
-
-```
-~/Library/Application Support/com.prompt-refinement.services/settings.json
-```
-
-Available settings:
+Configure in VS Code Settings (`Cmd+,` / `Ctrl+,`):
 
 | Setting | Default | Description |
-|---|---|---|
-| Auto-stop after silence | `true` | Stop recording when silence is detected |
-| Show floating widget | `true` | Show the always-on-top recording button |
-| Language | English | Recognition language |
-| Refinement style | Professional | Professional, Casual, Technical, or Creative |
+|---------|---------|-------------|
+| `yapper.modelFamily` | `gemini-2.0-flash` | Preferred model family |
+| `yapper.groqApiKey` | -- | Groq API key (free, fast) |
+| `yapper.geminiApiKey` | -- | Gemini API key |
+| `yapper.anthropicApiKey` | -- | Anthropic API key |
+
+If no API keys are set and Copilot is unavailable, raw transcripts are pasted without refinement.
+
+---
+
+## Configuration
 
 ### Global Hotkey
 
-| Action | Shortcut |
-|---|---|
-| Start / Stop Recording | `Cmd + Shift + .` |
+| Platform | Default | Customizable |
+|----------|---------|-------------|
+| macOS | `Cmd+Shift+.` | Yes -- click the hotkey badge in the title bar |
+| macOS | `Fn` key | Yes -- use the "use fn" button |
+| Windows | `Ctrl+Shift+.` | Yes -- click the hotkey badge in the title bar |
 
-The hotkey works globally across all macOS applications and Spaces.
+### Settings
+
+Settings are persisted per-platform in the app config directory:
+- macOS: `~/Library/Application Support/com.yapper.app/settings.json`
+- Windows: `%APPDATA%/com.yapper.app/settings.json`
 
 ---
 
-## :art: Widget States
+## Widget States
 
 ```
-┌──────────┐     ┌──────────┐     ┌──────────┐
-│          │     │          │     │          │
-│   IDLE   │────►│ LISTENING│────►│PROCESSING│
-│          │     │          │     │          │
-│  ⚪ Mic  │     │  🟠 Wave │     │  🟠 Spin │
-│  (gray)  │     │ (orange) │     │  (dark)  │
-└──────────┘     └──────────┘     └──────────┘
-     ▲                                 │
-     └─────────────────────────────────┘
-                 done / error
++----------+       +----------+       +----------+
+|          |       |          |       |          |
+|   IDLE   | ----> |LISTENING | ----> |PROCESSING|
+|          |       |          |       |          |
+|  (gray)  |       | (orange) |       | (gradient)|
++----------+       +----------+       +----------+
+     ^                                      |
+     +--------------------------------------+
+                  done / error
 ```
 
 | State | Appearance | Meaning |
 |---|---|---|
-| Idle | Gray button with mic icon | Ready to record |
-| Listening | Orange button with waveform | Recording speech |
-| Processing | Dark orange with spinner | Refining through Copilot |
+| Idle | Thin gray pill, expands on hover | Ready to record |
+| Listening | Orange with wave bars + stop/cancel | Recording speech |
+| Processing | Animated hue gradient | Refining through AI |
 
 ---
 
-## :toolbox: Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Desktop framework | [Tauri 2](https://v2.tauri.app) (Rust) |
 | Frontend | React 18, TypeScript, Tailwind CSS 4 |
 | Animations | Motion (Framer Motion) |
-| Speech-to-text | macOS `SFSpeechRecognizer` (on-device) |
-| AI refinement | GitHub Copilot via `vscode.lm` API |
+| Speech-to-text (macOS) | `SFSpeechRecognizer` via Swift subprocess |
+| Speech-to-text (Windows) | `Windows.Media.SpeechRecognition` |
+| AI refinement | Multi-provider: Groq, Gemini, Claude, Copilot |
 | Bridge protocol | WebSocket (`ws`) on `127.0.0.1:9147` |
 | Search | Fuse.js (fuzzy search) |
+| macOS interop | `objc2` + `objc2-app-kit` + `block2` |
+| Windows interop | `windows` crate (Win32 + WinRT) |
 | Build tooling | Vite, esbuild, pnpm workspaces |
+| CI/CD | GitHub Actions (macOS + Windows builds) |
 
 ---
 
-## :handshake: Contributing
+## Contributing
 
 Contributions are welcome! Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** for details on setting up the development environment, code style, and how to submit pull requests.
 
 ---
 
-## :page_facing_up: License
+## License
 
 This project is licensed under the **MIT License** -- see the [LICENSE](LICENSE) file for details.
 
