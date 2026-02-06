@@ -74,6 +74,16 @@ Examples:
 - "Translate this to German and then summarize it" → {"intent": "chain", "actions": [{"intent": "translate", "params": {"targetLang": "German"}, "inputSource": "clipboard"}, {"intent": "summarize", "inputSource": "previous"}]}
 - "Rewrite this as a haiku" → {"intent": "unknown", "description": "Rewrite text as a haiku", "inputSource": "clipboard"}`;
 
+const ACTION_PROMPTS: Record<string, string> = {
+  translate: `You are a translator. Translate the given text to the target language naturally, preserving tone, formatting, and meaning. Return ONLY the translated text with no explanation or wrapping.`,
+
+  summarize: `You are a summarizer. Produce a concise summary of the given text. Include key points as bullet points if the text is long. Return ONLY the summary with no explanation or wrapping.`,
+
+  draft: `You are a writing assistant. Generate structured writing matching the requested type and topic. For emails, include a subject line. For messages, keep it concise. For PR descriptions, use markdown with sections. Return ONLY the drafted text with no explanation or wrapping.`,
+
+  explain: `You are an explainer. Explain the given content clearly and concisely. If it's code, explain what it does, key patterns, and any notable aspects. If it's general text, break down the key concepts. Return ONLY the explanation with no wrapping.`,
+};
+
 type ModelTier = "fast" | "quality";
 
 async function selectProviderByTier(
@@ -204,7 +214,145 @@ export async function classifyIntent(
   }
 }
 
-import type { ConversationTurn, ClassifiedIntent } from "./protocol";
+import type { ConversationTurn, ClassifiedIntent, ClassifiedAction } from "./protocol";
+
+function resolveInput(
+  inputSource: string | undefined,
+  rawText: string,
+  clipboard: string | null,
+  previousOutput: string | null
+): string {
+  switch (inputSource) {
+    case "clipboard":
+      return clipboard || rawText;
+    case "previous":
+      return previousOutput || clipboard || rawText;
+    case "spoken":
+    default:
+      return rawText;
+  }
+}
+
+export async function executeAction(
+  intent: string,
+  params: Record<string, string> | undefined,
+  input: string,
+  description: string | undefined,
+  token: vscode.CancellationToken
+): Promise<string> {
+  const selected = await selectProviderByTier(
+    intent === "translate" ? "fast" : "quality",
+    token
+  );
+  if (!selected) {
+    throw new Error("No AI provider available");
+  }
+
+  let systemPrompt: string;
+  let userPrompt: string;
+
+  switch (intent) {
+    case "translate": {
+      const lang = params?.targetLang || "English";
+      systemPrompt = ACTION_PROMPTS.translate;
+      userPrompt = `Translate the following text to ${lang}:\n\n${input}`;
+      break;
+    }
+    case "summarize":
+      systemPrompt = ACTION_PROMPTS.summarize;
+      userPrompt = `Summarize the following:\n\n${input}`;
+      break;
+    case "draft": {
+      const type = params?.type || "message";
+      const topic = params?.topic || input;
+      systemPrompt = ACTION_PROMPTS.draft;
+      userPrompt = `Draft a ${type} about: ${topic}`;
+      break;
+    }
+    case "explain":
+      systemPrompt = ACTION_PROMPTS.explain;
+      userPrompt = `Explain the following:\n\n${input}`;
+      break;
+    case "unknown":
+      systemPrompt = `You are a helpful assistant. The user wants to: ${description || "process this text"}. Do exactly what they ask. Return ONLY the result with no explanation or wrapping.`;
+      userPrompt = input;
+      break;
+    default:
+      throw new Error(`Unknown action: ${intent}`);
+  }
+
+  return callProvider(selected, systemPrompt, userPrompt, token);
+}
+
+export interface CommandResult {
+  result: string;
+  action: string;
+  params?: Record<string, string>;
+}
+
+export async function handleCommand(
+  rawText: string,
+  clipboard: string | null,
+  style: string | undefined,
+  styleOverrides: Record<string, string> | undefined,
+  codeMode: boolean | undefined,
+  token: vscode.CancellationToken
+): Promise<CommandResult> {
+  // Step 1: Classify intent
+  const classified = await classifyIntent(rawText, token);
+
+  // Step 2: If dictation, use existing refine path
+  if (classified.intent === "dictation") {
+    const refinement = await refineWithCopilot(rawText, style, token, styleOverrides, codeMode);
+    return {
+      result: refinement.refinedText,
+      action: "dictation",
+      params: { category: refinement.category, title: refinement.title },
+    };
+  }
+
+  // Step 3: If chain, execute actions sequentially
+  if (classified.intent === "chain" && classified.actions) {
+    let previousOutput: string | null = null;
+    let lastAction: ClassifiedAction = classified.actions[classified.actions.length - 1];
+
+    for (const action of classified.actions) {
+      const input = resolveInput(action.inputSource, rawText, clipboard, previousOutput);
+      previousOutput = await executeAction(
+        action.intent,
+        action.params,
+        input,
+        action.description,
+        token
+      );
+    }
+
+    return {
+      result: previousOutput || "",
+      action: "chain",
+      params: {
+        steps: classified.actions.map(a => a.intent).join(" + "),
+        ...(lastAction.params || {}),
+      },
+    };
+  }
+
+  // Step 4: Single action
+  const input = resolveInput(classified.inputSource, rawText, clipboard, null);
+  const result = await executeAction(
+    classified.intent,
+    classified.params,
+    input,
+    classified.description,
+    token
+  );
+
+  return {
+    result,
+    action: classified.intent,
+    params: classified.params,
+  };
+}
 
 export interface RefinementResult {
   refinedText: string;
