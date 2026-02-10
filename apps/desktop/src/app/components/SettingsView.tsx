@@ -19,35 +19,47 @@ function MetricsDisplay() {
   const formatWords = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(n);
 
   const items = [
-    { icon: "🔥", value: `${metrics.streakDays}`, label: "day streak" },
-    { icon: "🚀", value: formatWords(metrics.totalWords), label: "words" },
-    { icon: "🏅", value: `${Math.round(metrics.avgWpm)}`, label: "avg WPM" },
-    { icon: "🎙️", value: `${metrics.totalEntries}`, label: "recordings" },
+    { icon: "🔥", value: `${metrics.streakDays}`, label: "day streak", color: "#DA7756" },
+    { icon: "🚀", value: formatWords(metrics.totalWords), label: "words", color: "#c4684a" },
+    { icon: "🏅", value: `${Math.round(metrics.avgWpm)}`, label: "avg WPM", color: "#d4943c" },
+    { icon: "🎙️", value: `${metrics.totalEntries}`, label: "recordings", color: "#6b7ec2" },
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
       {items.map((item) => (
-        <span
+        <div
           key={item.label}
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-            padding: "5px 10px",
-            borderRadius: 8,
-            background: "var(--yapper-surface-low)",
-            boxShadow: "inset 0 1px 2px rgba(0,0,0,0.04)",
-            fontSize: 11,
-            color: "var(--yapper-text-secondary)",
-            whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            padding: "14px 14px",
+            borderRadius: 14,
+            background: "var(--yapper-surface-low, #f8f4f0)",
+            border: "1px solid rgba(0,0,0,0.06)",
           }}
         >
-          <span style={{ fontSize: 12 }}>{item.icon}</span>
-          <span style={{ fontWeight: 600, color: "var(--yapper-text-primary)" }}>{item.value}</span>
-          {item.label}
-        </span>
+          <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>{item.icon}</span>
+          <div>
+            <div style={{
+              fontSize: 22,
+              fontWeight: 600,
+              color: "var(--yapper-text-primary)",
+              lineHeight: 1,
+              marginBottom: 2,
+            }}>
+              {item.value}
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: "var(--yapper-text-secondary)",
+              lineHeight: 1,
+            }}>
+              {item.label}
+            </div>
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -69,12 +81,13 @@ function SectionCard({ children }: { children: React.ReactNode }) {
     <div
       style={{
         background: "var(--yapper-surface-lowest)",
-        boxShadow: "var(--yapper-card-shadow)",
-        borderRadius: 14,
-        padding: "16px 18px",
+        border: "1px solid rgba(0,0,0,0.05)",
+        borderRadius: 16,
+        padding: "18px 20px",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.02)",
         display: "flex",
         flexDirection: "column",
-        gap: 14,
+        gap: 16,
       }}
     >
       {children}
@@ -209,20 +222,15 @@ function PillButton({
       aria-pressed={selected}
       onClick={onClick}
       style={{
-        padding: "6px 14px",
-        borderRadius: 20,
-        border: "none",
+        padding: "7px 16px",
+        borderRadius: 10,
+        border: selected ? "1px solid transparent" : "1px solid var(--yapper-border, #e5e5e5)",
         cursor: "pointer",
-        fontSize: 12,
-        fontWeight: 600,
-        background: selected
-          ? "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)"
-          : "var(--yapper-surface-low, #eee)",
-        color: selected ? "#fff" : "var(--yapper-text-secondary)",
-        boxShadow: selected
-          ? "0 2px 8px rgba(218,119,86,0.3)"
-          : "none",
-        transition: "background 0.2s, color 0.2s, box-shadow 0.2s",
+        fontSize: 13,
+        fontWeight: 500,
+        background: selected ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
+        color: selected ? "#fff" : "var(--yapper-text-primary)",
+        transition: "background 0.2s, color 0.2s, border-color 0.2s",
       }}
     >
       {label}
@@ -242,15 +250,22 @@ function StyleDropdown({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        padding: "5px 10px",
-        borderRadius: 8,
+        padding: "8px 14px",
+        paddingRight: 30,
+        borderRadius: 10,
         border: "1px solid var(--yapper-border, #ddd)",
         background: "var(--yapper-surface-low, #f5f5f5)",
         color: "var(--yapper-text-primary)",
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: 500,
         cursor: "pointer",
         outline: "none",
+        minWidth: 140,
+        appearance: "none",
+        WebkitAppearance: "none",
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "right 12px center",
       }}
     >
       <option value="">Default</option>
@@ -381,6 +396,34 @@ export function SettingsView({
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
   const [showFnTooltip, setShowFnTooltip] = useState(false);
 
+  // AI Provider: bridge status polling
+  const [bridgeConnected, setBridgeConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (settings.ai_provider_mode !== "vscode") return;
+    const check = () => {
+      invoke<boolean>("check_bridge_status").then(setBridgeConnected).catch(() => setBridgeConnected(false));
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, [settings.ai_provider_mode]);
+
+  // AI Provider: API key test
+  const [keyTestResult, setKeyTestResult] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [showKey, setShowKey] = useState(false);
+
+  const testKey = async () => {
+    setKeyTestResult("testing");
+    try {
+      await invoke("test_api_key", { provider: settings.ai_provider, apiKey: settings.ai_api_key });
+      setKeyTestResult("success");
+    } catch {
+      setKeyTestResult("error");
+    }
+    setTimeout(() => setKeyTestResult("idle"), 3000);
+  };
+
   const formatHotkey = (hotkey: string): string => {
     if (hotkey.toLowerCase() === "fn") return "fn";
     return hotkey
@@ -431,34 +474,29 @@ export function SettingsView({
         }}
       />
 
-      {/* Header with back button + title */}
-      <div style={{ display: "flex", alignItems: "center", padding: "0 20px", marginBottom: 12, flexShrink: 0, position: "relative", minHeight: 36 }}>
-        {/* iOS 26 style back button */}
+      {/* Header with back arrow + title */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 20px", marginBottom: 16, flexShrink: 0, minHeight: 36 }}>
         <motion.button
           onClick={onBack}
           aria-label="Back"
           whileHover={{ x: -2 }}
           whileTap={{ scale: 0.95 }}
           style={{
-            display: "flex", alignItems: "center", gap: 4,
+            display: "flex", alignItems: "center", justifyContent: "center",
             background: "none", border: "none", cursor: "pointer",
-            color: "#DA7756", fontSize: 15, fontWeight: 400,
-            padding: "4px 0",
+            color: "var(--yapper-accent)", padding: 0,
           }}
         >
-          <svg width="9" height="16" viewBox="0 0 9 16" fill="none" stroke="#DA7756" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 1 L1 8 L8 15" />
+          <svg width="10" height="18" viewBox="0 0 10 18" fill="none" stroke="var(--yapper-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 1 L1 9 L9 17" />
           </svg>
-          <span>Back</span>
         </motion.button>
-        {/* Centered title */}
         <h2 style={{
           fontFamily: "'DM Serif Display', serif",
           fontWeight: 400,
-          fontSize: 28,
+          fontSize: 32,
           color: "var(--yapper-text-primary)",
           lineHeight: 1,
-          position: "absolute", left: "50%", transform: "translateX(-50%)",
           margin: 0,
         }}>
           Settings
@@ -490,16 +528,15 @@ export function SettingsView({
                 <button
                   onClick={() => setIsRecordingHotkey(true)}
                   style={{
-                    fontWeight: 600,
-                    fontSize: 12,
+                    fontWeight: 500,
+                    fontSize: 13,
                     color: "var(--yapper-text-primary)",
-                    padding: "4px 12px",
-                    borderRadius: 8,
-                    background: "var(--yapper-surface-low, #f0f0f0)",
-                    boxShadow: "var(--yapper-card-shadow)",
-                    letterSpacing: 0.5,
-                    border: "none",
+                    padding: "6px 16px",
+                    borderRadius: 10,
+                    background: "var(--yapper-surface-low, #f5f5f5)",
+                    border: "1px solid var(--yapper-border, #e5e5e5)",
                     cursor: "pointer",
+                    letterSpacing: 0.3,
                   }}
                 >
                   {formatHotkey(settings.hotkey)}
@@ -596,6 +633,8 @@ export function SettingsView({
             )}
           </AnimatePresence>
 
+          <div style={{ height: 1, background: "var(--yapper-border, #eee)", margin: "2px 0" }} />
+
           <SettingRow label="Recording mode" description="How the hotkey triggers recording">
             <div style={{ display: "flex", gap: 4 }}>
               <PillButton
@@ -639,16 +678,160 @@ export function SettingsView({
 
         </SectionCard>
 
+        {/* AI Provider */}
+        <SectionCard>
+          <SectionHeader>AI Provider</SectionHeader>
+
+          <SettingRow label="Mode" description="How Yapper calls the AI">
+            <div style={{ display: "flex", gap: 4 }}>
+              <PillButton
+                label="VS Code"
+                selected={settings.ai_provider_mode === "vscode"}
+                onClick={() => update({ ai_provider_mode: "vscode" })}
+              />
+              <PillButton
+                label="API Key"
+                selected={settings.ai_provider_mode === "apikey"}
+                onClick={() => update({ ai_provider_mode: "apikey" })}
+              />
+            </div>
+          </SettingRow>
+
+          {settings.ai_provider_mode === "vscode" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: bridgeConnected === null ? "#aaa" : bridgeConnected ? "#34c759" : "#ff3b30",
+                flexShrink: 0,
+              }} />
+              <span style={{
+                fontSize: 13,
+                color: bridgeConnected === null ? "var(--yapper-text-secondary)" : bridgeConnected ? "#34c759" : "#ff3b30",
+                fontWeight: 500,
+              }}>
+                {bridgeConnected === null ? "Checking…" : bridgeConnected ? "Connected" : "Disconnected"}
+              </span>
+              {bridgeConnected === false && (
+                <button
+                  onClick={() => invoke("open_vscode").catch(console.error)}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "rgba(255,59,48,0.1)",
+                    color: "#ff3b30",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Open VS Code
+                </button>
+              )}
+            </div>
+          )}
+
+          {settings.ai_provider_mode === "apikey" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <SettingRow label="Provider">
+                <div style={{ display: "flex", gap: 4 }}>
+                  <PillButton
+                    label="Groq"
+                    selected={settings.ai_provider === "groq"}
+                    onClick={() => update({ ai_provider: "groq" })}
+                  />
+                  <PillButton
+                    label="Anthropic"
+                    selected={settings.ai_provider === "anthropic"}
+                    onClick={() => update({ ai_provider: "anthropic" })}
+                  />
+                </div>
+              </SettingRow>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--yapper-text-primary)" }}>
+                  API Key
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type={showKey ? "text" : "password"}
+                    value={settings.ai_api_key}
+                    onChange={(e) => update({ ai_api_key: e.target.value })}
+                    placeholder="Paste your API key"
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid var(--yapper-border, #ddd)",
+                      background: "var(--yapper-surface-low, #f5f5f5)",
+                      color: "var(--yapper-text-primary)",
+                      fontSize: 13,
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    onClick={() => setShowKey((v) => !v)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid var(--yapper-border, #ddd)",
+                      background: "var(--yapper-surface-low, #f5f5f5)",
+                      color: "var(--yapper-text-secondary)",
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {showKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  onClick={testKey}
+                  disabled={keyTestResult === "testing" || !settings.ai_api_key}
+                  style={{
+                    padding: "7px 16px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: keyTestResult === "success"
+                      ? "#34c759"
+                      : keyTestResult === "error"
+                      ? "#ff3b30"
+                      : "#DA7756",
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: keyTestResult === "testing" || !settings.ai_api_key ? "not-allowed" : "pointer",
+                    opacity: !settings.ai_api_key ? 0.5 : 1,
+                    transition: "background 0.2s",
+                  }}
+                >
+                  {keyTestResult === "testing"
+                    ? "Testing…"
+                    : keyTestResult === "success"
+                    ? "Key valid"
+                    : keyTestResult === "error"
+                    ? "Key invalid"
+                    : "Test Key"}
+                </button>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
         {/* Style */}
         <SectionCard>
           <SectionHeader>Style</SectionHeader>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <span
               style={{
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: 500,
-                color: "var(--yapper-text-secondary)",
+                color: "var(--yapper-text-primary)",
               }}
             >
               Default Style
@@ -673,12 +856,12 @@ export function SettingsView({
             }}
           />
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <span
               style={{
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: 500,
-                color: "var(--yapper-text-secondary)",
+                color: "var(--yapper-text-primary)",
               }}
             >
               Category Overrides
@@ -696,20 +879,15 @@ export function SettingsView({
 
         {/* Metrics */}
         <SectionCard>
-          <SectionHeader>Metrics</SectionHeader>
-          <MetricsDisplay />
-          <div style={{ marginTop: 12 }}>
-            <SettingRow
-              label="Track Metrics"
-              description="Record word count, speed, and streaks"
-            >
-              <Toggle
-                checked={settings.metrics_enabled}
-                onChange={(val) => update({ metrics_enabled: val })}
-                label="Track metrics"
-              />
-            </SettingRow>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <SectionHeader>Metrics</SectionHeader>
+            <Toggle
+              checked={settings.metrics_enabled}
+              onChange={(val) => update({ metrics_enabled: val })}
+              label="Track metrics"
+            />
           </div>
+          {settings.metrics_enabled && <MetricsDisplay />}
         </SectionCard>
 
         {/* Code Mode */}
