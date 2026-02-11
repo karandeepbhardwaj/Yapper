@@ -917,15 +917,36 @@ export function SettingsView({
               Default Style
               <HintBubble text="Sets the tone for AI-refined text. Professional for work, Casual for messages, Technical for code discussions, Creative for expressive writing." />
             </span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {STYLES.map((s) => (
-                <PillButton
-                  key={s}
-                  label={s}
-                  selected={settings.default_style === s}
-                  onClick={() => update({ default_style: s })}
-                />
-              ))}
+            <div style={{ position: "relative" }}>
+              <div style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: 32,
+                background: "linear-gradient(to right, transparent, var(--yapper-surface-lowest, #fff))",
+                pointerEvents: "none",
+                zIndex: 1,
+                borderRadius: "0 8px 8px 0",
+              }} />
+              <div style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "nowrap",
+                overflowX: "auto",
+                paddingRight: 24,
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}>
+                {STYLES.map((s) => (
+                  <PillButton
+                    key={s}
+                    label={s}
+                    selected={settings.default_style === s}
+                    onClick={() => update({ default_style: s })}
+                  />
+                ))}
+              </div>
             </div>
           </div>
 
