@@ -46,6 +46,7 @@ export interface AppSettings {
   ai_provider_mode: string;    // "vscode" | "apikey"
   ai_provider: string;         // "groq" | "anthropic"
   ai_api_key: string;          // the actual key
+  theme: string;               // "light" | "dark" | "system"
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -60,6 +61,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai_provider_mode: "vscode",
   ai_provider: "",
   ai_api_key: "",
+  theme: "system",
 };
 
 export interface DictionaryEntry {

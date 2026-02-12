@@ -4,6 +4,7 @@ import { Home, BookOpen, FileText, ChevronRight, X, ExternalLink, Info } from "l
 import { AnimatePresence } from "motion/react";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import type { AppSettings, Metrics } from "../lib/types";
 import { DEFAULT_SETTINGS } from "../lib/types";
 
@@ -643,6 +644,24 @@ export function SettingsView({
         }}
       >
         <div style={{ width: "100%", maxWidth: 480, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Appearance */}
+        <SectionCard>
+          <SectionHeader>Appearance</SectionHeader>
+          <SettingRow label="Theme">
+            <SegmentedControl
+              options={[
+                { label: "Light", value: "light" },
+                { label: "Dark", value: "dark" },
+                { label: "Auto", value: "system" },
+              ]}
+              value={settings.theme || "system"}
+              onChange={(v) => {
+                update({ theme: v });
+                emit("theme-setting-changed", v).catch(console.error);
+              }}
+            />
+          </SettingRow>
+        </SectionCard>
         {/* General */}
         <SectionCard>
           <SectionHeader>General</SectionHeader>
