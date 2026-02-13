@@ -22,9 +22,6 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
-                    // Kill any lingering recorder subprocess before exiting
-                    #[cfg(target_os = "macos")]
-                    stt::cleanup();
                     std::process::exit(0);
                 }
             }
