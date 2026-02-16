@@ -159,12 +159,10 @@ export default function App() {
     }
   }, [latestResult, addItem]);
 
-  // Refresh history after any recording cycle completes
+  // Refresh history after conversation ends (conversations don't emit refinement-complete)
   useEffect(() => {
-    const unlisten = listen<string>("stt-state-changed", (e) => {
-      if (e.payload === "idle") {
-        setTimeout(() => refresh(), 300);
-      }
+    const unlisten = listen<string>("conversation-saved", () => {
+      refresh();
     });
     return () => { unlisten.then((fn) => fn()); };
   }, [refresh]);

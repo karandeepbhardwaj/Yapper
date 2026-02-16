@@ -28,25 +28,22 @@ pub async fn get_metrics(app: tauri::AppHandle) -> Result<Metrics, String> {
         .filter_map(|e| e.duration_seconds)
         .sum();
 
-    // Compute avg_wpm from entries that have a positive duration
+    // Compute avg_wpm as total words / total minutes (only from entries with duration > 0)
     let avg_wpm = {
-        let wpm_values: Vec<f32> = entries
-            .iter()
-            .filter_map(|e| {
-                let dur = e.duration_seconds?;
-                if dur == 0 {
-                    return None;
+        let mut wpm_words: u32 = 0;
+        let mut wpm_seconds: u64 = 0;
+        for e in &entries {
+            if let Some(dur) = e.duration_seconds {
+                if dur > 0 {
+                    wpm_words += e.refined_text.split_whitespace().count() as u32;
+                    wpm_seconds += dur;
                 }
-                let words = e.refined_text.split_whitespace().count() as f32;
-                let minutes = dur as f32 / 60.0;
-                Some(words / minutes)
-            })
-            .collect();
-
-        if wpm_values.is_empty() {
+            }
+        }
+        if wpm_seconds == 0 {
             0.0
         } else {
-            wpm_values.iter().sum::<f32>() / wpm_values.len() as f32
+            wpm_words as f32 / (wpm_seconds as f32 / 60.0)
         }
     };
 

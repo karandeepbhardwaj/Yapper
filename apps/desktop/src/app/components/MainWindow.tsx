@@ -976,20 +976,20 @@ export function MainWindow({
           )
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
             {filteredItems.map((item, index) => (
               <motion.div
                 key={item.id}
-                initial={false}
-                animate={{ opacity: 1, scale: 1, height: "auto" }}
-                exit={{
-                  opacity: 0,
-                  scale: 0.95,
-                  height: 0,
-                  marginBottom: 0,
-                  overflow: "hidden",
+                layout
+                initial={{ opacity: 0, y: -20, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -300, transition: { duration: 0.25, ease: "easeIn" } }}
+                transition={{
+                  layout: { type: "spring", stiffness: 400, damping: 30 },
+                  opacity: { duration: 0.25 },
+                  y: { type: "spring", stiffness: 400, damping: 25 },
+                  scale: { type: "spring", stiffness: 400, damping: 25 },
                 }}
-                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
               >
                 <HistoryCard
                   timestamp={item.timestamp}

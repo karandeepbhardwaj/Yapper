@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Mic, Globe, FileText, MessageSquare, Sparkles, Link, BrainCircuit } from "lucide-react";
+import { Mic, Globe, FileText, MessageSquare, Sparkles, Link, BrainCircuit, BookOpen, Zap, Palette, Code } from "lucide-react";
 
 const isMac = navigator.platform.toUpperCase().includes("MAC");
 
@@ -209,6 +209,49 @@ export function HelpView({ onBack, hotkey, conversationHotkey }: HelpViewProps) 
             >
               Press <strong style={{ color: "var(--yapper-text-primary)" }}>{formatHotkey(conversationHotkey)}</strong> to start a back-and-forth chat with AI. Speak your turns, and end the conversation to save it with a summary.
             </div>
+          </SectionCard>
+
+          <SectionCard>
+            <SectionHeader icon={<Palette style={{ width: 14, height: 14 }} />}>Refinement Style</SectionHeader>
+            <div style={{ fontSize: 12, color: "var(--yapper-text-secondary)", lineHeight: 1.5 }}>
+              Set a default tone for all refinements in <strong style={{ color: "var(--yapper-text-primary)" }}>Settings</strong>. You can also override per category.
+            </div>
+            <ExampleRow command="Professional" description="Clear and concise. Great for work emails and notes." />
+            <ExampleRow command="Casual" description="Natural and conversational. Good for messages and personal notes." />
+            <ExampleRow command="Technical" description="Precise terminology preserved. Ideal for engineering discussions." />
+            <ExampleRow command="Creative" description="Vivid and expressive. Adds flair while keeping your meaning." />
+            <div style={{ fontSize: 11, color: "var(--yapper-text-secondary)", lineHeight: 1.4, fontStyle: "italic" }}>
+              Tip: Set category overrides to use Casual for Messages but Professional for Work.
+            </div>
+          </SectionCard>
+
+          <SectionCard>
+            <SectionHeader icon={<Code style={{ width: 14, height: 14 }} />}>Code Mode</SectionHeader>
+            <div style={{ fontSize: 12, color: "var(--yapper-text-secondary)", lineHeight: 1.5 }}>
+              Enable in <strong style={{ color: "var(--yapper-text-primary)" }}>Settings</strong> when dictating technical content. Yapper will preserve code references and format them with <code style={{ background: "rgba(0,0,0,0.06)", borderRadius: 3, padding: "1px 4px", fontSize: "0.9em" }}>backticks</code>.
+            </div>
+            <ExampleRow command="The useEffect hook in App.tsx handles the state update" description="Preserves useEffect, App.tsx as code references" />
+            <ExampleRow command="We need to refactor the handleSubmit function" description="Keeps handleSubmit as an identifier, not plain English" />
+          </SectionCard>
+
+          <SectionCard>
+            <SectionHeader icon={<BookOpen style={{ width: 14, height: 14 }} />}>Dictionary</SectionHeader>
+            <div style={{ fontSize: 12, color: "var(--yapper-text-secondary)", lineHeight: 1.5 }}>
+              Add text replacements that run <strong style={{ color: "var(--yapper-text-primary)" }}>before</strong> AI refinement. Useful for fixing words that speech recognition consistently gets wrong.
+            </div>
+            <ExampleRow command="kuber netties → Kubernetes" description="Fix misheard technical terms" />
+            <ExampleRow command="react native → React Native" description="Enforce correct capitalization" />
+            <ExampleRow command="john's app → JohnsApp" description="Map spoken names to project names" />
+          </SectionCard>
+
+          <SectionCard>
+            <SectionHeader icon={<Zap style={{ width: 14, height: 14 }} />}>Snippets</SectionHeader>
+            <div style={{ fontSize: 12, color: "var(--yapper-text-secondary)", lineHeight: 1.5 }}>
+              Trigger phrases that expand to full text <strong style={{ color: "var(--yapper-text-primary)" }}>instantly</strong>, bypassing AI entirely. Paste canned responses with your voice.
+            </div>
+            <ExampleRow command="on it" description="Expands to: Thanks for reaching out! I'm looking into this and will get back to you shortly." />
+            <ExampleRow command="standup update" description="Expands to: Yesterday I worked on... Today I'm planning to... No blockers." />
+            <ExampleRow command="lgtm" description="Expands to: Looks good to me! Approved and ready to merge." />
           </SectionCard>
 
         </div>
