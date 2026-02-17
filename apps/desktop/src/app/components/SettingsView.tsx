@@ -522,32 +522,6 @@ export function SettingsView({
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
   const [showFnTooltip, setShowFnTooltip] = useState(false);
 
-  // Local LLM (Ollama): server status polling
-  const [ollamaConnected, setOllamaConnected] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const check = () => {
-      invoke<boolean>("check_ollama_status").then(setOllamaConnected).catch(() => setOllamaConnected(false));
-    };
-    check();
-    const interval = setInterval(check, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Local LLM: model test
-  const [keyTestResult, setKeyTestResult] = useState<"idle" | "testing" | "success" | "error">("idle");
-
-  const testModel = async () => {
-    setKeyTestResult("testing");
-    try {
-      await invoke("test_ollama", { model: settings.ollama_model });
-      setKeyTestResult("success");
-    } catch {
-      setKeyTestResult("error");
-    }
-    setTimeout(() => setKeyTestResult("idle"), 3000);
-  };
-
   const formatHotkey = (hotkey: string): string => {
     if (hotkey.toLowerCase() === "fn") return "fn";
     return hotkey
@@ -832,92 +806,6 @@ export function SettingsView({
               onChange={(val) => update({ streaming_enabled: val })}
               label="Live transcription"
             />
-          </SettingRow>
-        </SectionCard>
-
-        {/* Local AI (Ollama) */}
-        <SectionCard>
-          <SectionHeader>Local AI (Ollama)</SectionHeader>
-
-          <SettingRow
-            label="Status"
-            description={ollamaConnected === false ? "Ollama not reachable — run `ollama serve`" : undefined}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: ollamaConnected === null ? "#aaa" : ollamaConnected ? "#34c759" : "#ff3b30",
-                flexShrink: 0,
-              }} />
-              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--yapper-text-primary)" }}>
-                {ollamaConnected === null ? "Checking" : ollamaConnected ? "Connected" : "Not running"}
-              </span>
-            </div>
-          </SettingRow>
-
-          <SettingRow
-            label="Model"
-            description="Local model pulled via `ollama pull`"
-            hint="Examples: llama3.2, llama3.1, mistral, qwen2.5. Run `ollama pull llama3.2` once before using."
-          >
-            <input
-              type="text"
-              value={settings.ollama_model}
-              onChange={(e) => update({ ollama_model: e.target.value })}
-              placeholder="llama3.2"
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid var(--yapper-border, #e5e5e5)",
-                background: "var(--yapper-bg-input, #fff)",
-                color: "var(--yapper-text-primary)",
-                fontSize: 13,
-                width: 180,
-              }}
-            />
-          </SettingRow>
-
-          <SettingRow label="Server URL" description="Where Ollama is listening">
-            <input
-              type="text"
-              value={settings.ollama_url}
-              onChange={(e) => update({ ollama_url: e.target.value })}
-              placeholder="http://localhost:11434"
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid var(--yapper-border, #e5e5e5)",
-                background: "var(--yapper-bg-input, #fff)",
-                color: "var(--yapper-text-primary)",
-                fontSize: 13,
-                width: 220,
-              }}
-            />
-          </SettingRow>
-
-          <SettingRow label="Test" description="Check the model responds">
-            <button
-              onClick={testModel}
-              disabled={keyTestResult === "testing" || !settings.ollama_model}
-              style={{
-                padding: "6px 14px",
-                borderRadius: 10,
-                border: "1px solid var(--yapper-border, #e5e5e5)",
-                background: keyTestResult === "success" ? "#34c759"
-                  : keyTestResult === "error" ? "#ff3b30" : "var(--yapper-bg-input, #fff)",
-                color: keyTestResult === "success" || keyTestResult === "error" ? "#fff" : "var(--yapper-text-primary)",
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: keyTestResult === "testing" || !settings.ollama_model ? "not-allowed" : "pointer",
-                opacity: !settings.ollama_model ? 0.5 : 1,
-              }}
-            >
-              {keyTestResult === "testing" ? "Testing…"
-                : keyTestResult === "success" ? "Works!"
-                : keyTestResult === "error" ? "Failed" : "Test model"}
-            </button>
           </SettingRow>
         </SectionCard>
 

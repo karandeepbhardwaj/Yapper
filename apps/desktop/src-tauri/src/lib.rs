@@ -97,8 +97,6 @@ pub fn run() {
             snippets::delete_snippet,
             snippets::toggle_snippet_favorite,
             metrics::get_metrics,
-            commands::check_ollama_status,
-            commands::test_ollama,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

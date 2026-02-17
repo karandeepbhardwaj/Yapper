@@ -180,15 +180,11 @@ fn strip_markdown_fences(text: &str) -> String {
     text.to_string()
 }
 
-fn resolve_model<'a>(provider: &str, model: &'a str) -> &'a str {
+fn resolve_model<'a>(_provider: &str, model: &'a str) -> &'a str {
     if !model.is_empty() {
-        return model;
-    }
-    match provider {
-        "anthropic" => "claude-haiku-4-5-20251001",
-        "groq" => "llama-3.3-70b-versatile",
-        "ollama" => "llama3.2",
-        _ => "llama3.2",
+        model
+    } else {
+        crate::sidecar::MODEL
     }
 }
 
@@ -220,265 +216,77 @@ fn call_ollama(
     let mut response = ureq::post(&url)
         .header("Content-Type", "application/json")
         .send(body.to_string().as_str())
-        .map_err(|e| format!("Ollama call failed (is `ollama serve` running?): {e}"))?;
+        .map_err(|e| format!("Local AI call failed: {e}"))?;
 
     let resp_body = response
         .body_mut()
         .read_to_string()
-        .map_err(|e| format!("Ollama read response failed: {e}"))?;
+        .map_err(|e| format!("Local AI read response failed: {e}"))?;
 
     let parsed: serde_json::Value =
-        serde_json::from_str(&resp_body).map_err(|e| format!("Ollama JSON parse failed: {e}"))?;
+        serde_json::from_str(&resp_body).map_err(|e| format!("Local AI JSON parse failed: {e}"))?;
 
     parsed["choices"][0]["message"]["content"]
         .as_str()
         .map(|s| s.to_string())
-        .ok_or_else(|| format!("Ollama response missing content. Body: {}", resp_body))
+        .ok_or_else(|| format!("Local AI response missing content. Body: {}", resp_body))
 }
 
 fn call_provider_blocking(
-    provider: &str,
-    api_key: &str,
+    _provider: &str,
+    _api_key: &str,
     system_prompt: &str,
     user_prompt: &str,
     temperature: f64,
     model: &str,
 ) -> Result<String, String> {
-    match provider {
-        "groq" => call_groq(api_key, system_prompt, user_prompt, temperature, model),
-        "anthropic" => call_anthropic(api_key, system_prompt, user_prompt, temperature, model),
-        "ollama" => call_ollama(system_prompt, user_prompt, temperature, model),
-        other => Err(format!("Unknown provider: {}", other)),
-    }
-}
-
-fn call_groq(
-    api_key: &str,
-    system_prompt: &str,
-    user_prompt: &str,
-    temperature: f64,
-    model: &str,
-) -> Result<String, String> {
-    let body = serde_json::json!({
-        "model": model,
-        "temperature": temperature,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    });
-
-    let body_str = body.to_string();
-
-    let mut response = ureq::post("https://api.groq.com/openai/v1/chat/completions")
-        .header("Authorization", &format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .send(body_str.as_str())
-        .map_err(|e| format!("Groq API call failed: {e}"))?;
-
-    let body = response
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Groq read response failed: {e}"))?;
-
-    let parsed: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("Groq JSON parse failed: {e}"))?;
-
-    parsed["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("Groq response missing content. Body: {}", body))
-}
-
-fn call_anthropic(
-    api_key: &str,
-    system_prompt: &str,
-    user_prompt: &str,
-    temperature: f64,
-    model: &str,
-) -> Result<String, String> {
-    let body = serde_json::json!({
-        "model": model,
-        "max_tokens": 1024,
-        "temperature": temperature,
-        "system": system_prompt,
-        "messages": [
-            {"role": "user", "content": user_prompt}
-        ]
-    });
-
-    let body_str = body.to_string();
-
-    let mut response = ureq::post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("Content-Type", "application/json")
-        .send(body_str.as_str())
-        .map_err(|e| format!("Anthropic API call failed: {e}"))?;
-
-    let body = response
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Anthropic read response failed: {e}"))?;
-
-    let parsed: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("Anthropic JSON parse failed: {e}"))?;
-
-    parsed["content"][0]["text"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("Anthropic response missing content. Body: {}", body))
+    call_ollama(system_prompt, user_prompt, temperature, model)
 }
 
 fn call_provider_with_messages_blocking(
-    provider: &str,
-    api_key: &str,
+    _provider: &str,
+    _api_key: &str,
     system_prompt: &str,
     messages: &[ConversationTurnMsg],
     temperature: f64,
     model: &str,
 ) -> Result<String, String> {
-    match provider {
-        "groq" => {
-            let mut msgs = vec![serde_json::json!({
-                "role": "system",
-                "content": system_prompt
-            })];
-            for m in messages {
-                msgs.push(serde_json::json!({
-                    "role": m.role,
-                    "content": m.content
-                }));
-            }
-            let body = serde_json::json!({
-                "model": model,
-                "temperature": temperature,
-                "messages": msgs
-            });
-            let body_str = body.to_string();
-            let mut response = ureq::post("https://api.groq.com/openai/v1/chat/completions")
-                .header("Authorization", &format!("Bearer {}", api_key))
-                .header("Content-Type", "application/json")
-                .send(body_str.as_str())
-                .map_err(|e| format!("Groq API call failed: {e}"))?;
-            let resp_body = response
-                .body_mut()
-                .read_to_string()
-                .map_err(|e| format!("Groq read response failed: {e}"))?;
-            let parsed: serde_json::Value = serde_json::from_str(&resp_body)
-                .map_err(|e| format!("Groq JSON parse failed: {e}"))?;
-            parsed["choices"][0]["message"]["content"]
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| format!("Groq response missing content. Body: {}", resp_body))
-        }
-        "anthropic" => {
-            let msgs: Vec<serde_json::Value> = messages
-                .iter()
-                .map(|m| {
-                    serde_json::json!({
-                        "role": m.role,
-                        "content": m.content
-                    })
-                })
-                .collect();
-            let body = serde_json::json!({
-                "model": model,
-                "max_tokens": 1024,
-                "temperature": temperature,
-                "system": system_prompt,
-                "messages": msgs
-            });
-            let body_str = body.to_string();
-            let mut response = ureq::post("https://api.anthropic.com/v1/messages")
-                .header("x-api-key", api_key)
-                .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .send(body_str.as_str())
-                .map_err(|e| format!("Anthropic API call failed: {e}"))?;
-            let resp_body = response
-                .body_mut()
-                .read_to_string()
-                .map_err(|e| format!("Anthropic read response failed: {e}"))?;
-            let parsed: serde_json::Value = serde_json::from_str(&resp_body)
-                .map_err(|e| format!("Anthropic JSON parse failed: {e}"))?;
-            parsed["content"][0]["text"]
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| format!("Anthropic response missing content. Body: {}", resp_body))
-        }
-        "ollama" => {
-            let mut msgs = vec![serde_json::json!({
-                "role": "system",
-                "content": system_prompt
-            })];
-            for m in messages {
-                msgs.push(serde_json::json!({
-                    "role": m.role,
-                    "content": m.content
-                }));
-            }
-            let body = serde_json::json!({
-                "model": model,
-                "temperature": temperature,
-                "stream": false,
-                "messages": msgs
-            });
-            let url = format!("{}/v1/chat/completions", ollama_base_url());
-            let mut response = ureq::post(&url)
-                .header("Content-Type", "application/json")
-                .send(body.to_string().as_str())
-                .map_err(|e| format!("Ollama call failed (is `ollama serve` running?): {e}"))?;
-            let resp_body = response
-                .body_mut()
-                .read_to_string()
-                .map_err(|e| format!("Ollama read response failed: {e}"))?;
-            let parsed: serde_json::Value = serde_json::from_str(&resp_body)
-                .map_err(|e| format!("Ollama JSON parse failed: {e}"))?;
-            parsed["choices"][0]["message"]["content"]
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| format!("Ollama response missing content. Body: {}", resp_body))
-        }
-        other => Err(format!("Unknown provider: {}", other)),
+    let mut msgs = vec![serde_json::json!({
+        "role": "system",
+        "content": system_prompt
+    })];
+    for m in messages {
+        msgs.push(serde_json::json!({
+            "role": m.role,
+            "content": m.content
+        }));
     }
+    let body = serde_json::json!({
+        "model": model,
+        "temperature": temperature,
+        "stream": false,
+        "messages": msgs
+    });
+    let url = format!("{}/v1/chat/completions", ollama_base_url());
+    let mut response = ureq::post(&url)
+        .header("Content-Type", "application/json")
+        .send(body.to_string().as_str())
+        .map_err(|e| format!("Local AI call failed: {e}"))?;
+    let resp_body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("Local AI read response failed: {e}"))?;
+    let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+        .map_err(|e| format!("Local AI JSON parse failed: {e}"))?;
+    parsed["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("Local AI response missing content. Body: {}", resp_body))
 }
 
 // ---------------------------------------------------------------------------
 // Public async functions
 // ---------------------------------------------------------------------------
-
-pub fn test_key(provider: &str, api_key: &str) -> Result<bool, String> {
-    let model = resolve_model(provider, "");
-    let result = call_provider_blocking(provider, api_key, "Reply with just the word 'ok'.", "Test", 0.0, model);
-    match result {
-        Ok(_) => Ok(true),
-        Err(e) => Err(e),
-    }
-}
-
-pub async fn refine_text(
-    raw_text: &str,
-    style: Option<String>,
-    style_overrides: Option<HashMap<String, String>>,
-    code_mode: Option<bool>,
-    provider: &str,
-    api_key: &str,
-    model: &str,
-) -> Result<RefinementResult, String> {
-    let raw = raw_text.to_string();
-    let provider = provider.to_string();
-    let api_key = api_key.to_string();
-    let model = model.to_string();
-
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        refine_text_blocking(&raw, style, style_overrides, code_mode, &provider, &api_key, &model)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?;
-
-    result
-}
 
 fn refine_text_blocking(
     raw_text: &str,

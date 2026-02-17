@@ -1,7 +1,5 @@
 pub mod stt_whisper;
-pub mod ai_direct;
 
-use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 
 /// A single turn in a conversation history (role + content).
@@ -18,57 +16,6 @@ pub struct PartialTranscript {
     pub is_final: bool,
 }
 
-/// Result of AI text refinement.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RefinementResult {
-    pub refined_text: String,
-    pub category: Option<String>,
-    pub title: Option<String>,
-}
-
-/// Classified user intent from a voice command.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Intent {
-    pub intent: String,
-    pub params: Option<HashMap<String, String>>,
-    pub input_source: Option<String>,
-    pub description: Option<String>,
-    pub actions: Option<Vec<IntentAction>>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct IntentAction {
-    pub intent: String,
-    pub params: Option<HashMap<String, String>>,
-    pub input_source: Option<String>,
-    pub description: Option<String>,
-}
-
-/// Result of a voice command execution.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CommandResult {
-    pub result: String,
-    pub action: String,
-    pub params: Option<HashMap<String, String>>,
-}
-
-/// Result of a conversation turn.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ConversationResponse {
-    pub content: String,
-}
-
-/// Result of conversation summarization.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SummaryResult {
-    pub summary: String,
-    pub title: String,
-    pub key_points: Vec<String>,
-}
-
-/// Style overrides per category.
-pub type StyleOverrides = HashMap<String, String>;
-
 /// Speech-to-text provider trait.
 pub trait SttProvider: Send + Sync {
     fn start(&self, app: &tauri::AppHandle) -> Result<(), String>;
@@ -76,38 +23,4 @@ pub trait SttProvider: Send + Sync {
     fn stream_receiver(&self) -> Option<Receiver<PartialTranscript>>;
     fn supports_streaming(&self) -> bool;
     fn cleanup(&self);
-}
-
-/// AI text refinement and conversation provider trait.
-pub trait AiProvider: Send + Sync {
-    fn refine(
-        &self,
-        raw_text: &str,
-        style: &str,
-        style_overrides: &StyleOverrides,
-        code_mode: bool,
-    ) -> Result<RefinementResult, String>;
-
-    fn classify_intent(&self, raw_text: &str) -> Result<Intent, String>;
-
-    fn send_command(
-        &self,
-        raw_text: &str,
-        clipboard: &str,
-        style: &str,
-        style_overrides: &StyleOverrides,
-        code_mode: bool,
-    ) -> Result<CommandResult, String>;
-
-    fn converse(
-        &self,
-        history: &[ConversationTurnMsg],
-        user_message: &str,
-        on_chunk: Option<Box<dyn Fn(&str) + Send>>,
-    ) -> Result<ConversationResponse, String>;
-
-    fn summarize(
-        &self,
-        history: &[ConversationTurnMsg],
-    ) -> Result<SummaryResult, String>;
 }
