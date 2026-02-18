@@ -1,0 +1,47 @@
+{
+  "name": "prompt-refinement-bridge",
+  "displayName": "Prompt Refinement Bridge",
+  "description": "Local WebSocket bridge between Prompt Refinement Services desktop app and GitHub Copilot",
+  "version": "0.1.0",
+  "publisher": "prompt-refinement-services",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "promptRefinement.startBridge",
+        "title": "Start Prompt Refinement Bridge"
+      },
+      {
+        "command": "promptRefinement.stopBridge",
+        "title": "Stop Prompt Refinement Bridge"
+      },
+      {
+        "command": "promptRefinement.showStatus",
+        "title": "Show Prompt Refinement Bridge Status"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "prepackage": "npm run compile",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.5",
+    "@vscode/vsce": "^3"
+  }
+}
