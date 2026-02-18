@@ -48,10 +48,37 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         .await
         .unwrap_or_else(|_| raw_transcript.clone());
 
-    // Auto-paste the refined text
-    if let Err(e) = autopaste::paste_text(&refined_text) {
-        log::warn!("Auto-paste failed: {}", e);
-    }
+    // Auto-paste must run on the main thread (macOS requires it for keyboard APIs)
+    let text_for_paste = refined_text.clone();
+    std::thread::spawn(move || {
+        // Dispatch to main thread via a short sleep to let the main run loop pick it up
+        // On macOS, enigo keyboard simulation needs the main dispatch queue
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            // Use pbcopy + AppleScript for reliable main-thread paste
+            if let Ok(mut child) = Command::new("pbcopy")
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+            {
+                if let Some(stdin) = child.stdin.as_mut() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(text_for_paste.as_bytes());
+                }
+                let _ = child.wait();
+                // Simulate Cmd+V via AppleScript (runs on main thread safely)
+                let _ = Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to keystroke \"v\" using command down"])
+                    .output();
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            if let Err(e) = autopaste::paste_text(&text_for_paste) {
+                log::warn!("Auto-paste failed: {}", e);
+            }
+        }
+    });
 
     // Save to history
     history::add_entry(&app, &raw_transcript, &refined_text)?;
