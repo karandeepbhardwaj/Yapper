@@ -1,36 +1,48 @@
 import * as vscode from "vscode";
 
-const CATEGORY_LIST = "Interview, Thought, Work, Research, Strategy, Idea, Meeting, Personal, Creative, Note";
+const CATEGORY_LIST = "Interview, Thought, Work, Research, Strategy, Idea, Meeting, Personal, Creative, Note, Email, Message";
 
-const REFINEMENT_PROMPTS: Record<string, string> = {
-  Professional: `You are a professional writing assistant. Clean up the following raw speech transcript into clear, professional prose. Fix grammar, remove filler words (um, uh, like), and improve clarity while preserving the original meaning.
+const SYSTEM_PROMPT = `You are Yapper — an intelligent voice-to-text refinement assistant. You receive raw speech transcripts and transform them into polished, well-structured text.
 
-Also assign a category from this list: ${CATEGORY_LIST}. Pick the one that best fits the content.
-Also generate a short title (3-8 words) that captures the main topic.
+Your job depends on what the user said:
 
-Return your response as JSON only, no markdown, no code fences:
-{"refinedText": "...", "category": "...", "title": "..."}`,
+## Mode 1: General Refinement (default)
+If the transcript is a regular thought, note, or dictation:
+- Fix grammar, punctuation, and sentence structure
+- Remove all filler words (um, uh, like, you know, basically, so, I mean)
+- Improve clarity and readability while preserving the speaker's original meaning and intent
+- Do NOT add information that wasn't in the original — only clean up what's there
+- Keep the same level of detail — don't over-simplify or over-elaborate
 
-  Casual: `You are a friendly writing assistant. Clean up this speech transcript into natural, casual text. Remove filler words and fix grammar but keep the tone conversational.
+## Mode 2: Email Composition
+If the transcript starts with phrases like "write me an email", "draft an email", "email to", "send an email", "write email":
+- Compose a complete, professional email based on the spoken instructions
+- Include a proper greeting, body, and sign-off
+- Structure the content with clear paragraphs
+- Infer the appropriate tone (formal for work, friendly for personal) from context
+- Set category to "Email"
 
-Also assign a category from: ${CATEGORY_LIST}.
-Also generate a short title (3-8 words).
+## Mode 3: Message/Response Composition
+If the transcript starts with phrases like "write me a message", "write a response", "reply to", "respond to", "draft a message", "text back":
+- Write a clear, well-structured message or response
+- Keep it concise and direct — messages should be shorter than emails
+- Match the appropriate tone from context
+- Set category to "Message"
 
-Return JSON only: {"refinedText": "...", "category": "...", "title": "..."}`,
+## Output Rules
+- Assign a category from: ${CATEGORY_LIST}
+- Generate a short title (3-8 words) capturing the main topic
+- For emails: title should be the email subject line
+- For messages: title should summarize who/what the response is about
 
-  Technical: `You are a technical writing assistant. Clean up this speech transcript into precise, technical documentation. Remove filler words, fix grammar, and use appropriate technical terminology.
+Return JSON only. No markdown, no code fences, no explanation:
+{"refinedText": "...", "category": "...", "title": "..."}`;
 
-Also assign a category from: ${CATEGORY_LIST}.
-Also generate a short title (3-8 words).
-
-Return JSON only: {"refinedText": "...", "category": "...", "title": "..."}`,
-
-  Creative: `You are a creative writing assistant. Transform this speech transcript into engaging, expressive prose. Remove filler words, enhance the language, and make it compelling while preserving the core meaning.
-
-Also assign a category from: ${CATEGORY_LIST}.
-Also generate a short title (3-8 words).
-
-Return JSON only: {"refinedText": "...", "category": "...", "title": "..."}`,
+const STYLE_MODIFIERS: Record<string, string> = {
+  Professional: "Use a professional, clear tone. Prefer concise sentences. Avoid colloquialisms.",
+  Casual: "Keep a natural, conversational tone. It's okay to be informal but still grammatically correct.",
+  Technical: "Use precise, technical language. Prefer specific terminology over general descriptions. Structure for clarity.",
+  Creative: "Enhance the language to be engaging and expressive. Use vivid words and varied sentence structure while preserving meaning.",
 };
 
 export interface RefinementResult {
@@ -55,12 +67,11 @@ export async function refineWithCopilot(
   }
 
   const model = models[0];
-  const systemPrompt =
-    REFINEMENT_PROMPTS[style] || REFINEMENT_PROMPTS["Professional"];
+  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
 
   const messages = [
-    vscode.LanguageModelChatMessage.User(systemPrompt),
-    vscode.LanguageModelChatMessage.User(`Raw transcript:\n\n${rawText}`),
+    vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT),
+    vscode.LanguageModelChatMessage.User(`Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}`),
   ];
 
   const response = await model.sendRequest(messages, {}, token);
@@ -76,10 +87,11 @@ export async function refineWithCopilot(
     throw new Error("Copilot returned an empty response");
   }
 
-  // Try to parse as JSON
   try {
-    // Strip markdown code fences if present
-    const cleaned = result.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "").trim();
+    const cleaned = result
+      .replace(/^```(?:json)?\s*/g, "")
+      .replace(/\s*```$/g, "")
+      .trim();
     const parsed = JSON.parse(cleaned);
     return {
       refinedText: parsed.refinedText || result,
@@ -87,7 +99,6 @@ export async function refineWithCopilot(
       title: parsed.title || "",
     };
   } catch {
-    // If JSON parsing fails, return raw text with default category
     return {
       refinedText: result,
       category: "Note",
