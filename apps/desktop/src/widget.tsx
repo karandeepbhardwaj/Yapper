@@ -74,8 +74,9 @@ function WidgetApp() {
         width: "100vw",
         height: "100vh",
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-end",
         justifyContent: "center",
+        paddingBottom: 4,
         background: "transparent",
       }}
     >

@@ -14,6 +14,20 @@ use tauri::{Emitter, Manager};
 #[cfg(target_os = "macos")]
 static mut GLOBAL_APP_HANDLE: Option<tauri::AppHandle> = None;
 
+// Store the native NSPanel pointer for positioning from background threads
+#[cfg(target_os = "macos")]
+static WIDGET_PANEL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(target_os = "macos")]
+fn store_panel(panel: cocoa::base::id) {
+    WIDGET_PANEL.store(panel as u64, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(target_os = "macos")]
+fn load_panel() -> cocoa::base::id {
+    WIDGET_PANEL.load(std::sync::atomic::Ordering::Relaxed) as cocoa::base::id
+}
+
 #[cfg(target_os = "macos")]
 struct WidgetCenter {
     x: std::sync::atomic::AtomicU64,
@@ -132,8 +146,9 @@ fn get_widget_position(widget_size: f64) -> Option<(f64, f64)> {
             {
                 // Center horizontally within the visible frame
                 let x_bl = visible.origin.x + (visible.size.width - widget_size) / 2.0;
-                // Position just above the bottom of the visible area (8pt padding)
-                let y_bl = visible.origin.y + 8.0;
+                // Position just above the dock (visible.origin.y = dock top edge)
+                // Add small gap so widget doesn't touch dock
+                let y_bl = visible.origin.y + 6.0;
 
                 // Convert from macOS bottom-left to Tauri top-left coordinates
                 let x_tl = x_bl;
@@ -317,6 +332,66 @@ async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+fn create_panel(handle: &tauri::AppHandle) {
+    use tauri::Manager;
+    let Some(widget) = handle.get_webview_window("widget") else { return };
+    let ns_window = widget.ns_window().unwrap() as cocoa::base::id;
+
+    unsafe {
+        use objc::*;
+        use cocoa::foundation::NSPoint;
+
+        // Get content view (WKWebView) and frame
+        let content_view: cocoa::base::id = msg_send![ns_window, contentView];
+        let _: () = msg_send![content_view, retain];
+        let frame: cocoa::foundation::NSRect = msg_send![ns_window, frame];
+
+        // Create a real NSPanel (nonactivatingPanel style)
+        let panel: cocoa::base::id = msg_send![class!(NSPanel), alloc];
+        let panel: cocoa::base::id = msg_send![panel,
+            initWithContentRect: frame
+            styleMask: (1u64 << 7)
+            backing: 2u64
+            defer: false
+        ];
+
+        // Move webview into panel
+        let _: () = msg_send![panel, setContentView: content_view];
+        let _: () = msg_send![content_view, release];
+
+        // Configure for cross-Space visibility
+        let _: () = msg_send![panel, setHidesOnDeactivate: false];
+        let _: () = msg_send![panel, setAcceptsMouseMovedEvents: true];
+        let _: () = msg_send![panel, setFloatingPanel: true];
+        let _: () = msg_send![panel, setLevel: 25_i64];
+        let _: () = msg_send![panel, setOpaque: false];
+        let bg: cocoa::base::id = msg_send![class!(NSColor), clearColor];
+        let _: () = msg_send![panel, setBackgroundColor: bg];
+        let _: () = msg_send![panel, setHasShadow: false];
+        // canJoinAllSpaces + stationary + ignoresCycle + fullScreenAuxiliary
+        let _: () = msg_send![panel, setCollectionBehavior:
+            (1u64 | (1u64 << 4) | (1u64 << 6) | (1u64 << 8))];
+
+        // Position at screen bottom
+        if let Some((x, y)) = get_widget_position(110.0) {
+            let primary_h = get_primary_screen_height();
+            let origin = NSPoint { x, y: primary_h - y - 110.0 };
+            let _: () = msg_send![panel, setFrameOrigin: origin];
+            WIDGET_CENTER.store_pos(x + 55.0, y + 55.0);
+        }
+
+        // Show panel, hide original window
+        let _: () = msg_send![panel, orderFrontRegardless];
+        let _: () = msg_send![ns_window, orderOut: cocoa::base::nil];
+
+        // Store and retain
+        let _: () = msg_send![panel, retain];
+        store_panel(panel);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -337,15 +412,21 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 if let Some(widget) = app.get_webview_window("widget") {
-                    // Initial position — will be updated dynamically
-                    if let Some((x, y)) = get_widget_position(110.0) {
-                        let _ = widget.set_position(tauri::LogicalPosition::new(x, y));
-                        WIDGET_CENTER.store_pos(x + 55.0, y + 55.0);
-                    }
+                    // Hide original widget immediately — panel will replace it
+                    let _ = widget.hide();
 
-                    // Make widget clickable without needing to activate the app first.
-                    // Override acceptsFirstMouse: on all views in the hierarchy so macOS
-                    // passes the activation click through to the webview content.
+                    // Create NSPanel after webview loads (must be on main thread)
+                    let panel_handle = app.handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        let h = panel_handle.clone();
+                        let _ = panel_handle.run_on_main_thread(move || {
+                            create_panel(&h);
+                        });
+                    });
+
+                    // Keep the acceptsFirstMouse swizzle on the original window's views
+                    // (they'll be moved into the panel)
                     #[allow(deprecated)]
                     {
                         let ns_window = widget.ns_window().unwrap() as cocoa::base::id;
@@ -353,18 +434,6 @@ pub fn run() {
                             use objc::*;
                             use objc::declare::ClassDecl;
                             use objc::runtime::{Class, Object, Sel, BOOL, YES};
-
-                            // Window properties
-                            let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
-                            // NSStatusWindowLevel (25) — above all normal + floating windows
-                            let _: () = msg_send![ns_window, setLevel: 25_i64];
-                            let _: () = msg_send![ns_window, setAcceptsMouseMovedEvents: true];
-                            // NSWindowCollectionBehavior:
-                            // canJoinAllSpaces (1<<0) — appear on every Space
-                            // ignoresCycle (1<<6) — skip in Cmd+Tab
-                            // fullScreenAuxiliary (1<<8) — appear over full-screen apps
-                            let _: () = msg_send![ns_window, setCollectionBehavior:
-                                (1u64 | (1u64 << 6) | (1u64 << 8))];
 
                             // Swizzle acceptsFirstMouse: on the content view's class
                             // so the first click passes through instead of being consumed for activation
@@ -458,7 +527,8 @@ pub fn run() {
                         use std::sync::atomic::{AtomicBool, Ordering};
                         static WAS_HOVERING: AtomicBool = AtomicBool::new(false);
 
-                        std::thread::sleep(std::time::Duration::from_secs(1));
+                        // Wait for panel to be created
+                        std::thread::sleep(std::time::Duration::from_secs(3));
 
                         let mut last_x = 0.0f64;
                         let mut last_y = 0.0f64;
@@ -469,14 +539,20 @@ pub fn run() {
                             std::thread::sleep(std::time::Duration::from_millis(80));
                             tick = tick.wrapping_add(1);
 
-                            // Reposition every ~480ms (every 6th tick)
-                            // Follows the mouse to whichever screen it's on
+                            // Reposition panel every ~480ms
                             #[cfg(target_os = "macos")]
                             if tick % 6 == 0 {
                                 if let Some((x, y)) = get_widget_position(widget_size) {
                                     if (x - last_x).abs() > 2.0 || (y - last_y).abs() > 2.0 {
-                                        if let Some(w) = hover_handle.get_webview_window("widget") {
-                                            let _ = w.set_position(tauri::LogicalPosition::new(x, y));
+                                        let panel = load_panel();
+                                        if !panel.is_null() {
+                                            unsafe {
+                                                use objc::*;
+                                                use cocoa::foundation::NSPoint;
+                                                let primary_h = get_primary_screen_height();
+                                                let origin = NSPoint { x, y: primary_h - y - widget_size };
+                                                let _: () = msg_send![panel, setFrameOrigin: origin];
+                                            }
                                         }
                                         last_x = x;
                                         last_y = y;
@@ -489,19 +565,48 @@ pub fn run() {
                             let (cx, cy) = WIDGET_CENTER.load_pos();
                             if cx == 0.0 && cy == 0.0 { continue; }
 
+                            let is_active = stt::get_state() != stt::State::Idle;
                             let hovering = {
                                 #[cfg(target_os = "macos")]
                                 { is_mouse_near(cx, cy, 40.0) }
                                 #[cfg(not(target_os = "macos"))]
                                 { false }
                             };
+                            let should_expand = hovering || is_active;
                             let was = WAS_HOVERING.load(Ordering::Relaxed);
-                            if hovering != was {
-                                WAS_HOVERING.store(hovering, Ordering::Relaxed);
+                            if should_expand != was {
+                                WAS_HOVERING.store(should_expand, Ordering::Relaxed);
+
+                                // Resize panel to match content
+                                #[cfg(target_os = "macos")]
+                                {
+                                    let panel = load_panel();
+                                    if !panel.is_null() {
+                                        unsafe {
+                                            use objc::*;
+                                            let (new_w, new_h) = if should_expand {
+                                                (80.0, 80.0)  // circle + padding
+                                            } else {
+                                                (60.0, 16.0)  // pill size
+                                            };
+                                            let new_size = cocoa::foundation::NSSize { width: new_w, height: new_h };
+                                            // Resize while keeping the bottom-center position
+                                            let current_frame: cocoa::foundation::NSRect = msg_send![panel, frame];
+                                            let new_x = current_frame.origin.x + (current_frame.size.width - new_w) / 2.0;
+                                            let new_y = current_frame.origin.y; // keep bottom edge same
+                                            let new_frame = cocoa::foundation::NSRect {
+                                                origin: cocoa::foundation::NSPoint { x: new_x, y: new_y },
+                                                size: new_size,
+                                            };
+                                            let _: () = msg_send![panel, setFrame: new_frame display: true animate: false];
+                                        }
+                                    }
+                                }
+
                                 if let Some(w) = hover_handle.get_webview_window("widget") {
                                     let js = format!(
                                         "window.dispatchEvent(new CustomEvent('yapper-hover', {{detail: {}}}))",
-                                        hovering
+                                        should_expand
                                     );
                                     let _ = w.eval(&js);
                                 }
