@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Copy, ChevronDown, Check, Star, Pin, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -98,7 +98,7 @@ export function HistoryCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const copyTimer = useState<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCopy = () => {
     try {
@@ -111,8 +111,8 @@ export function HistoryCard({
       fallbackCopy();
     }
     setIsCopied(true);
-    if (copyTimer[0]) clearTimeout(copyTimer[0]);
-    copyTimer[0] = setTimeout(() => setIsCopied(false), 800);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setIsCopied(false), 800);
   };
 
   const fallbackCopy = () => {
@@ -128,7 +128,7 @@ export function HistoryCard({
   const handleMouseLeave = () => {
     setIsHovered(false);
     setIsCopied(false);
-    if (copyTimer[0]) clearTimeout(copyTimer[0]);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
   };
 
   const isPinnedCard = isPinned || variant === "pinned";
