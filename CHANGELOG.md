@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-03-22
+
+### Fixed
+
+- Category and title from Copilot refinement now persist to history.json (were lost on restart)
+- Pin status now persists across app restarts via new `toggle_pin_item` backend command
+- Added configurable model selection (`yapper.modelFamily` VS Code setting), defaults to gpt-4o-mini
+- Fixed VSIX not bundling `ws` dependency (now uses esbuild to produce a single-file extension)
+
 ## [0.0.3] - 2026-03-22
 
 ### Changed
