@@ -6,6 +6,8 @@ import Fuse from "fuse.js";
 import type { HistoryItem } from "../lib/types";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";
 
+const isMac = navigator.platform.toUpperCase().includes("MAC");
+
 interface MainWindowProps {
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -217,23 +219,26 @@ export function MainWindow({
         style={{
           background: "var(--background)",
           height: 38,
-          paddingLeft: 78,
+          paddingLeft: isMac ? 78 : 12,
           paddingRight: 12,
         }}
       >
-        <h1
-          className="select-none pointer-events-none"
-          data-tauri-drag-region
-          style={{
-            fontFamily: "var(--font-headline, 'Manrope', sans-serif)",
-            fontWeight: 800,
-            letterSpacing: "-0.04em",
-            fontSize: 15,
-            color: "var(--yapper-text-primary)",
-          }}
-        >
-          Yapper
-        </h1>
+        {isMac && (
+          <h1
+            className="select-none pointer-events-none"
+            data-tauri-drag-region
+            style={{
+              fontFamily: "var(--font-headline, 'Manrope', sans-serif)",
+              fontWeight: 800,
+              letterSpacing: "-0.04em",
+              fontSize: 15,
+              color: "var(--yapper-text-primary)",
+            }}
+          >
+            Yapper
+          </h1>
+        )}
+        {!isMac && <div data-tauri-drag-region style={{ flex: 1 }} />}
 
         <div className="flex items-center" style={{ gap: 6, position: "relative" }}>
           {!isRecordingHotkey ? (
@@ -282,30 +287,32 @@ export function MainWindow({
               >
                 Press shortcut{"\u2026"}
               </span>
-              <button
-                onClick={() => {
-                  onHotkeyChange?.("Fn");
-                  setIsRecordingHotkey(false);
-                  setShowFnTooltip(true);
-                }}
-                style={{
-                  fontSize: 9,
-                  padding: "2px 6px",
-                  borderRadius: 5,
-                  color: "var(--yapper-text-secondary)",
-                  fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
-                  background: "var(--yapper-surface-low, var(--yapper-bg-light))",
-                  border: "1px solid var(--yapper-border)",
-                  cursor: "pointer",
-                  outline: "none",
-                  opacity: 0.8,
-                  transition: "all 0.15s",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.borderColor = "var(--yapper-accent)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.8"; e.currentTarget.style.borderColor = "var(--yapper-border)"; }}
-              >
-                use fn
-              </button>
+              {isMac && (
+                <button
+                  onClick={() => {
+                    onHotkeyChange?.("Fn");
+                    setIsRecordingHotkey(false);
+                    setShowFnTooltip(true);
+                  }}
+                  style={{
+                    fontSize: 9,
+                    padding: "2px 6px",
+                    borderRadius: 5,
+                    color: "var(--yapper-text-secondary)",
+                    fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+                    background: "var(--yapper-surface-low, var(--yapper-bg-light))",
+                    border: "1px solid var(--yapper-border)",
+                    cursor: "pointer",
+                    outline: "none",
+                    opacity: 0.8,
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.borderColor = "var(--yapper-accent)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.8"; e.currentTarget.style.borderColor = "var(--yapper-border)"; }}
+                >
+                  use fn
+                </button>
+              )}
               <button
                 onClick={() => setIsRecordingHotkey(false)}
                 style={{
@@ -326,9 +333,9 @@ export function MainWindow({
             </div>
           )}
 
-          {/* Fn key setup tooltip */}
+          {/* Fn key setup tooltip (macOS only) */}
           <AnimatePresence>
-            {showFnTooltip && (
+            {isMac && showFnTooltip && (
               <motion.div
                 initial={{ opacity: 0, y: -4, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}

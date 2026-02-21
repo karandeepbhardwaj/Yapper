@@ -82,14 +82,27 @@ fn is_fn_hotkey(hotkey: &str) -> bool {
 
 /// Register the initial hotkey at app startup. Loads from saved settings if available.
 pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let hotkey_str = load_saved_hotkey(app).unwrap_or_else(|| "Cmd+Shift+.".to_string());
+    let default_hotkey = if cfg!(target_os = "macos") {
+        "Cmd+Shift+."
+    } else {
+        "Ctrl+Shift+."
+    };
+    let hotkey_str = load_saved_hotkey(app).unwrap_or_else(|| default_hotkey.to_string());
+    log::info!("[Hotkey] Registering: {}", hotkey_str);
 
     if is_fn_hotkey(&hotkey_str) {
         start_fn_key_monitor(app.handle());
         USING_FN_KEY.store(true, Ordering::Relaxed);
+        log::info!("[Hotkey] Fn key monitor started");
     } else {
-        let shortcut = parse_hotkey(&hotkey_str).unwrap_or_else(|_| {
+        let default_shortcut = if cfg!(target_os = "macos") {
             Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Period)
+        } else {
+            Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Period)
+        };
+        let shortcut = parse_hotkey(&hotkey_str).unwrap_or_else(|e| {
+            log::warn!("[Hotkey] Failed to parse '{}': {}, using default", hotkey_str, e);
+            default_shortcut
         });
 
         app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
@@ -100,6 +113,7 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
         })?;
+        log::info!("[Hotkey] Global shortcut registered successfully");
     }
 
     Ok(())
