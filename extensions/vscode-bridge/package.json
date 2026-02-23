@@ -67,7 +67,7 @@
   "scripts": {
     "compile": "tsc -p ./ && node esbuild.config.mjs",
     "watch": "tsc -watch -p ./",
-    "prepackage": "npm run compile",
+    "prepackage": "npm run compile && rm -f out/*.map",
     "package": "vsce package --no-dependencies"
   },
   "dependencies": {
