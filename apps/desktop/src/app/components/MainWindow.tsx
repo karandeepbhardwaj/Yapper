@@ -794,22 +794,22 @@ export function MainWindow({
             {availableActions.length > 0 && (
               <div style={{
                 display: "flex",
-                gap: 6,
-                padding: "0 0 2px",
+                gap: 8,
                 flexWrap: "wrap",
+                marginBottom: 2,
               }}>
                 <button
                   onClick={() => setActionFilter(null)}
                   style={{
-                    padding: "4px 10px",
-                    borderRadius: 12,
-                    border: "none",
-                    fontSize: 11,
-                    fontWeight: 600,
+                    padding: "7px 16px",
+                    borderRadius: 10,
+                    border: !actionFilter ? "1px solid transparent" : "1px solid var(--yapper-border, #e5e5e5)",
+                    fontSize: 13,
+                    fontWeight: 500,
                     cursor: "pointer",
-                    background: !actionFilter ? "#DA7756" : "var(--surface-secondary)",
-                    color: !actionFilter ? "white" : "var(--text-secondary)",
-                    transition: "all 0.15s",
+                    background: !actionFilter ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
+                    color: !actionFilter ? "#fff" : "var(--yapper-text-primary)",
+                    transition: "background 0.2s, color 0.2s, border-color 0.2s",
                   }}
                 >
                   All
@@ -819,15 +819,15 @@ export function MainWindow({
                     key={action}
                     onClick={() => setActionFilter(actionFilter === action ? null : action)}
                     style={{
-                      padding: "4px 10px",
-                      borderRadius: 12,
-                      border: "none",
-                      fontSize: 11,
-                      fontWeight: 600,
+                      padding: "7px 16px",
+                      borderRadius: 10,
+                      border: actionFilter === action ? "1px solid transparent" : "1px solid var(--yapper-border, #e5e5e5)",
+                      fontSize: 13,
+                      fontWeight: 500,
                       cursor: "pointer",
-                      background: actionFilter === action ? "#DA7756" : "var(--surface-secondary)",
-                      color: actionFilter === action ? "white" : "var(--text-secondary)",
-                      transition: "all 0.15s",
+                      background: actionFilter === action ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
+                      color: actionFilter === action ? "#fff" : "var(--yapper-text-primary)",
+                      transition: "background 0.2s, color 0.2s, border-color 0.2s",
                     }}
                   >
                     {action.charAt(0).toUpperCase() + action.slice(1)}
