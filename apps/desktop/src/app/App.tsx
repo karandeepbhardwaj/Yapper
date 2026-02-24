@@ -5,6 +5,7 @@ import { ConversationView } from "./components/ConversationView";
 import { SettingsView } from "./components/SettingsView";
 import { DictionaryView } from "./components/DictionaryView";
 import { SnippetsView } from "./components/SnippetsView";
+import { HelpView } from "./components/HelpView";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
@@ -51,7 +52,7 @@ export default function App() {
   const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, refresh, clearAll, deleteItem, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [activeView, setActiveView] = useState<"history" | "conversation" | "settings" | "dictionary" | "snippets">("history");
+  const [activeView, setActiveView] = useState<"history" | "conversation" | "settings" | "dictionary" | "snippets" | "help">("history");
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
   });
@@ -341,6 +342,18 @@ export default function App() {
           >
             <SnippetsView onBack={() => setActiveView("settings")} />
           </motion.div>
+        ) : activeView === "help" ? (
+          <motion.div
+            key="help"
+            initial={{ x: "100%", opacity: 0.6 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0.6 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.8 }}
+            className="h-screen"
+            style={{ position: "absolute", inset: 0, zIndex: 10 }}
+          >
+            <HelpView onBack={() => setActiveView("history")} hotkey={hotkey} conversationHotkey={conversationHotkey} />
+          </motion.div>
         ) : (
           <motion.div
             key="main"
@@ -358,6 +371,7 @@ export default function App() {
               onDeleteItem={deleteItem}
               onTogglePin={togglePin}
               onOpenSettings={() => setActiveView("settings")}
+              onOpenHelp={() => setActiveView("help")}
               hotkey={hotkey}
               conversationHotkey={conversationHotkey}
             />
