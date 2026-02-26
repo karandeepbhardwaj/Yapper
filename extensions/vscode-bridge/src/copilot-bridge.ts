@@ -1,8 +1,4 @@
 import * as vscode from "vscode";
-import * as https from "https";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
 import type { ConversationTurn, ClassifiedIntent, ClassifiedAction } from "./protocol";
 
 const CATEGORY_LIST = "Interview, Thought, Work, Research, Strategy, Idea, Meeting, Personal, Creative, Note, Email, Message";
@@ -85,130 +81,42 @@ const ACTION_PROMPTS: Record<string, string> = {
   explain: `You are an explainer. Explain the given content clearly and concisely. If it's code, explain what it does, key patterns, and any notable aspects. If it's general text, break down the key concepts. Return ONLY the explanation with no wrapping.`,
 };
 
-type ModelTier = "fast" | "quality";
+// --- vscode.lm helper ---
 
-async function selectProviderByTier(
-  tier: ModelTier,
-  token: vscode.CancellationToken
-): Promise<{ type: "vscode"; model: vscode.LanguageModelChat } | { type: "api"; provider: string; apiKey: string } | null> {
-  if (tier === "quality") {
-    // Try vscode.lm first (Copilot, Claude for VS Code)
-    try {
-      const models = await vscode.lm.selectChatModels();
-      if (models.length > 0) {
-        return { type: "vscode", model: models[0] };
-      }
-    } catch {}
-
-    // Try Anthropic
-    const anthropicKey = getApiKey("anthropicApiKey", "ANTHROPIC_API_KEY");
-    if (anthropicKey) {
-      return { type: "api", provider: "anthropic", apiKey: anthropicKey };
-    }
-
-    // Fall through to fast tier
-  }
-
-  // Fast tier: Groq first, then Gemini
-  const groqKey = getApiKey("groqApiKey", "GROQ_API_KEY");
-  if (groqKey) {
-    return { type: "api", provider: "groq", apiKey: groqKey };
-  }
-
-  const geminiKey = getApiKey("geminiApiKey", "GEMINI_API_KEY");
-  if (geminiKey) {
-    return { type: "api", provider: "gemini", apiKey: geminiKey };
-  }
-
-  // Last resort: try vscode.lm even for fast tier
-  try {
-    const models = await vscode.lm.selectChatModels();
-    if (models.length > 0) {
-      return { type: "vscode", model: models[0] };
-    }
-  } catch {}
-
-  return null;
-}
-
-async function callProvider(
-  selected: { type: "vscode"; model: vscode.LanguageModelChat } | { type: "api"; provider: string; apiKey: string },
+async function callVscodeLm(
   systemPrompt: string,
   userPrompt: string,
   token: vscode.CancellationToken
 ): Promise<string> {
-  if (selected.type === "vscode") {
-    const messages = [
-      vscode.LanguageModelChatMessage.User(systemPrompt),
-      vscode.LanguageModelChatMessage.User(userPrompt),
-    ];
-    const response = await selected.model.sendRequest(messages, {}, token);
-    const chunks: string[] = [];
-    for await (const fragment of response.text) {
-      chunks.push(fragment);
-    }
-    return chunks.join("");
+  const models = await vscode.lm.selectChatModels();
+  if (models.length === 0) {
+    throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
-
-  const { provider, apiKey } = selected;
-
-  if (provider === "groq") {
-    const body = JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.3,
-    });
-    return httpPost("https://api.groq.com/openai/v1/chat/completions", {
-      "Authorization": `Bearer ${apiKey}`,
-    }, body).then(r => JSON.parse(r).choices[0].message.content);
+  const model = models[0];
+  const messages = [
+    vscode.LanguageModelChatMessage.User(systemPrompt),
+    vscode.LanguageModelChatMessage.User(userPrompt),
+  ];
+  const response = await model.sendRequest(messages, {}, token);
+  const chunks: string[] = [];
+  for await (const fragment of response.text) {
+    chunks.push(fragment);
   }
-
-  if (provider === "gemini") {
-    const body = JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userPrompt }] }],
-      generationConfig: { temperature: 0.3 },
-    });
-    return httpPost(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
-      { "x-goog-api-key": apiKey },
-      body
-    ).then(r => JSON.parse(r).candidates[0].content.parts[0].text);
-  }
-
-  if (provider === "anthropic") {
-    const body = JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    });
-    return httpPost("https://api.anthropic.com/v1/messages", {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    }, body).then(r => JSON.parse(r).content[0].text);
-  }
-
-  throw new Error(`Unknown provider: ${provider}`);
+  return chunks.join("");
 }
 
 export async function classifyIntent(
   rawText: string,
   token: vscode.CancellationToken
 ): Promise<ClassifiedIntent> {
-  const selected = await selectProviderByTier("fast", token);
-  if (!selected) {
-    const msg = "Yapper: No AI provider available for classification. Configure an API key (yapper.groqApiKey, yapper.geminiApiKey, or yapper.anthropicApiKey) in VS Code settings, or install GitHub Copilot.";
-    console.warn("[Yapper]", msg);
-    vscode.window.showWarningMessage(msg);
-    return { intent: "dictation" };
-  }
-
   try {
-    const result = await callProvider(selected, CLASSIFY_SYSTEM_PROMPT, rawText, token);
+    const models = await vscode.lm.selectChatModels();
+    if (models.length === 0) {
+      console.warn("[Yapper] No AI model available for classification. Install GitHub Copilot.");
+      vscode.window.showWarningMessage("Yapper: No AI model available. Install GitHub Copilot in VS Code.");
+      return { intent: "dictation" };
+    }
+    const result = await callVscodeLm(CLASSIFY_SYSTEM_PROMPT, rawText, token);
     const cleaned = result.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     return JSON.parse(cleaned) as ClassifiedIntent;
   } catch (err) {
@@ -241,14 +149,6 @@ export async function executeAction(
   description: string | undefined,
   token: vscode.CancellationToken
 ): Promise<string> {
-  const selected = await selectProviderByTier(
-    intent === "translate" ? "fast" : "quality",
-    token
-  );
-  if (!selected) {
-    throw new Error("No AI provider available");
-  }
-
   let systemPrompt: string;
   let userPrompt: string;
 
@@ -282,7 +182,7 @@ export async function executeAction(
       throw new Error(`Unknown action: ${intent}`);
   }
 
-  return callProvider(selected, systemPrompt, userPrompt, token);
+  return callVscodeLm(systemPrompt, userPrompt, token);
 }
 
 export interface CommandResult {
@@ -388,129 +288,6 @@ function parseResult(result: string): RefinementResult {
   }
 }
 
-// Read API keys from VS Code settings file directly (fallback for config API issues)
-function readApiKeyFromSettingsFile(keyName: string): string {
-  try {
-    const settingsPath = process.platform === "win32"
-      ? path.join(os.homedir(), "AppData", "Roaming", "Code", "User", "settings.json")
-      : process.platform === "darwin"
-      ? path.join(os.homedir(), "Library", "Application Support", "Code", "User", "settings.json")
-      : path.join(os.homedir(), ".config", "Code", "User", "settings.json");
-
-    const content = fs.readFileSync(settingsPath, "utf-8");
-    // Strip JSON comments (VS Code settings can have // comments)
-    const stripped = content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-    const settings = JSON.parse(stripped);
-    return settings[keyName] || "";
-  } catch {
-    return "";
-  }
-}
-
-function getApiKey(settingName: string, envVar: string): string {
-  // Try VS Code config API first
-  const fromConfig = vscode.workspace.getConfiguration("yapper").get<string>(settingName, "");
-  if (fromConfig) { return fromConfig; }
-  // Try environment variable
-  const fromEnv = process.env[envVar] || "";
-  if (fromEnv) { return fromEnv; }
-  // Try reading settings file directly
-  return readApiKeyFromSettingsFile(`yapper.${settingName}`);
-}
-
-// --- HTTP helper ---
-
-function httpPost(urlStr: string, headers: Record<string, string>, body: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // Parse URL manually to avoid needing DOM URL type
-    const match = urlStr.match(/^https:\/\/([^/]+)(\/.*)?$/);
-    if (!match) { return reject(new Error(`Invalid URL: ${urlStr}`)); }
-    const hostname = match[1];
-    const pathStr = match[2] || "/";
-
-    const req = https.request({
-      hostname,
-      path: pathStr,
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-    }, (res: import("http").IncomingMessage) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk: Buffer) => chunks.push(chunk));
-      res.on("end", () => {
-        const respBody = Buffer.concat(chunks).toString();
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}: ${respBody.slice(0, 300)}`));
-        } else {
-          resolve(respBody);
-        }
-      });
-    });
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-// --- API providers ---
-
-async function refineWithGroq(rawText: string, style: string, apiKey: string): Promise<RefinementResult> {
-  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
-  const body = JSON.stringify({
-    model: "llama-3.3-70b-versatile",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}` },
-    ],
-    temperature: 0.3,
-  });
-
-  console.log("[Yapper] Using Groq API (llama-3.3-70b)");
-  const response = await httpPost("https://api.groq.com/openai/v1/chat/completions", {
-    "Authorization": `Bearer ${apiKey}`,
-  }, body);
-  const parsed = JSON.parse(response);
-  const text = parsed?.choices?.[0]?.message?.content || "";
-  if (!text) { throw new Error("Groq returned empty response"); }
-  return parseResult(text);
-}
-
-async function refineWithGemini(rawText: string, style: string, apiKey: string): Promise<RefinementResult> {
-  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
-  const prompt = `${SYSTEM_PROMPT}\n\nStyle: ${styleNote}\n\nRaw transcript:\n\n${rawText}`;
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-  const body = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3 },
-  });
-
-  console.log("[Yapper] Using Gemini API (gemini-2.0-flash)");
-  const response = await httpPost(url, { "x-goog-api-key": apiKey }, body);
-  const parsed = JSON.parse(response);
-  const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  if (!text) { throw new Error("Gemini returned empty response"); }
-  return parseResult(text);
-}
-
-async function refineWithAnthropic(rawText: string, style: string, apiKey: string): Promise<RefinementResult> {
-  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
-  const body = JSON.stringify({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: `Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}` }],
-  });
-
-  console.log("[Yapper] Using Anthropic API (claude-sonnet-4)");
-  const response = await httpPost("https://api.anthropic.com/v1/messages", {
-    "x-api-key": apiKey,
-    "anthropic-version": "2023-06-01",
-  }, body);
-  const parsed = JSON.parse(response);
-  const text = parsed?.content?.[0]?.text || "";
-  if (!text) { throw new Error("Anthropic returned empty response"); }
-  return parseResult(text);
-}
-
 // --- Workspace file detection for code mode ---
 
 async function getWorkspaceFiles(): Promise<string[]> {
@@ -546,48 +323,25 @@ export async function refineWithCopilot(
     }
   }
 
-  // 1. Try vscode.lm API first (Copilot, Claude for VS Code, etc.)
-  try {
-    let models = await vscode.lm.selectChatModels();
-    if (models.length > 0) {
-      const model = models[0];
-      console.log(`[Yapper] Using vscode.lm: ${model.name} (${model.vendor}/${model.family})`);
-      const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
-      const messages = [
-        vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT + extraContext),
-        vscode.LanguageModelChatMessage.User(`Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}`),
-      ];
-      const response = await model.sendRequest(messages, {}, token);
-      const chunks: string[] = [];
-      for await (const fragment of response.text) { chunks.push(fragment); }
-      const result = chunks.join("").trim();
-      if (result) { return parseResult(result); }
-    }
-  } catch (err) {
-    console.log(`[Yapper] vscode.lm failed: ${err instanceof Error ? err.message : err}`);
+  const models = await vscode.lm.selectChatModels();
+  if (models.length === 0) {
+    throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
-
-  // 2. Direct API fallbacks — try each provider if key is available
-  const providers: Array<{ name: string; settingKey: string; envVar: string; fn: (raw: string, style: string, key: string) => Promise<RefinementResult> }> = [
-    { name: "Groq",      settingKey: "groqApiKey",      envVar: "GROQ_API_KEY",      fn: refineWithGroq },
-    { name: "Gemini",    settingKey: "geminiApiKey",     envVar: "GEMINI_API_KEY",    fn: refineWithGemini },
-    { name: "Anthropic", settingKey: "anthropicApiKey",  envVar: "ANTHROPIC_API_KEY", fn: refineWithAnthropic },
+  const model = models[0];
+  console.log(`[Yapper] Using vscode.lm: ${model.name} (${model.vendor}/${model.family})`);
+  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
+  const messages = [
+    vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT + extraContext),
+    vscode.LanguageModelChatMessage.User(`Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}`),
   ];
-
-  for (const provider of providers) {
-    const key = getApiKey(provider.settingKey, provider.envVar);
-    if (key) {
-      try {
-        return await provider.fn(rawText, style, key);
-      } catch (err) {
-        console.log(`[Yapper] ${provider.name} failed: ${err instanceof Error ? err.message : err}`);
-      }
-    }
+  const response = await model.sendRequest(messages, {}, token);
+  const chunks: string[] = [];
+  for await (const fragment of response.text) { chunks.push(fragment); }
+  const result = chunks.join("").trim();
+  if (!result) {
+    throw new Error("vscode.lm returned an empty response.");
   }
-
-  throw new Error(
-    "All refinement methods failed. Set an API key in VS Code settings (yapper.groqApiKey, yapper.geminiApiKey, or yapper.anthropicApiKey)."
-  );
+  return parseResult(result);
 }
 
 // --- Conversation handler ---
@@ -608,106 +362,40 @@ export async function handleConversation(
   token: vscode.CancellationToken,
   onChunk?: (chunk: string) => void
 ): Promise<ConversationResult> {
-  // Try vscode.lm API
-  try {
-    const models = await vscode.lm.selectChatModels();
-    if (models.length > 0) {
-      const model = models[0];
-      console.log(`[Yapper] Conversation using vscode.lm: ${model.name}`);
-
-      const messages = [
-        vscode.LanguageModelChatMessage.User(CONVERSATION_SYSTEM_PROMPT),
-      ];
-
-      // Add conversation history
-      for (const turn of history) {
-        if (turn.role === "user") {
-          messages.push(vscode.LanguageModelChatMessage.User(turn.content));
-        } else {
-          messages.push(vscode.LanguageModelChatMessage.Assistant(turn.content));
-        }
-      }
-
-      // Add current user message
-      messages.push(vscode.LanguageModelChatMessage.User(userMessage));
-
-      const response = await model.sendRequest(messages, {}, token);
-      const chunks: string[] = [];
-      for await (const fragment of response.text) {
-        chunks.push(fragment);
-        onChunk?.(fragment);
-      }
-      const content = chunks.join("").trim();
-      if (content) {
-        return { content };
-      }
-    }
-  } catch (err) {
-    console.log(`[Yapper] Conversation vscode.lm failed: ${err instanceof Error ? err.message : err}`);
+  const models = await vscode.lm.selectChatModels();
+  if (models.length === 0) {
+    throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
+  const model = models[0];
+  console.log(`[Yapper] Conversation using vscode.lm: ${model.name}`);
 
-  // Fallback to direct API providers
-  const conversationProviders: Array<{ name: string; settingKey: string; envVar: string; fn: (history: ConversationTurn[], userMessage: string) => Promise<string> }> = [
-    { name: "Groq", settingKey: "groqApiKey", envVar: "GROQ_API_KEY", fn: async (h, msg) => {
-      const key = getApiKey("groqApiKey", "GROQ_API_KEY");
-      if (!key) { throw new Error("No key"); }
-      const messages = [
-        { role: "system" as const, content: CONVERSATION_SYSTEM_PROMPT },
-        ...h.map(t => ({ role: t.role as "user" | "assistant", content: t.content })),
-        { role: "user" as const, content: msg },
-      ];
-      console.log("[Yapper] Conversation using Groq API");
-      const response = await httpPost("https://api.groq.com/openai/v1/chat/completions", {
-        "Authorization": `Bearer ${key}`,
-      }, JSON.stringify({ model: "llama-3.3-70b-versatile", messages, temperature: 0.7 }));
-      const parsed = JSON.parse(response);
-      return parsed?.choices?.[0]?.message?.content || "";
-    }},
-    { name: "Gemini", settingKey: "geminiApiKey", envVar: "GEMINI_API_KEY", fn: async (h, msg) => {
-      const key = getApiKey("geminiApiKey", "GEMINI_API_KEY");
-      if (!key) { throw new Error("No key"); }
-      const prompt = CONVERSATION_SYSTEM_PROMPT + "\n\n" +
-        h.map(t => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`).join("\n\n") +
-        `\n\nUser: ${msg}`;
-      const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-      console.log("[Yapper] Conversation using Gemini API");
-      const response = await httpPost(url, { "x-goog-api-key": key }, JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7 },
-      }));
-      const parsed = JSON.parse(response);
-      return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    }},
-    { name: "Anthropic", settingKey: "anthropicApiKey", envVar: "ANTHROPIC_API_KEY", fn: async (h, msg) => {
-      const key = getApiKey("anthropicApiKey", "ANTHROPIC_API_KEY");
-      if (!key) { throw new Error("No key"); }
-      const messages = [
-        ...h.map(t => ({ role: t.role as "user" | "assistant", content: t.content })),
-        { role: "user" as const, content: msg },
-      ];
-      console.log("[Yapper] Conversation using Anthropic API");
-      const response = await httpPost("https://api.anthropic.com/v1/messages", {
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-      }, JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, system: CONVERSATION_SYSTEM_PROMPT, messages }));
-      const parsed = JSON.parse(response);
-      return parsed?.content?.[0]?.text || "";
-    }},
+  const messages = [
+    vscode.LanguageModelChatMessage.User(CONVERSATION_SYSTEM_PROMPT),
   ];
 
-  for (const provider of conversationProviders) {
-    const key = getApiKey(provider.settingKey, provider.envVar);
-    if (key) {
-      try {
-        const content = await provider.fn(history, userMessage);
-        if (content) { return { content }; }
-      } catch (err) {
-        console.log(`[Yapper] Conversation ${provider.name} failed: ${err instanceof Error ? err.message : err}`);
-      }
+  // Add conversation history
+  for (const turn of history) {
+    if (turn.role === "user") {
+      messages.push(vscode.LanguageModelChatMessage.User(turn.content));
+    } else {
+      messages.push(vscode.LanguageModelChatMessage.Assistant(turn.content));
     }
   }
 
-  throw new Error("Conversation failed — no language model available. Set an API key (yapper.groqApiKey, yapper.geminiApiKey, or yapper.anthropicApiKey) or install GitHub Copilot.");
+  // Add current user message
+  messages.push(vscode.LanguageModelChatMessage.User(userMessage));
+
+  const response = await model.sendRequest(messages, {}, token);
+  const chunks: string[] = [];
+  for await (const fragment of response.text) {
+    chunks.push(fragment);
+    onChunk?.(fragment);
+  }
+  const content = chunks.join("").trim();
+  if (!content) {
+    throw new Error("vscode.lm returned an empty response.");
+  }
+  return { content };
 }
 
 // --- Summarize handler ---
@@ -730,87 +418,28 @@ export async function handleSummarize(
     .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
     .join("\n\n");
 
-  // Try vscode.lm API
-  try {
-    const models = await vscode.lm.selectChatModels();
-    if (models.length > 0) {
-      const model = models[0];
-      console.log(`[Yapper] Summarize using vscode.lm: ${model.name}`);
-
-      const messages = [
-        vscode.LanguageModelChatMessage.User(SUMMARIZE_SYSTEM_PROMPT),
-        vscode.LanguageModelChatMessage.User(`Conversation:\n\n${historyText}`),
-      ];
-
-      const response = await model.sendRequest(messages, {}, token);
-      const chunks: string[] = [];
-      for await (const fragment of response.text) {
-        chunks.push(fragment);
-      }
-      const result = chunks.join("").trim();
-      if (result) {
-        return parseSummarizeResult(result);
-      }
-    }
-  } catch (err) {
-    console.log(`[Yapper] Summarize vscode.lm failed: ${err instanceof Error ? err.message : err}`);
+  const models = await vscode.lm.selectChatModels();
+  if (models.length === 0) {
+    throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
+  const model = models[0];
+  console.log(`[Yapper] Summarize using vscode.lm: ${model.name}`);
 
-  // Fallback to direct API providers
-  const summarizeProviders: Array<{ name: string; settingKey: string; envVar: string; fn: (text: string) => Promise<string> }> = [
-    { name: "Groq", settingKey: "groqApiKey", envVar: "GROQ_API_KEY", fn: async (text) => {
-      const key = getApiKey("groqApiKey", "GROQ_API_KEY");
-      if (!key) { throw new Error("No key"); }
-      console.log("[Yapper] Summarize using Groq API");
-      const response = await httpPost("https://api.groq.com/openai/v1/chat/completions", {
-        "Authorization": `Bearer ${key}`,
-      }, JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [
-        { role: "system", content: SUMMARIZE_SYSTEM_PROMPT },
-        { role: "user", content: `Conversation:\n\n${text}` },
-      ], temperature: 0.3 }));
-      const parsed = JSON.parse(response);
-      return parsed?.choices?.[0]?.message?.content || "";
-    }},
-    { name: "Gemini", settingKey: "geminiApiKey", envVar: "GEMINI_API_KEY", fn: async (text) => {
-      const key = getApiKey("geminiApiKey", "GEMINI_API_KEY");
-      if (!key) { throw new Error("No key"); }
-      const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-      console.log("[Yapper] Summarize using Gemini API");
-      const response = await httpPost(url, { "x-goog-api-key": key }, JSON.stringify({
-        contents: [{ parts: [{ text: `${SUMMARIZE_SYSTEM_PROMPT}\n\nConversation:\n\n${text}` }] }],
-        generationConfig: { temperature: 0.3 },
-      }));
-      const parsed = JSON.parse(response);
-      return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    }},
-    { name: "Anthropic", settingKey: "anthropicApiKey", envVar: "ANTHROPIC_API_KEY", fn: async (text) => {
-      const key = getApiKey("anthropicApiKey", "ANTHROPIC_API_KEY");
-      if (!key) { throw new Error("No key"); }
-      console.log("[Yapper] Summarize using Anthropic API");
-      const response = await httpPost("https://api.anthropic.com/v1/messages", {
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-      }, JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, system: SUMMARIZE_SYSTEM_PROMPT, messages: [
-        { role: "user", content: `Conversation:\n\n${text}` },
-      ] }));
-      const parsed = JSON.parse(response);
-      return parsed?.content?.[0]?.text || "";
-    }},
+  const messages = [
+    vscode.LanguageModelChatMessage.User(SUMMARIZE_SYSTEM_PROMPT),
+    vscode.LanguageModelChatMessage.User(`Conversation:\n\n${historyText}`),
   ];
 
-  for (const provider of summarizeProviders) {
-    const key = getApiKey(provider.settingKey, provider.envVar);
-    if (key) {
-      try {
-        const result = await provider.fn(historyText);
-        if (result) { return parseSummarizeResult(result); }
-      } catch (err) {
-        console.log(`[Yapper] Summarize ${provider.name} failed: ${err instanceof Error ? err.message : err}`);
-      }
-    }
+  const response = await model.sendRequest(messages, {}, token);
+  const chunks: string[] = [];
+  for await (const fragment of response.text) {
+    chunks.push(fragment);
   }
-
-  throw new Error("Summarization failed — no language model available.");
+  const result = chunks.join("").trim();
+  if (!result) {
+    throw new Error("vscode.lm returned an empty response.");
+  }
+  return parseSummarizeResult(result);
 }
 
 function parseSummarizeResult(result: string): SummarizeResult {

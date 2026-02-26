@@ -31,21 +31,6 @@
             "GPT-4o — more nuanced, slightly slower"
           ],
           "description": "Preferred model family for transcript refinement (works with Gemini, Claude, or Copilot)"
-        },
-        "yapper.groqApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Groq API key — free, fast, no credit card (https://console.groq.com/keys)"
-        },
-        "yapper.geminiApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Gemini API key (https://aistudio.google.com/apikey)"
-        },
-        "yapper.anthropicApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Anthropic API key"
         }
       }
     },
