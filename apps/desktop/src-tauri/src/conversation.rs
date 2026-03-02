@@ -109,6 +109,7 @@ pub async fn send_conversation_turn(
             user_text,
             &settings.ai_provider,
             &settings.ai_api_key,
+            &settings.ai_model,
             move |chunk| {
                 app_clone.emit("conversation-ai-chunk", AiChunkPayload {
                     session_id: session_id_clone.clone(),
@@ -191,6 +192,7 @@ pub async fn end_conversation(app: tauri::AppHandle) -> Result<ConversationSumma
             history,
             &settings.ai_provider,
             &settings.ai_api_key,
+            &settings.ai_model,
         ).await
     } else {
         bridge::summarize_conversation(

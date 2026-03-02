@@ -276,6 +276,7 @@ async fn process_recording_result(
             if settings.code_mode { Some(true) } else { None },
             &settings.ai_provider,
             &settings.ai_api_key,
+            &settings.ai_model,
         ).await {
             Ok(cmd) => {
                 let (cat, ttl) = if cmd.action == "dictation" {
