@@ -168,8 +168,8 @@ fn default_stt_provider() -> String { "whisper".to_string() }
 fn default_whisper_language() -> String { "auto".to_string() }
 fn default_streaming_enabled() -> bool { true }
 fn default_screen_capture_hotkey() -> String {
-    if cfg!(target_os = "macos") { "Cmd+Shift+S".to_string() }
-    else { "Ctrl+Shift+S".to_string() }
+    if cfg!(target_os = "macos") { "Cmd+Shift+0".to_string() }
+    else { "Ctrl+Shift+0".to_string() }
 }
 fn default_save_screenshots() -> bool { true }
 
@@ -1031,27 +1031,33 @@ pub async fn capture_screen(
 
     let settings = get_settings_internal(&app);
     let vision = create_vision_provider(&settings);
+    let has_ai = vision.supports_ai_analysis();
+    eprintln!("[ScreenCapture] Vision provider: ai_mode={}, ai_provider={}, has_ai={}", settings.ai_provider_mode, settings.ai_provider, has_ai);
 
     let prompt_text = prompt.unwrap_or_else(|| "Summarize what you see in this image.".to_string());
-    log::info!("[ScreenCapture] Sending to vision provider, prompt: {}", &prompt_text[..prompt_text.len().min(50)]);
+    eprintln!("[ScreenCapture] Sending to vision, prompt: {}", &prompt_text[..prompt_text.len().min(50)]);
 
+    eprintln!("[ScreenCapture] Starting vision analysis...");
     let analysis_result = tokio::task::spawn_blocking(move || {
-        if vision.supports_ai_analysis() {
+        eprintln!("[ScreenCapture] Inside spawn_blocking, has_ai={}", vision.supports_ai_analysis());
+        let result = if vision.supports_ai_analysis() {
             vision.analyze(&image_bytes, &prompt_text)
         } else {
             vision.ocr(&image_bytes)
-        }
+        };
+        eprintln!("[ScreenCapture] Vision call returned: {:?}", result.as_ref().map(|s| s.len()));
+        result
     })
     .await
     .map_err(|e| format!("Task error: {}", e))?;
 
     let analysis_result = match analysis_result {
         Ok(result) => {
-            log::info!("[ScreenCapture] Analysis complete: {} chars", result.len());
+            eprintln!("[ScreenCapture] Analysis complete: {} chars", result.len());
             result
         }
         Err(e) => {
-            log::error!("[ScreenCapture] Vision analysis failed: {}", e);
+            eprintln!("[ScreenCapture] Vision analysis FAILED: {}", e);
             let _ = app.emit("stt-state-changed", "idle");
             let _ = app.emit("stt-error", format!("Vision analysis failed: {}", e));
             return Err(e);
