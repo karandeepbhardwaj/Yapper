@@ -153,7 +153,7 @@ fn get_primary_screen_height() -> f64 {
 /// Positions the widget centered horizontally, just above the dock/taskbar.
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
-fn get_widget_position(widget_size: f64) -> Option<(f64, f64)> {
+fn get_widget_position(w: f64, h: f64) -> Option<(f64, f64)> {
     use cocoa::foundation::{NSPoint, NSRect};
     use objc::*;
 
@@ -168,21 +168,17 @@ fn get_widget_position(widget_size: f64) -> Option<(f64, f64)> {
             let frame: NSRect = msg_send![screen, frame];
             let visible: NSRect = msg_send![screen, visibleFrame];
 
-            // Check if mouse is on this screen (bottom-left coords)
             if mouse_loc.x >= frame.origin.x
                 && mouse_loc.x < frame.origin.x + frame.size.width
                 && mouse_loc.y >= frame.origin.y
                 && mouse_loc.y < frame.origin.y + frame.size.height
             {
-                // Center horizontally within the visible frame
-                let x_bl = visible.origin.x + (visible.size.width - widget_size) / 2.0;
-                // Position so the pill sits just above the dock
-                // visible.origin.y = top edge of dock in bottom-left coords
-                let y_bl = visible.origin.y;
+                let x_bl = visible.origin.x + (visible.size.width - w) / 2.0;
+                // 4pt above the very bottom of the screen
+                let y_bl = frame.origin.y + 4.0;
 
-                // Convert from macOS bottom-left to Tauri top-left coordinates
                 let x_tl = x_bl;
-                let y_tl = primary_height - y_bl - widget_size;
+                let y_tl = primary_height - y_bl - h;
 
                 return Some((x_tl, y_tl));
             }
@@ -414,16 +410,17 @@ fn create_panel(handle: &tauri::AppHandle) {
             (1u64 | (1u64 << 4) | (1u64 << 6) | (1u64 << 8))];
 
         // Position above dock with 80x80 fixed size
-        let panel_size = 180.0;
-        if let Some((x, y)) = get_widget_position(panel_size) {
+        let panel_w = 180.0;
+        let panel_h = 34.0;
+        if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
             let primary_h = get_primary_screen_height();
-            let origin = NSPoint { x, y: primary_h - y - panel_size };
+            let origin = NSPoint { x, y: primary_h - y - panel_h };
             let new_frame = cocoa::foundation::NSRect {
                 origin,
-                size: cocoa::foundation::NSSize { width: panel_size, height: panel_size },
+                size: cocoa::foundation::NSSize { width: panel_w, height: panel_h },
             };
             let _: () = msg_send![panel, setFrame: new_frame display: true animate: false];
-            WIDGET_CENTER.store_pos(x + panel_size / 2.0, y + panel_size / 2.0);
+            WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h / 2.0);
         }
 
         // Show panel, hide original window
@@ -585,8 +582,9 @@ pub fn run() {
                             // Reposition panel every ~480ms
                             #[cfg(target_os = "macos")]
                             if tick % 6 == 0 {
-                                let panel_size = 180.0;
-                                if let Some((x, y)) = get_widget_position(panel_size) {
+                                let panel_w = 180.0;
+                                let panel_h = 34.0;
+                                if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
                                     if (x - last_x).abs() > 2.0 || (y - last_y).abs() > 2.0 {
                                         let panel = load_panel();
                                         if !panel.is_null() {
@@ -594,13 +592,13 @@ pub fn run() {
                                                 use objc::*;
                                                 use cocoa::foundation::NSPoint;
                                                 let primary_h = get_primary_screen_height();
-                                                let origin = NSPoint { x, y: primary_h - y - panel_size };
+                                                let origin = NSPoint { x, y: primary_h - y - panel_h };
                                                 let _: () = msg_send![panel, setFrameOrigin: origin];
                                             }
                                         }
                                         last_x = x;
                                         last_y = y;
-                                        WIDGET_CENTER.store_pos(x + panel_size / 2.0, y + panel_size / 2.0);
+                                        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h / 2.0);
                                     }
                                 }
                             }
