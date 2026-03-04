@@ -31,16 +31,17 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                             }
                         };
 
-                        let refined_text = crate::bridge::refine_text(&raw_transcript)
-                            .await
-                            .unwrap_or_else(|_| raw_transcript.clone());
+                        let bridge_result = crate::bridge::refine_text(&raw_transcript).await;
+                        let (refined_text, category, title) = match bridge_result {
+                            Ok(r) => (r.refined_text, r.category, r.title),
+                            Err(_) => (raw_transcript.clone(), None, None),
+                        };
 
                         let text_for_paste = refined_text.clone();
                         std::thread::spawn(move || {
                             #[cfg(target_os = "macos")]
                             {
                                 use std::process::Command;
-                                // Set clipboard
                                 if let Ok(mut child) = Command::new("pbcopy")
                                     .stdin(std::process::Stdio::piped())
                                     .spawn()
@@ -51,7 +52,6 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     let _ = child.wait();
                                 }
-                                // Small delay then activate the frontmost app and paste
                                 std::thread::sleep(std::time::Duration::from_millis(100));
                                 let _ = Command::new("osascript")
                                     .args(["-e", r#"
@@ -69,16 +69,20 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                         let _ = crate::history::add_entry(&app, &raw_transcript, &refined_text);
 
                         #[derive(Clone, serde::Serialize)]
-                        struct RefinementResult {
+                        struct HotkeyResult {
                             #[serde(rename = "rawTranscript")]
                             raw_transcript: String,
                             #[serde(rename = "refinedText")]
                             refined_text: String,
+                            category: Option<String>,
+                            title: Option<String>,
                         }
 
-                        app.emit("refinement-complete", RefinementResult {
+                        app.emit("refinement-complete", HotkeyResult {
                             raw_transcript,
                             refined_text,
+                            category,
+                            title,
                         }).ok();
 
                         crate::stt::set_state(crate::stt::State::Idle);

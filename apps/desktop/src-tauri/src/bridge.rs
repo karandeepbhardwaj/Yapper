@@ -20,10 +20,19 @@ struct RefineResponse {
     msg_type: String,
     #[serde(rename = "refinedText")]
     refined_text: Option<String>,
+    category: Option<String>,
+    title: Option<String>,
     error: Option<String>,
 }
 
-pub async fn refine_text(raw_text: &str) -> Result<String, String> {
+#[derive(Debug, Clone)]
+pub struct RefinementResult {
+    pub refined_text: String,
+    pub category: Option<String>,
+    pub title: Option<String>,
+}
+
+pub async fn refine_text(raw_text: &str) -> Result<RefinementResult, String> {
     let raw = raw_text.to_string();
 
     // Run blocking WebSocket call on a dedicated thread to avoid starving tokio
@@ -36,7 +45,7 @@ pub async fn refine_text(raw_text: &str) -> Result<String, String> {
     result
 }
 
-fn refine_text_blocking(raw_text: &str) -> Result<String, String> {
+fn refine_text_blocking(raw_text: &str) -> Result<RefinementResult, String> {
     // Quick TCP check with 500ms timeout — fail fast if bridge isn't running
     let addr = "127.0.0.1:9147";
     let stream = TcpStream::connect_timeout(
@@ -61,6 +70,8 @@ fn refine_text_blocking(raw_text: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to send message: {}", e))?;
 
     let mut refined = String::new();
+    let mut category: Option<String> = None;
+    let mut title: Option<String> = None;
 
     loop {
         let msg = socket.read()
@@ -85,6 +96,8 @@ fn refine_text_blocking(raw_text: &str) -> Result<String, String> {
                         if let Some(text) = response.refined_text {
                             refined = text;
                         }
+                        category = response.category;
+                        title = response.title;
                         break;
                     }
                     _ => {}
@@ -97,11 +110,11 @@ fn refine_text_blocking(raw_text: &str) -> Result<String, String> {
 
     let _ = socket.close(None);
 
-    if refined.is_empty() {
-        Ok(raw_text.to_string())
-    } else {
-        Ok(refined)
-    }
+    Ok(RefinementResult {
+        refined_text: if refined.is_empty() { raw_text.to_string() } else { refined },
+        category,
+        title,
+    })
 }
 
 fn uuid_simple() -> String {

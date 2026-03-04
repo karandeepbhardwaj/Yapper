@@ -17,6 +17,8 @@ export interface ResultResponse {
   type: "result";
   id: string;
   refinedText: string;
+  category?: string;
+  title?: string;
 }
 
 export interface ErrorResponse {
