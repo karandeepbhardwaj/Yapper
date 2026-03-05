@@ -56,9 +56,21 @@ export async function refineWithCopilot(
   style: string = "Professional",
   token: vscode.CancellationToken
 ): Promise<RefinementResult> {
-  const models = await vscode.lm.selectChatModels({
+  const config = vscode.workspace.getConfiguration("yapper");
+  const preferredFamily = config.get<string>("modelFamily", "gpt-4o-mini");
+
+  // Try preferred model first, fall back to any available Copilot model
+  let models = await vscode.lm.selectChatModels({
     vendor: "copilot",
+    family: preferredFamily,
   });
+
+  if (models.length === 0) {
+    console.log(`[Yapper] Model family "${preferredFamily}" not available, falling back to any Copilot model`);
+    models = await vscode.lm.selectChatModels({
+      vendor: "copilot",
+    });
+  }
 
   if (models.length === 0) {
     throw new Error(
@@ -67,6 +79,7 @@ export async function refineWithCopilot(
   }
 
   const model = models[0];
+  console.log(`[Yapper] Using model: ${model.name} (family: ${model.family})`);
   const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
 
   const messages = [
