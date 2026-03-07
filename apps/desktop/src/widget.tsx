@@ -42,6 +42,9 @@ function WidgetApp() {
   useEffect(() => {
     const unsub = listen<string>("stt-state-changed", (event) => {
       setState(event.payload as WidgetState);
+      if (event.payload === "listening") {
+        setErrorMessage(null);
+      }
     });
     const unsubAction = listen<{action?: string}>("refinement-complete", (event) => {
       const action = event.payload?.action;
@@ -115,9 +118,8 @@ function WidgetApp() {
   };
 
   // Determine pill dimensions
-  const showError = !!errorMessage && !isActive;
-  const pillW = showError ? 220 : isConversation ? HOVER_W : (isListening || isProcessing) ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
-  const pillH = showError ? 36 : isConversation ? HOVER_H : (isListening || isProcessing) ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
+  const pillW = isConversation ? HOVER_W : (isListening || isProcessing) ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
+  const pillH = isConversation ? HOVER_H : (isListening || isProcessing) ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
 
   return (
     <div
@@ -133,10 +135,35 @@ function WidgetApp() {
         pointerEvents: "none",
       }}
     >
-      {/* Tooltip on hover (idle only) */}
+      {/* Tooltip — error message or hover hint */}
       <AnimatePresence>
-        {isHovered && !isActive && (
+        {errorMessage && !isActive ? (
           <motion.div
+            key="error-tooltip"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              marginBottom: 8,
+              padding: "10px 20px",
+              borderRadius: 24,
+              background: "#2a231d",
+              border: "1px solid rgba(255,107,74,0.2)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+              fontSize: 13,
+              fontWeight: 500,
+              letterSpacing: "0.01em",
+              color: "#ff6b4a",
+              whiteSpace: "nowrap",
+              pointerEvents: "auto",
+            }}
+          >
+            {errorMessage}
+          </motion.div>
+        ) : isHovered && !isActive ? (
+          <motion.div
+            key="hover-tooltip"
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
@@ -158,7 +185,7 @@ function WidgetApp() {
           >
             press <span style={{ color: "#DA7756", fontWeight: 700 }}>{formatHotkey(hotkey)}</span> to yapp
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
       {/* Pill */}
@@ -190,34 +217,7 @@ function WidgetApp() {
         }}
       >
         <AnimatePresence mode="wait">
-          {showError && (
-            <motion.div
-              key="error"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "100%",
-                padding: "0 12px",
-              }}
-            >
-              <span style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: "#ff6b4a",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}>
-                {errorMessage}
-              </span>
-            </motion.div>
-          )}
-          {!isActive && !showError && isHovered && (
+          {!isActive && isHovered && !errorMessage && (
             <motion.div
               key="hover"
               initial={{ opacity: 0, scale: 0.7 }}
