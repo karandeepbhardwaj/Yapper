@@ -3,6 +3,7 @@ import * as https from "https";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import type { ConversationTurn, ClassifiedIntent, ClassifiedAction } from "./protocol";
 
 const CATEGORY_LIST = "Interview, Thought, Work, Research, Strategy, Idea, Meeting, Personal, Creative, Note, Email, Message";
 
@@ -214,8 +215,6 @@ export async function classifyIntent(
   }
 }
 
-import type { ConversationTurn, ClassifiedIntent, ClassifiedAction } from "./protocol";
-
 function resolveInput(
   inputSource: string | undefined,
   rawText: string,
@@ -312,7 +311,7 @@ export async function handleCommand(
   }
 
   // Step 3: If chain, execute actions sequentially
-  if (classified.intent === "chain" && classified.actions) {
+  if (classified.intent === "chain" && classified.actions && classified.actions.length > 0) {
     let previousOutput: string | null = null;
     let lastAction: ClassifiedAction = classified.actions[classified.actions.length - 1];
 
