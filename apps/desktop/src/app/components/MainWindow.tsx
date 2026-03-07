@@ -793,11 +793,25 @@ export function MainWindow({
             {/* Action filter chips */}
             {availableActions.length > 0 && (
               <div style={{
+                position: "relative",
+                marginBottom: 2,
+              }}>
+              <div style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: 32,
+                background: "linear-gradient(to right, transparent, var(--background))",
+                pointerEvents: "none",
+                zIndex: 1,
+              }} />
+              <div style={{
                 display: "flex",
                 gap: 8,
                 flexWrap: "nowrap",
                 overflowX: "auto",
-                marginBottom: 2,
+                paddingRight: 24,
                 scrollbarWidth: "none",
                 msOverflowStyle: "none",
               }}>
@@ -840,6 +854,7 @@ export function MainWindow({
                     {action.charAt(0).toUpperCase() + action.slice(1)}
                   </button>
                 ))}
+              </div>
               </div>
             )}
             {/* Toolbar: sort + metrics + clear */}
