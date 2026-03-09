@@ -115,6 +115,11 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 
 function HintBubble({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => setOpen(false), 5000);
+    return () => clearTimeout(timer);
+  }, [open]);
   return (
     <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
       <button
