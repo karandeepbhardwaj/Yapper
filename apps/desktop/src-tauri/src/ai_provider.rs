@@ -330,6 +330,14 @@ fn call_provider_with_messages_blocking(
 // Public async functions
 // ---------------------------------------------------------------------------
 
+pub fn test_key(provider: &str, api_key: &str) -> Result<bool, String> {
+    let result = call_provider_blocking(provider, api_key, "Reply with just the word 'ok'.", "Test", 0.0);
+    match result {
+        Ok(_) => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
 pub async fn refine_text(
     raw_text: &str,
     style: Option<String>,

@@ -112,6 +112,7 @@ pub fn run() {
             metrics::get_metrics,
             commands::check_bridge_status,
             commands::open_vscode,
+            commands::test_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");
