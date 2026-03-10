@@ -171,11 +171,24 @@ export function SnippetsView({ onBack }: SnippetsViewProps) {
       onNavigate={() => onBack()}
       emptyIcon={<FileText style={{ width: 22, height: 22, color: "var(--yapper-accent)" }} />}
       emptyMessage={
-        <>
-          No snippets yet.
-          <br />
-          Create trigger-based text expansions for quick insertion.
-        </>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left", width: "100%" }}>
+          <span>Say a trigger word and its full text gets pasted instantly, skipping AI.</span>
+          <div style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "var(--yapper-surface-low, #f5f5f5)",
+            border: "1px solid var(--yapper-border, #eee)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            fontSize: 12,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--yapper-accent)", marginBottom: 2 }}>Examples</div>
+            <div><strong>/sig</strong> → Best regards, Karan Bhardwaj</div>
+            <div><strong>/addr</strong> → 123 Main St, San Francisco, CA</div>
+            <div><strong>/zoom</strong> → https://zoom.us/j/your-meeting-id</div>
+          </div>
+        </div>
       }
     />
   );
