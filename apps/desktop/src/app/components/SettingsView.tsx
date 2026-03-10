@@ -895,7 +895,7 @@ export function SettingsView({
 
         {/* Style */}
         <SectionCard>
-          <SectionHeader>Voice Refinement</SectionHeader>
+          <SectionHeader>Refinement Style</SectionHeader>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <span
