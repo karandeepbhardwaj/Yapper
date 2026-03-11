@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::store;
 
@@ -36,6 +37,10 @@ pub struct HistoryEntry {
     pub conversation: Option<ConversationData>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "durationSeconds")]
     pub duration_seconds: Option<u64>,
+    #[serde(rename = "action", skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(rename = "actionParams", skip_serializing_if = "Option::is_none")]
+    pub action_params: Option<HashMap<String, String>>,
 }
 
 pub fn get_all(app: &tauri::AppHandle) -> Result<Vec<HistoryEntry>, String> {
@@ -49,6 +54,8 @@ pub fn add_entry(
     category: Option<&str>,
     title: Option<&str>,
     duration_seconds: Option<u64>,
+    action: Option<&str>,
+    action_params: Option<&HashMap<String, String>>,
 ) -> Result<(), String> {
     let mut entries = get_all(app)?;
 
@@ -64,6 +71,8 @@ pub fn add_entry(
         entry_type: None,
         conversation: None,
         duration_seconds,
+        action: action.map(|a| a.to_string()),
+        action_params: action_params.cloned(),
     };
 
     entries.insert(0, entry);
@@ -103,6 +112,8 @@ pub fn add_conversation_entry(
         entry_type: Some("conversation".to_string()),
         conversation: Some(ConversationData { turns, key_points }),
         duration_seconds: Some(duration_seconds),
+        action: None,
+        action_params: None,
     };
 
     entries.insert(0, entry);
@@ -140,6 +151,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Follow-up on quarterly report".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(12),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 200).to_string(),
@@ -151,6 +164,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Auth middleware architecture notes".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(15),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 300).to_string(),
@@ -162,6 +177,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Design system token strategy".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(18),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 400).to_string(),
@@ -173,6 +190,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Q3 roadmap planning meeting".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(22),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 500).to_string(),
@@ -184,6 +203,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("CI/CD pipeline update".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(10),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 600).to_string(),
@@ -195,6 +216,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Grocery list reminder".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(8),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 700).to_string(),
@@ -206,6 +229,8 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Database performance improvements".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(14),
+            action: None,
+            action_params: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 800).to_string(),
@@ -217,6 +242,74 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             title: Some("Interview prep notes".into()),
             entry_type: None, conversation: None,
             duration_seconds: Some(16),
+            action: None,
+            action_params: None,
+        },
+        // Voice command sample entries
+        HistoryEntry {
+            id: (now.timestamp_millis() - 900).to_string(),
+            timestamp: (now - chrono::Duration::minutes(15)).to_rfc3339(),
+            refined_text: "Hola Sarah, quería hacer un seguimiento de nuestra conversación de ayer. El informe trimestral se ve genial y creo que deberíamos programar una reunión para discutir los próximos pasos. ¿Te funcionaría el jueves a las 2pm?".into(),
+            raw_transcript: "translate this to spanish hey sarah I wanted to follow up on our conversation from yesterday the quarterly report is looking great and I think we should schedule a meeting to discuss the next steps would thursday at 2pm work for you".into(),
+            category: Some("Translate".into()),
+            is_pinned: None,
+            title: None,
+            entry_type: None, conversation: None,
+            duration_seconds: Some(9),
+            action: Some("translate".into()),
+            action_params: Some(HashMap::from([("targetLang".into(), "Spanish".into())])),
+        },
+        HistoryEntry {
+            id: (now.timestamp_millis() - 1000).to_string(),
+            timestamp: (now - chrono::Duration::minutes(45)).to_rfc3339(),
+            refined_text: "The team discussed Q3 roadmap priorities, agreeing to focus on performance improvements before the new onboarding flow. Design mockups are due Friday, engineering estimates by Monday.".into(),
+            raw_transcript: "summarize this".into(),
+            category: Some("Summarize".into()),
+            is_pinned: None,
+            title: None,
+            entry_type: None, conversation: None,
+            duration_seconds: Some(3),
+            action: Some("summarize".into()),
+            action_params: None,
+        },
+        HistoryEntry {
+            id: (now.timestamp_millis() - 1100).to_string(),
+            timestamp: (now - chrono::Duration::hours(4)).to_rfc3339(),
+            refined_text: "Subject: Standup Sync — March 29\n\nHi team,\n\nJust a heads-up that tomorrow's standup will be moved to 10:30 AM to accommodate the all-hands at 9. Same Zoom link as usual. Please have your sprint updates ready.\n\nThanks,\nKaran".into(),
+            raw_transcript: "draft an email about moving tomorrow's standup to 10 30 because of the all hands at 9".into(),
+            category: Some("Draft".into()),
+            is_pinned: None,
+            title: None,
+            entry_type: None, conversation: None,
+            duration_seconds: Some(7),
+            action: Some("draft".into()),
+            action_params: Some(HashMap::from([("type".into(), "email".into()), ("topic".into(), "moving standup to 10:30 due to all-hands".into())])),
+        },
+        HistoryEntry {
+            id: (now.timestamp_millis() - 1200).to_string(),
+            timestamp: (now - chrono::Duration::hours(6)).to_rfc3339(),
+            refined_text: "This function implements a circuit breaker pattern for the WebSocket bridge connection. It tracks consecutive failures with an atomic counter. After 3 failures, it enters a 30-second cooldown where all connection attempts are short-circuited with an error. On a successful connection, the failure counter resets to zero. The TCP pre-check with a 500ms timeout avoids blocking on the full WebSocket handshake when the server is unreachable.".into(),
+            raw_transcript: "explain this function".into(),
+            category: Some("Explain".into()),
+            is_pinned: Some(true),
+            title: None,
+            entry_type: None, conversation: None,
+            duration_seconds: Some(4),
+            action: Some("explain".into()),
+            action_params: None,
+        },
+        HistoryEntry {
+            id: (now.timestamp_millis() - 1300).to_string(),
+            timestamp: (now - chrono::Duration::hours(7)).to_rfc3339(),
+            refined_text: "L'équipe a discuté des priorités de la feuille de route du T3, en convenant de se concentrer d'abord sur les améliorations de performance. Les maquettes sont attendues vendredi.".into(),
+            raw_transcript: "translate this to french and then summarize it".into(),
+            category: Some("Chain".into()),
+            is_pinned: None,
+            title: None,
+            entry_type: None, conversation: None,
+            duration_seconds: Some(5),
+            action: Some("chain".into()),
+            action_params: Some(HashMap::from([("steps".into(), "translate + summarize".into()), ("targetLang".into(), "French".into())])),
         },
     ];
     store::save(app, "history.json", &entries)

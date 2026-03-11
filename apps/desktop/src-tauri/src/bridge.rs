@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use std::time::Duration;
@@ -65,6 +66,21 @@ pub struct SummarizeRequest {
     history: Vec<ConversationTurnMsg>,
 }
 
+#[derive(Serialize)]
+struct CommandRequest {
+    #[serde(rename = "type")]
+    msg_type: String,
+    id: String,
+    #[serde(rename = "rawText")]
+    raw_text: String,
+    clipboard: Option<String>,
+    style: Option<String>,
+    #[serde(rename = "styleOverrides", skip_serializing_if = "Option::is_none")]
+    style_overrides: Option<HashMap<String, String>>,
+    #[serde(rename = "codeMode", skip_serializing_if = "Option::is_none")]
+    code_mode: Option<bool>,
+}
+
 #[derive(Serialize, Clone)]
 pub struct ConversationTurnMsg {
     pub role: String,
@@ -84,6 +100,12 @@ struct BridgeResponse {
     #[serde(rename = "keyPoints")]
     key_points: Option<Vec<String>>,
     error: Option<String>,
+    #[serde(default)]
+    result: Option<String>,
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    params: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -191,6 +213,13 @@ pub struct SummarizeResponse {
     pub summary: String,
     pub title: String,
     pub key_points: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommandResult {
+    pub result: String,
+    pub action: String,
+    pub params: Option<HashMap<String, String>>,
 }
 
 /// Send a conversation turn to the bridge and collect the AI response.
@@ -331,6 +360,84 @@ fn summarize_conversation_blocking(
 
     let _ = socket.close(None);
     Err("Bridge closed without sending summary".to_string())
+}
+
+// --- Command flow ---
+
+pub async fn send_command(
+    raw_text: String,
+    clipboard: Option<String>,
+    style: Option<String>,
+    style_overrides: Option<HashMap<String, String>>,
+    code_mode: Option<bool>,
+) -> Result<CommandResult, String> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        send_command_blocking(&raw_text, clipboard.as_deref(), style.as_deref(), style_overrides, code_mode)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {e}"))?;
+    result
+}
+
+fn send_command_blocking(
+    raw_text: &str,
+    clipboard: Option<&str>,
+    style: Option<&str>,
+    style_overrides: Option<HashMap<String, String>>,
+    code_mode: Option<bool>,
+) -> Result<CommandResult, String> {
+    let mut socket = open_bridge_socket()?;
+
+    let request = CommandRequest {
+        msg_type: "command".to_string(),
+        id: crate::store::uuid_simple(),
+        raw_text: raw_text.to_string(),
+        clipboard: clipboard.map(|s| s.to_string()),
+        style: style.map(|s| s.to_string()),
+        style_overrides,
+        code_mode,
+    };
+
+    let json = serde_json::to_string(&request).map_err(|e| format!("Serialize error: {e}"))?;
+    socket
+        .send(tungstenite::Message::Text(json))
+        .map_err(|e| format!("Send error: {e}"))?;
+
+    loop {
+        let msg = socket
+            .read()
+            .map_err(|e| format!("Read error: {e}"))?;
+
+        match msg {
+            tungstenite::Message::Text(text) => {
+                let resp: BridgeResponse =
+                    serde_json::from_str(&text).map_err(|e| format!("Parse error: {e}"))?;
+
+                match resp.msg_type.as_str() {
+                    "command_result" => {
+                        let result = resp.result
+                            .or(resp.refined_text)
+                            .unwrap_or_default();
+                        let action = resp.action
+                            .unwrap_or_else(|| "unknown".to_string());
+                        return Ok(CommandResult {
+                            result,
+                            action,
+                            params: resp.params,
+                        });
+                    }
+                    "error" => {
+                        return Err(resp.error.unwrap_or_else(|| "Unknown bridge error".to_string()));
+                    }
+                    _ => continue,
+                }
+            }
+            tungstenite::Message::Close(_) => {
+                return Err("Bridge closed connection".to_string());
+            }
+            _ => continue,
+        }
+    }
 }
 
 // --- Shared helpers ---

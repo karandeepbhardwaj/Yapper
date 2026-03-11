@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://github.com/karandeepbhardwaj/Yapper/actions"><img src="https://github.com/karandeepbhardwaj/Yapper/actions/workflows/build.yml/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.2.2-blue" alt="Version" /></a>
+  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.3.0-blue" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform" /></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
@@ -33,50 +33,58 @@
 ## Features
 
 - **Voice capture** -- press a global hotkey and start talking
+- **Voice commands** -- speak `translate`, `summarize`, `draft`, `explain`, or `chain` to trigger AI actions directly; classified before refinement
 - **On-device speech recognition** -- macOS `SFSpeechRecognizer` (offline) / Windows dual-engine: Classic (SAPI5 offline) or Modern (WinRT, higher accuracy)
-- **AI transcript refinement** -- multi-provider support (Groq, Gemini, Claude, GitHub Copilot) via VS Code extension bridge
+- **Dual AI provider modes** -- choose in Settings:
+  - **VS Code mode** -- routes through the local VS Code extension using `vscode.lm` / Copilot (no API key in the app)
+  - **API Key mode** -- direct Groq or Anthropic calls from the app; no VS Code required
 - **Auto-paste** refined text at your active cursor position
 - **Conversation mode** -- back-and-forth AI chat with a dedicated hotkey (`Cmd+Shift+Y` / `Ctrl+Shift+Y`), session summaries saved to history
 - **Recording modes** -- "Press" (toggle, default) or "Hold" (press-and-hold to record, release to stop; Fn key release supported on macOS)
+- **Help screen** -- "How to Yapp" in-app guide with voice command reference
 - **Onboarding tutorial** -- platform-specific animated tutorial (macOS dock / Windows taskbar) showing widget lifecycle, email paste workflow, and history dashboard
 - **Dictionary** -- user-defined text replacements applied before AI refinement (e.g., "btw" -> "by the way"), handles trailing punctuation
 - **Snippets** -- reusable text templates that bypass AI using word boundary matching (e.g., "my email" -> expands to your email address)
 - **Style settings** -- per-category refinement tone (Professional, Casual, Technical, Creative) for Email, Messages, Work, Personal
 - **Code mode** -- auto-detects file/variable names from VS Code workspace, preserves code references in backtick formatting
 - **Metrics** -- usage tracking with streak days, word count, WPM, total recordings
-- **Floating widget** -- follows you across macOS Spaces, positioned above dock/taskbar (dock-aware on macOS, drops to bottom in full-screen), click-through when not hovered
-- **History dashboard** with fuzzy search (Fuse.js), pin/copy/delete with animations, sort by newest/oldest
-- **Dark/light mode** with circle reveal transition animation
+- **Floating widget** -- follows you across macOS Spaces, positioned above dock/taskbar (dock-aware on macOS, drops to bottom in full-screen), click-through when not hovered; shows error messages on failure
+- **History dashboard** -- fuzzy search (Fuse.js), pin/copy/delete with animations, sort by newest/oldest, multi-select category filter dropdown, action badges on cards
+- **Theme persistence** -- Light / Dark / Auto theme with circle-reveal transition animation
 - **iOS-style transitions** -- spring-based push/pop view transitions between app views
-- **Settings page** -- centralized configuration for hotkey, conversation hotkey, recording mode, style, dictionary, snippets, metrics, code mode. iOS 26 style "< Back" navigation
+- **Settings page** -- AI provider mode, provider selection, API key (encrypted), theme, hotkeys, recording mode, style, dictionary, snippets, metrics, code mode; segmented controls and hint tooltips; settings reordered by UX priority. iOS 26 style "< Back" navigation
 - **Customizable hotkeys** -- dictation: `Cmd+Shift+.` (macOS) / `Ctrl+Shift+.` (Windows); conversation: `Cmd+Shift+Y` / `Ctrl+Shift+Y`
 - **Fn key recording** (macOS) -- use the Globe/Fn key as your trigger; Fn release stops recording in Hold mode
 - **STT engine selection** (Windows) -- toggle between Classic (offline, no setup) and Modern (cloud-assisted, higher accuracy) with in-app permission guidance
 - **Bridge authentication** -- random token written to `~/.yapper/bridge-token` secures the WebSocket connection
-- **Circuit breaker** -- 3 consecutive bridge failures trigger 30s cooldown with automatic fallback to raw transcript
+- **Circuit breaker** -- 3 consecutive bridge failures trigger 30s cooldown with automatic fallback to raw transcript (VS Code mode)
 - **Atomic file writes** -- all persistence uses write-to-tmp-then-rename to prevent data corruption
-- **Zero egress** -- the desktop app makes no external network requests
+- **API key encryption** -- API keys stored encrypted in settings; validated before saving via `test_api_key`
 
 ---
 
 ## Architecture
 
 ```
-+--------------------------+   WebSocket (127.0.0.1:9147)   +-------------------------+
-|    Desktop App (Tauri)   | <----------------------------> |   VS Code Extension     |
-|                          |         local only              |                         |
-|  +--------------------+  |                                 |  +-------------------+  |
-|  |  React Frontend    |  |                                 |  | WebSocket Server  |  |
-|  |  (Tailwind+Motion) |  |                                 |  | (ws, 127.0.0.1)   |  |
-|  +---------+----------+  |                                 |  +--------+----------+  |
-|            | IPC          |                                 |           |              |
-|  +---------+----------+  |                                 |  +--------+----------+  |
-|  |  Rust Backend       |  |                                 |  | LLM Providers     |  |
-|  |  - Global Hotkey    |  |                                 |  | Groq / Gemini /   |  |
-|  |  - Native STT       |  |                                 |  | Claude / Copilot  |  |
-|  |  - Auto-paste       |  |                                 |  +-------------------+  |
-|  |  - History          |  |                                 |                         |
-|  +--------------------+  |                                 +-------------------------+
++--------------------------+                                +-------------------------+
+|    Desktop App (Tauri)   |                                |   VS Code Extension     |
+|                          |  WebSocket (127.0.0.1:9147)    |   (VS Code mode only)   |
+|  +--------------------+  | <----------------------------> |                         |
+|  |  React Frontend    |  |         local only              |  +-------------------+  |
+|  |  (Tailwind+Motion) |  |                                 |  | WebSocket Server  |  |
+|  +---------+----------+  |                                 |  | (ws, 127.0.0.1)   |  |
+|            | IPC          |                                 |  +--------+----------+  |
+|  +---------+----------+  |                                 |           |              |
+|  |  Rust Backend       |  |                                 |  +--------+----------+  |
+|  |  - Global Hotkey    |  |                                 |  | vscode.lm         |  |
+|  |  - Native STT       |  |                                 |  | (Copilot only)    |  |
+|  |  - Voice Cmd        |  |                                 |  +-------------------+  |
+|  |    Classifier       |  |                                 +-------------------------+
+|  |  - bridge.rs        |  |
+|  |  - ai_provider.rs --+--+--> Groq / Anthropic (API Key mode, direct HTTPS)
+|  |  - Auto-paste       |  |
+|  |  - History          |  |
+|  +--------------------+  |
 +-----------+--------------+
             |
      +------+-------+
@@ -110,13 +118,13 @@ xattr -cr /Applications/Yapper.app
 
 **Windows permissions**: Grant microphone access in Settings > Privacy > Microphone. For the Modern STT engine, enable Settings > Privacy & security > Speech > "Online speech recognition" (the app will guide you with a tooltip when needed).
 
-### VS Code Extension
+### VS Code Extension (optional — VS Code mode only)
 
 1. Download `yapper-bridge-x.x.x.vsix` from the [latest release](https://github.com/karandeepbhardwaj/Yapper/releases)
 2. In VS Code: `Cmd+Shift+P` / `Ctrl+Shift+P` > **Extensions: Install from VSIX...** > select the `.vsix` file
 3. The bridge auto-starts when VS Code opens -- look for the radio tower icon in the status bar
 
-> **Note:** VS Code must be open for AI refinement to work. Without it, Yapper still captures and pastes raw transcripts.
+> **Note:** The VS Code extension is only required when using **VS Code mode**. In **API Key mode**, you can skip this step entirely — just enter your Groq or Anthropic API key in Yapper's Settings.
 
 ---
 
@@ -154,42 +162,55 @@ Build output: `apps/desktop/src-tauri/target/release/bundle/`
 ## How It Works
 
 ```
- Speak  -->  Record  -->  Transcribe  -->  Refine  -->  Paste
-  |            |              |               |            |
-  |       Microphone     Native STT       LLM via      Keystroke
-  |       capture        (on-device)      VS Code      simulation
-  |                                       extension    (auto-paste)
+ Speak  -->  Record  -->  Transcribe  -->  Classify  -->  Refine/Execute  -->  Paste
+  |            |              |               |                 |                 |
+  |       Microphone     Native STT      Voice cmd?        LLM via           Keystroke
+  |       capture        (on-device)    (translate,       VS Code or         simulation
+  |                                      summarize,       direct API        (auto-paste)
+  |                                       draft…)
 ```
 
 1. **Speak** -- press `Cmd+Shift+.` / `Ctrl+Shift+.` (or click the floating widget, or press `Cmd+Shift+Y` / `Ctrl+Shift+Y` for conversation mode)
 2. **Record** -- audio is captured from the microphone
 3. **Transcribe** -- native speech recognition converts speech to text on-device
-4. **Refine** -- the raw transcript is sent over a local WebSocket to the VS Code extension, which refines it with an AI model
-5. **Paste** -- the refined text is automatically pasted at your current cursor position
+4. **Classify** -- AI-first intent classifier detects voice commands (translate, summarize, draft, explain, chain) and dispatches them; non-commands proceed to refinement
+5. **Refine** -- in VS Code mode, the transcript is sent over a local WebSocket to the VS Code extension (vscode.lm); in API Key mode, `ai_provider.rs` calls Groq or Anthropic directly
+6. **Paste** -- the refined or command-executed text is automatically pasted at your current cursor position
 
 ---
 
 ## AI Model Configuration
 
-The VS Code extension supports multiple LLM providers with automatic fallback:
+Yapper supports two AI provider modes. Select your preferred mode in **Settings > AI Provider**.
 
-| Priority | Provider | Model | Setup |
-|----------|----------|-------|-------|
-| 1 | vscode.lm | Any registered model | Install GitHub Copilot or Claude for VS Code |
-| 2 | Groq | Llama 3.3 70B | Set `yapper.groqApiKey` (free at [console.groq.com](https://console.groq.com)) |
-| 3 | Gemini | Gemini 2.0 Flash | Set `yapper.geminiApiKey` (free at [aistudio.google.com](https://aistudio.google.com/apikey)) |
-| 4 | Anthropic | Claude Sonnet 4 | Set `yapper.anthropicApiKey` |
+### VS Code Mode
 
-Configure in VS Code Settings (`Cmd+,` / `Ctrl+,`):
+Routes through the local VS Code extension using `vscode.lm` (Copilot). Install GitHub Copilot or another registered VS Code LLM extension. No API key required in the app.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `yapper.modelFamily` | `gemini-2.0-flash` | Preferred model family |
-| `yapper.groqApiKey` | -- | Groq API key (free, fast) |
-| `yapper.geminiApiKey` | -- | Gemini API key |
-| `yapper.anthropicApiKey` | -- | Anthropic API key |
+> The VS Code extension no longer has API key fallback — it uses `vscode.lm` exclusively.
 
-If no API keys are set and Copilot is unavailable, raw transcripts are pasted without refinement.
+### API Key Mode
+
+Makes direct calls to Groq or Anthropic from the app. VS Code is not required.
+
+| Provider | Model | Setup |
+|----------|-------|-------|
+| Groq | Llama 3.3 70B | Enter Groq API key in Settings (free at [console.groq.com](https://console.groq.com)) |
+| Anthropic | Claude Sonnet 4 | Enter Anthropic API key in Settings |
+
+API keys are validated (`test_api_key`) and stored encrypted. If the key is invalid or missing, raw transcripts are pasted without refinement.
+
+### Voice Commands
+
+Once AI is configured, you can use voice commands by starting your recording with:
+
+| Command | Example phrase | Action |
+|---------|---------------|--------|
+| `translate` | "translate this to French: ..." | Translates the spoken content |
+| `summarize` | "summarize: ..." | Produces a concise summary |
+| `draft` | "draft an email to the team about..." | Generates a full draft |
+| `explain` | "explain what a closure is" | Explains a concept |
+| `chain` | "translate then summarize: ..." | Chains multiple actions |
 
 ---
 
@@ -220,6 +241,10 @@ Settings are persisted per-platform in the app config directory using atomic fil
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `ai_provider_mode` | `vscode` | AI routing: "vscode" (bridge) or "apikey" (direct) |
+| `ai_provider` | `groq` | Direct provider in API Key mode: "groq" or "anthropic" |
+| `ai_api_key` | -- | Encrypted API key for API Key mode |
+| `theme` | `Auto` | UI theme: "Light", "Dark", or "Auto" |
 | `hotkey` | `Cmd+Shift+.` / `Ctrl+Shift+.` | Dictation hotkey |
 | `conversation_hotkey` | `Cmd+Shift+Y` / `Ctrl+Shift+Y` | Conversation mode hotkey |
 | `recording_mode` | `Press` | "Press" (toggle) or "Hold" (press-and-hold) |

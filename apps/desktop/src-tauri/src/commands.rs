@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
-use crate::{autopaste, bridge, conversation, dictionary, history, snippets, stt};
+use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, snippets, stt};
 
 static RECORDING_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
@@ -26,6 +26,57 @@ pub struct AppSettings {
     pub recording_mode: String,
     #[serde(default = "default_conversation_hotkey")]
     pub conversation_hotkey: String,
+    #[serde(default = "default_ai_provider_mode")]
+    pub ai_provider_mode: String,     // "vscode" | "apikey"
+    #[serde(default)]
+    pub ai_provider: String,          // "groq" | "anthropic"
+    #[serde(default)]
+    pub ai_api_key: String,           // the actual key (decrypted in memory)
+    #[serde(default = "default_theme")]
+    pub theme: String,                // "light" | "dark" | "system"
+}
+
+fn read_clipboard() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("pbpaste").output() {
+            Ok(output) => {
+                let text = String::from_utf8_lossy(&output.stdout).to_string();
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text.chars().take(10_000).collect())
+                }
+            }
+            Err(_) => None,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        match Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Get-Clipboard"])
+            .output()
+        {
+            Ok(output) => {
+                let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text.chars().take(10_000).collect())
+                }
+            }
+            Err(_) => None,
+        }
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+    }
 }
 
 fn default_stt_engine() -> String {
@@ -46,8 +97,75 @@ fn default_conversation_hotkey() -> String {
     }
 }
 
+fn default_ai_provider_mode() -> String { "vscode".to_string() }
+fn default_theme() -> String { "system".to_string() }
+
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
+
+// --- API key encryption helpers (XOR cipher with username-derived key) ---
+
+fn xor_mask() -> [u8; 8] {
+    let machine_id = format!("yapper-{}", std::env::var("USER").unwrap_or_else(|_| "user".to_string()));
+    let mut hash: u64 = 5381;
+    for b in machine_id.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(b as u64);
+    }
+    hash.to_le_bytes()
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::new();
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[((n >> 18) & 63) as usize] as char);
+        result.push(CHARS[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 { result.push(CHARS[((n >> 6) & 63) as usize] as char); } else { result.push('='); }
+        if chunk.len() > 2 { result.push(CHARS[(n & 63) as usize] as char); } else { result.push('='); }
+    }
+    result
+}
+
+fn base64_decode(s: &str) -> Vec<u8> {
+    const DECODE: [u8; 128] = {
+        let mut t = [255u8; 128];
+        let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut i = 0;
+        while i < 64 { t[chars[i] as usize] = i as u8; i += 1; }
+        t
+    };
+    let bytes: Vec<u8> = s.bytes().filter(|&b| b != b'=').collect();
+    let mut result = Vec::new();
+    for chunk in bytes.chunks(4) {
+        if chunk.len() < 2 { break; }
+        let b0 = if chunk[0] < 128 { DECODE[chunk[0] as usize] as u32 } else { 0 };
+        let b1 = if chunk[1] < 128 { DECODE[chunk[1] as usize] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 && chunk[2] < 128 { DECODE[chunk[2] as usize] as u32 } else { 0 };
+        let b3 = if chunk.len() > 3 && chunk[3] < 128 { DECODE[chunk[3] as usize] as u32 } else { 0 };
+        let n = (b0 << 18) | (b1 << 12) | (b2 << 6) | b3;
+        result.push((n >> 16) as u8);
+        if chunk.len() > 2 { result.push((n >> 8) as u8); }
+        if chunk.len() > 3 { result.push(n as u8); }
+    }
+    result
+}
+
+fn encrypt_key(key: &str) -> String {
+    let mask = xor_mask();
+    let encrypted: Vec<u8> = key.bytes().enumerate().map(|(i, b)| b ^ mask[i % 8]).collect();
+    format!("enc:{}", base64_encode(&encrypted))
+}
+
+fn decrypt_key(encrypted: &str) -> String {
+    let mask = xor_mask();
+    let bytes = base64_decode(encrypted);
+    let decrypted: Vec<u8> = bytes.iter().enumerate().map(|(i, &b)| b ^ mask[i % 8]).collect();
+    String::from_utf8_lossy(&decrypted).to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -63,26 +181,42 @@ impl Default for AppSettings {
             code_mode: false,
             recording_mode: default_recording_mode(),
             conversation_hotkey: default_conversation_hotkey(),
+            ai_provider_mode: "vscode".to_string(),
+            ai_provider: String::new(),
+            ai_api_key: String::new(),
+            theme: "system".to_string(),
         }
     }
 }
 
-fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
+pub fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
     let path = match app.path().app_config_dir() {
         Ok(p) => p.join("settings.json"),
         Err(_) => return AppSettings::default(),
     };
     if !path.exists() { return AppSettings::default(); }
     match std::fs::read_to_string(&path) {
-        Ok(data) => serde_json::from_str(&data).unwrap_or_else(|e| {
-            log::warn!("Settings corrupted, using defaults: {}", e);
-            AppSettings::default()
-        }),
+        Ok(data) => {
+            let mut settings: AppSettings = serde_json::from_str(&data).unwrap_or_else(|e| {
+                log::warn!("Settings corrupted, using defaults: {}", e);
+                AppSettings::default()
+            });
+            // Decrypt API key if it's encrypted
+            if settings.ai_api_key.starts_with("enc:") {
+                settings.ai_api_key = decrypt_key(&settings.ai_api_key[4..]);
+            }
+            settings
+        }
         Err(e) => {
             log::warn!("Failed to read settings: {}", e);
             AppSettings::default()
         }
     }
+}
+
+#[derive(Clone, Serialize)]
+struct RefinementSkipped {
+    reason: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -93,6 +227,9 @@ struct RecordingResult {
     refined_text: String,
     category: Option<String>,
     title: Option<String>,
+    action: Option<String>,
+    #[serde(rename = "actionParams", skip_serializing_if = "Option::is_none")]
+    action_params: Option<HashMap<String, String>>,
 }
 
 async fn process_recording_result(
@@ -108,7 +245,7 @@ async fn process_recording_result(
                 log::warn!("Auto-paste failed: {}", e);
             }
         });
-        let _ = history::add_entry(app, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs));
+        let _ = history::add_entry(app, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs), None, None);
         return Ok(());
     }
 
@@ -117,26 +254,92 @@ async fn process_recording_result(
 
     // Load style settings
     let settings = get_settings_internal(app);
-    let bridge_result = bridge::refine_text(
-        &processed_transcript,
-        Some(settings.default_style.clone()),
-        if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-        if settings.code_mode { Some(true) } else { None },
-    ).await;
+    let clipboard = read_clipboard();
 
-    let (refined_text, category, title) = match bridge_result {
-        Ok(r) => (r.refined_text, r.category, r.title),
-        Err(e) => {
-            // Emit refinement-skipped event and fall back to raw transcript
-            #[derive(Clone, Serialize)]
-            struct RefinementSkipped {
-                reason: String,
+    // Dispatch to direct API or VS Code bridge based on settings
+    let (refined_text, category, title, action, action_params) = if settings.ai_provider_mode == "apikey"
+        && !settings.ai_api_key.is_empty()
+        && !settings.ai_provider.is_empty()
+    {
+        // Direct API path
+        match ai_provider::send_command(
+            processed_transcript.clone(),
+            clipboard,
+            Some(settings.default_style.clone()),
+            if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+            if settings.code_mode { Some(true) } else { None },
+            &settings.ai_provider,
+            &settings.ai_api_key,
+        ).await {
+            Ok(cmd) => {
+                let (cat, ttl) = if cmd.action == "dictation" {
+                    let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
+                    let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
+                    (cat, ttl)
+                } else {
+                    (Some(capitalize_first(&cmd.action)), None)
+                };
+                log::info!("Direct API command succeeded: action={}", cmd.action);
+                (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
             }
-            app.emit("refinement-skipped", RefinementSkipped {
-                reason: "Bridge unavailable".to_string(),
-            }).ok();
-            log::warn!("Bridge refinement failed, using raw transcript: {}", e);
-            (raw_transcript.clone(), None, None)
+            Err(e) => {
+                let reason = if e.contains("401") || e.contains("403") || e.contains("Unauthorized") {
+                    "Invalid API key. Check your key in Settings.".to_string()
+                } else if e.contains("429") || e.contains("rate") {
+                    "API rate limit reached. Wait a moment and try again.".to_string()
+                } else {
+                    format!("AI request failed. Check your API key and connection.")
+                };
+                app.emit("refinement-skipped", RefinementSkipped { reason: reason.clone() }).ok();
+                log::warn!("{}", reason);
+                (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
+            }
+        }
+    } else {
+        // VS Code bridge path (existing)
+        match bridge::send_command(
+            processed_transcript.clone(),
+            clipboard,
+            Some(settings.default_style.clone()),
+            if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+            if settings.code_mode { Some(true) } else { None },
+        ).await {
+            Ok(cmd) => {
+                let (cat, ttl) = if cmd.action == "dictation" {
+                    let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
+                    let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
+                    (cat, ttl)
+                } else {
+                    (Some(capitalize_first(&cmd.action)), None)
+                };
+                log::info!("Command flow succeeded: action={}", cmd.action);
+                (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
+            }
+            Err(cmd_err) => {
+                log::warn!("Command flow failed ({}), falling back to refine_text", cmd_err);
+                match bridge::refine_text(
+                    &processed_transcript,
+                    Some(settings.default_style.clone()),
+                    if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+                    if settings.code_mode { Some(true) } else { None },
+                ).await {
+                    Ok(r) => (r.refined_text, r.category, r.title, None, None),
+                    Err(e) => {
+                        let reason = if e.contains("cooldown") {
+                            "AI temporarily unavailable, try again shortly"
+                        } else if e.contains("not available") || e.contains("Connection refused") {
+                            "VS Code not connected. Open VS Code to enable AI"
+                        } else {
+                            "No AI provider available. Check VS Code extension"
+                        };
+                        app.emit("refinement-skipped", RefinementSkipped {
+                            reason: reason.to_string(),
+                        }).ok();
+                        log::warn!("Bridge refinement failed: {}", e);
+                        (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
+                    }
+                }
+            }
         }
     };
 
@@ -148,13 +351,24 @@ async fn process_recording_result(
         }
     });
 
-    let _ = history::add_entry(app, &raw_transcript, &refined_text, category.as_deref(), title.as_deref(), Some(duration_secs));
+    let _ = history::add_entry(
+        app,
+        &raw_transcript,
+        &refined_text,
+        category.as_deref(),
+        title.as_deref(),
+        Some(duration_secs),
+        action.as_deref(),
+        action_params.as_ref(),
+    );
 
     app.emit("refinement-complete", RecordingResult {
         raw_transcript,
         refined_text,
         category,
         title,
+        action,
+        action_params,
     }).ok();
 
     Ok(())
@@ -371,14 +585,7 @@ pub async fn paste_last_transcript(app: tauri::AppHandle) -> Result<(), String> 
 
 #[tauri::command]
 pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
-    let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    let settings_path = path.join("settings.json");
-    if settings_path.exists() {
-        let data = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&data).map_err(|e| e.to_string())
-    } else {
-        Ok(AppSettings::default())
-    }
+    Ok(get_settings_internal(&app))
 }
 
 #[tauri::command]
@@ -387,7 +594,12 @@ pub async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Resu
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     let settings_path = path.join("settings.json");
-    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    // Encrypt API key before writing to disk
+    let mut settings_to_save = settings;
+    if !settings_to_save.ai_api_key.is_empty() && !settings_to_save.ai_api_key.starts_with("enc:") {
+        settings_to_save.ai_api_key = encrypt_key(&settings_to_save.ai_api_key);
+    }
+    let data = serde_json::to_string_pretty(&settings_to_save).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
 }
 
@@ -505,4 +717,45 @@ pub async fn change_conversation_hotkey(app: tauri::AppHandle, hotkey: String) -
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())?;
     app.emit("hotkey-changed", settings.hotkey).ok();
     Ok(())
+}
+
+#[tauri::command]
+pub fn check_bridge_status() -> bool {
+    use std::net::TcpStream;
+    use std::time::Duration;
+    TcpStream::connect_timeout(
+        &"127.0.0.1:9147".parse().unwrap(),
+        Duration::from_millis(300),
+    )
+    .is_ok()
+}
+
+#[tauri::command]
+pub fn open_vscode() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", "Visual Studio Code"])
+            .spawn()
+            .map_err(|e| format!("Failed to open VS Code: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "code"])
+            .spawn()
+            .map_err(|e| format!("Failed to open VS Code: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn test_api_key(provider: String, api_key: String) -> Result<bool, String> {
+    let p = provider.clone();
+    let k = api_key.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::ai_provider::test_key(&p, &k)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {e}"))?
 }

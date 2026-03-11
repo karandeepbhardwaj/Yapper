@@ -2,44 +2,82 @@
 
 ## Vision
 
-A minimal, always-available voice capture tool that treats spoken words as first-class input. Speak naturally, get polished text at your cursor. No cloud dependency from the app itself — all speech recognition happens on-device, and AI refinement runs through your local VS Code instance with multi-provider support.
+A minimal, always-available voice capture tool that treats spoken words as first-class input. Speak naturally, get polished text at your cursor — and use voice commands to translate, summarize, draft, explain, or chain actions. Speech recognition is always on-device. AI refinement can go through the local VS Code extension (Copilot) or directly to Groq/Anthropic via an encrypted API key — no VS Code required in API Key mode.
 
 ## Design Principles
 
 1. **Invisible until needed** — The widget is a thin pill at the bottom of the screen. It expands on hover (showing "press {hotkey} to yapp"), records on click, and collapses when done. Zero cognitive overhead.
-2. **Zero egress** — The desktop app makes no external network requests. STT is on-device. AI refinement goes through the local VS Code extension bridge only.
+2. **Zero egress (VS Code mode)** — In VS Code mode, the desktop app makes no external network requests. STT is on-device. AI refinement goes through the local VS Code extension bridge (vscode.lm / Copilot) only. In API Key mode, the Rust backend makes direct HTTPS calls to Groq or Anthropic.
 3. **Works everywhere** — macOS: NSPanel with `canJoinAllSpaces` appears across all Spaces. Windows: always-on-top transparent window above taskbar.
 4. **Graceful degradation** — If VS Code isn't running or no AI provider is available, raw transcripts are pasted instead. The app never blocks on missing dependencies.
 5. **Cross-platform** — Platform-specific code is isolated in dedicated modules. Shared logic lives in `commands.rs`, `bridge.rs`, `history.rs`.
 
 ## System Architecture
 
+### Dual-Provider Architecture
+
+Yapper supports two AI provider modes selected in Settings:
+
 ```
-+-----------------------------------------------------+
-|                    Desktop App                        |
-|                                                       |
-|  +-------------+     +--------------------------+     |
-|  |   Widget    |     |     Main Window           |     |
-|  |  (NSPanel / |     |   (History Dashboard)     |     |
-|  |   Win32)    |     |   MainWindow.tsx          |     |
-|  +------+------+     +------------+-------------+     |
-|         |    Tauri Events         |                    |
-|  +------+--------------------------+--------------+    |
-|  |              Rust Backend (Tauri v2)            |    |
-|  |                                                 |    |
-|  |  +--------+  +---------+  +-------------+      |    |
-|  |  | STT    |  | Bridge  |  | Auto-paste   |      |    |
-|  |  | (plat) |  | (WS)    |  | (plat)       |      |    |
-|  |  +---+----+  +----+----+  +--------------+      |    |
-|  +------+-------------+---------------------------+    |
-|         |              |                               |
-|  +------+--------+  +--+-------------------------+     |
-|  | Native STT    |  | VS Code Extension          |     |
-|  | macOS: Swift   |  | (WebSocket :9147)          |     |
-|  | Win: WinRT     |  | -> Groq / Gemini / Claude  |     |
-|  | (on-device)    |  |    / Copilot               |     |
-|  +----------------+  +----------------------------+     |
-+-----------------------------------------------------+
++-------------------------------------------------------------------+
+|                         Desktop App                               |
+|                                                                   |
+|  +-------------+     +----------------------------+               |
+|  |   Widget    |     |       Main Window           |               |
+|  |  (NSPanel / |     |   (History + Help + Filter) |               |
+|  |   Win32)    |     |   MainWindow.tsx            |               |
+|  +------+------+     +-------------+--------------+               |
+|         |    Tauri Events          |                              |
+|  +------+--------------------------+--------------+               |
+|  |              Rust Backend (Tauri v2)            |               |
+|  |                                                 |               |
+|  |  +--------+  +-------------+  +-------------+  |               |
+|  |  | STT    |  | Voice Cmd   |  | Auto-paste   |  |               |
+|  |  | (plat) |  | Classifier  |  | (plat)       |  |               |
+|  |  +---+----+  +------+------+  +--------------+  |               |
+|  |         (provider mode)                          |               |
+|  |         /              \                         |               |
+|  |  +------+------+  +----+----------+             |               |
+|  |  | bridge.rs   |  | ai_provider   |             |               |
+|  |  | (WS client) |  | .rs (direct)  |             |               |
+|  |  +------+------+  +----+----------+             |               |
+|  +------+------------------+-----------------------+               |
+|         |                  |                                       |
+|  +------+-------+  +-------+-------------------+                  |
+|  | Native STT   |  |                           |                  |
+|  | macOS: Swift  |  | VS Code mode:             |                  |
+|  | Win: WinRT    |  |   VS Code Extension       |                  |
+|  | (on-device)   |  |   (WebSocket :9147)       |                  |
+|  +---------------+  |   -> vscode.lm (Copilot)  |                  |
+|                     |                           |                  |
+|                     | API Key mode:             |                  |
+|                     |   Direct HTTPS to         |                  |
+|                     |   Groq / Anthropic         |                  |
+|                     +---------------------------+                  |
++-------------------------------------------------------------------+
+```
+
+### Voice Command Flow
+
+```
+Transcript
+    |
+    v
+[Intent Classifier]  <-- AI-first classification
+    |
+    +-- voice command detected? --> [Command Router]
+    |                                    |
+    |                                    +-- translate
+    |                                    +-- summarize
+    |                                    +-- draft
+    |                                    +-- explain
+    |                                    +-- chain
+    |                                         |
+    |                               [Execute command]
+    |                                    |
+    +-- no command --> [Standard Refine] |
+                                         v
+                                    [Auto-paste result]
 ```
 
 ## Pipeline
@@ -57,14 +95,26 @@ A minimal, always-available voice capture tool that treats spoken words as first
 2. **Windows (Classic)**: Transcript returned via PowerShell stdout after `RecognizeAsyncStop()` finishes processing pending audio. Uses DictationGrammar + spelling grammar.
 2. **Windows (Modern)**: Transcript accumulated in-process via `ResultGenerated` event handler on `ContinuousRecognitionSession` during recording.
 
+### Voice Command Phase (new)
+1. Transcript is passed to the AI-first intent classifier
+2. If a voice command is detected (translate, summarize, draft, explain, chain), it is dispatched to the appropriate command handler
+3. Command executes via the active provider (bridge or direct API) and result is pasted immediately
+4. Non-command transcripts continue to the standard Refinement Phase
+
 ### Refinement Phase (optional)
+**VS Code mode:**
 1. Rust checks circuit breaker state — if 3 consecutive failures occurred, skips bridge for 30s cooldown
 2. Reads authentication token from `~/.yapper/bridge-token`
 3. Connects to WebSocket at `127.0.0.1:9147` (500ms TCP timeout) with token
 4. Sends `{type: "refine", id, rawText, style, token}` to VS Code extension
-5. Extension tries providers in order: vscode.lm -> Groq -> Gemini -> Anthropic (Gemini uses `x-goog-api-key` header, not URL parameter)
+5. Extension uses `vscode.lm` (Copilot) — no API key fallback in the bridge
 6. Provider returns `{refinedText, category, title}` as JSON
 7. If bridge unavailable -> emits `refinement-skipped` event, raw transcript used as fallback
+
+**API Key mode:**
+1. `ai_provider.rs` makes a direct HTTPS call to Groq or Anthropic using the encrypted API key from settings
+2. Provider returns `{refinedText, category, title}` as JSON
+3. No VS Code dependency; no circuit breaker needed
 
 ### Output Phase
 1. Refined (or raw) text copied to clipboard (pbcopy on macOS, PowerShell Set-Clipboard on Windows)
@@ -133,16 +183,14 @@ State 4: Processing
 
 ## Security Model
 
-- No API keys stored in the desktop app
-- No network requests from the desktop app
+- **VS Code mode**: No API keys stored in the desktop app. No external network requests from the desktop app. AI provider authentication handled by the VS Code extension.
+- **API Key mode**: API key stored encrypted in `settings.json` (`ai_api_key` field). `test_api_key` command validates before saving. Direct HTTPS calls made from the Rust backend (`ai_provider.rs`).
 - WebSocket bridge is localhost-only (127.0.0.1, not 0.0.0.0)
 - Bridge authentication via random token written to `~/.yapper/bridge-token` (0600 permissions)
-- Circuit breaker: 3 consecutive bridge failures trigger 30s cooldown, preventing repeated connection attempts
+- Circuit breaker: 3 consecutive bridge failures trigger 30s cooldown, preventing repeated connection attempts (VS Code mode only)
 - Audio files are temporary (`/tmp/yapper_recording.wav`) and overwritten each recording
 - All file persistence uses atomic writes (write-to-tmp-then-rename via `store.rs`) to prevent data corruption on crash
 - History stored as JSON in app data directory
-- LLM API keys are stored in VS Code settings (extension-side only)
-- AI provider authentication is handled by the VS Code extension
 - Gemini API key sent via `x-goog-api-key` HTTP header (not URL query parameter)
 
 ## Permissions Required
@@ -172,10 +220,14 @@ State 4: Processing
   "metrics_enabled": true,
   "code_mode": false,
   "recording_mode": "Press",
-  "conversation_hotkey": "Cmd+Shift+Y"
+  "conversation_hotkey": "Cmd+Shift+Y",
+  "ai_provider_mode": "vscode",
+  "ai_provider": "groq",
+  "ai_api_key": "<encrypted>",
+  "theme": "Auto"
 }
 ```
-Persisted to `{app_config_dir}/settings.json` using atomic file writes. The `stt_engine` field ("classic" or "modern") controls which Windows STT engine is used. The `recording_mode` field ("Press" or "Hold") controls recording behavior: "Press" toggles on/off, "Hold" records while key is held (Fn key release stops recording on macOS). The `conversation_hotkey` field sets the dedicated hotkey for starting conversation mode. All fields use `#[serde(default)]` for backward compatibility. Restored on startup.
+Persisted to `{app_config_dir}/settings.json` using atomic file writes. The `stt_engine` field ("classic" or "modern") controls which Windows STT engine is used. The `recording_mode` field ("Press" or "Hold") controls recording behavior: "Press" toggles on/off, "Hold" records while key is held (Fn key release stops recording on macOS). The `conversation_hotkey` field sets the dedicated hotkey for starting conversation mode. The `ai_provider_mode` field ("vscode" or "apikey") selects the AI routing path. The `ai_provider` field ("groq" or "anthropic") selects the direct provider in API Key mode. The `ai_api_key` field stores the encrypted API key; use `test_api_key` to validate before saving. The `theme` field ("Light", "Dark", or "Auto") persists the UI theme; changes use a circle-reveal animation. All fields use `#[serde(default)]` for backward compatibility. Restored on startup.
 
 ## Landing Page
 
