@@ -86,18 +86,32 @@ const ACTION_PROMPTS: Record<string, string> = {
 async function callVscodeLm(
   systemPrompt: string,
   userPrompt: string,
-  token: vscode.CancellationToken
+  token: vscode.CancellationToken,
+  model?: string,
 ): Promise<string> {
-  const models = await vscode.lm.selectChatModels();
+  let models: vscode.LanguageModelChat[];
+  if (model) {
+    models = await vscode.lm.selectChatModels({ family: model });
+    if (models.length === 0) {
+      models = await vscode.lm.selectChatModels({ id: model });
+    }
+    if (models.length === 0) {
+      console.warn(`[Yapper] Requested model '${model}' not found, using first available`);
+      models = await vscode.lm.selectChatModels();
+    }
+  } else {
+    models = await vscode.lm.selectChatModels();
+  }
   if (models.length === 0) {
     throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
-  const model = models[0];
+  const selected = models[0];
+  console.log(`[Yapper] Using vscode.lm: ${selected.name} (${selected.vendor}/${selected.family})`);
   const messages = [
     vscode.LanguageModelChatMessage.User(systemPrompt),
     vscode.LanguageModelChatMessage.User(userPrompt),
   ];
-  const response = await model.sendRequest(messages, {}, token);
+  const response = await selected.sendRequest(messages, {}, token);
   const chunks: string[] = [];
   for await (const fragment of response.text) {
     chunks.push(fragment);
@@ -107,16 +121,11 @@ async function callVscodeLm(
 
 export async function classifyIntent(
   rawText: string,
-  token: vscode.CancellationToken
+  token: vscode.CancellationToken,
+  model?: string,
 ): Promise<ClassifiedIntent> {
   try {
-    const models = await vscode.lm.selectChatModels();
-    if (models.length === 0) {
-      console.warn("[Yapper] No AI model available for classification. Install GitHub Copilot.");
-      vscode.window.showWarningMessage("Yapper: No AI model available. Install GitHub Copilot in VS Code.");
-      return { intent: "dictation" };
-    }
-    const result = await callVscodeLm(CLASSIFY_SYSTEM_PROMPT, rawText, token);
+    const result = await callVscodeLm(CLASSIFY_SYSTEM_PROMPT, rawText, token, model);
     const cleaned = result.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     return JSON.parse(cleaned) as ClassifiedIntent;
   } catch (err) {
@@ -147,7 +156,8 @@ export async function executeAction(
   params: Record<string, string> | undefined,
   input: string,
   description: string | undefined,
-  token: vscode.CancellationToken
+  token: vscode.CancellationToken,
+  model?: string,
 ): Promise<string> {
   let systemPrompt: string;
   let userPrompt: string;
@@ -182,7 +192,7 @@ export async function executeAction(
       throw new Error(`Unknown action: ${intent}`);
   }
 
-  return callVscodeLm(systemPrompt, userPrompt, token);
+  return callVscodeLm(systemPrompt, userPrompt, token, model);
 }
 
 export interface CommandResult {
@@ -197,14 +207,15 @@ export async function handleCommand(
   style: string | undefined,
   styleOverrides: Record<string, string> | undefined,
   codeMode: boolean | undefined,
-  token: vscode.CancellationToken
+  token: vscode.CancellationToken,
+  model?: string,
 ): Promise<CommandResult> {
   // Step 1: Classify intent
-  const classified = await classifyIntent(rawText, token);
+  const classified = await classifyIntent(rawText, token, model);
 
   // Step 2: If dictation, use existing refine path
   if (classified.intent === "dictation") {
-    const refinement = await refineWithCopilot(rawText, style, token, styleOverrides, codeMode);
+    const refinement = await refineWithCopilot(rawText, style, token, styleOverrides, codeMode, model);
     return {
       result: refinement.refinedText,
       action: "dictation",
@@ -224,7 +235,8 @@ export async function handleCommand(
         action.params,
         input,
         action.description,
-        token
+        token,
+        model,
       );
     }
 
@@ -245,7 +257,8 @@ export async function handleCommand(
     classified.params,
     input,
     classified.description,
-    token
+    token,
+    model,
   );
 
   return {
@@ -307,6 +320,7 @@ export async function refineWithCopilot(
   token: vscode.CancellationToken,
   styleOverrides?: Record<string, string>,
   codeMode?: boolean,
+  model?: string,
 ): Promise<RefinementResult> {
   // Build extra context from style overrides and code mode
   let extraContext = "";
@@ -323,18 +337,30 @@ export async function refineWithCopilot(
     }
   }
 
-  const models = await vscode.lm.selectChatModels();
+  let models: vscode.LanguageModelChat[];
+  if (model) {
+    models = await vscode.lm.selectChatModels({ family: model });
+    if (models.length === 0) {
+      models = await vscode.lm.selectChatModels({ id: model });
+    }
+    if (models.length === 0) {
+      console.warn(`[Yapper] Requested model '${model}' not found, using first available`);
+      models = await vscode.lm.selectChatModels();
+    }
+  } else {
+    models = await vscode.lm.selectChatModels();
+  }
   if (models.length === 0) {
     throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
-  const model = models[0];
-  console.log(`[Yapper] Using vscode.lm: ${model.name} (${model.vendor}/${model.family})`);
+  const selected = models[0];
+  console.log(`[Yapper] Using vscode.lm: ${selected.name} (${selected.vendor}/${selected.family})`);
   const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
   const messages = [
     vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT + extraContext),
     vscode.LanguageModelChatMessage.User(`Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}`),
   ];
-  const response = await model.sendRequest(messages, {}, token);
+  const response = await selected.sendRequest(messages, {}, token);
   const chunks: string[] = [];
   for await (const fragment of response.text) { chunks.push(fragment); }
   const result = chunks.join("").trim();
@@ -360,14 +386,27 @@ export async function handleConversation(
   history: ConversationTurn[],
   userMessage: string,
   token: vscode.CancellationToken,
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void,
+  model?: string,
 ): Promise<ConversationResult> {
-  const models = await vscode.lm.selectChatModels();
+  let models: vscode.LanguageModelChat[];
+  if (model) {
+    models = await vscode.lm.selectChatModels({ family: model });
+    if (models.length === 0) {
+      models = await vscode.lm.selectChatModels({ id: model });
+    }
+    if (models.length === 0) {
+      console.warn(`[Yapper] Requested model '${model}' not found, using first available`);
+      models = await vscode.lm.selectChatModels();
+    }
+  } else {
+    models = await vscode.lm.selectChatModels();
+  }
   if (models.length === 0) {
     throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
-  const model = models[0];
-  console.log(`[Yapper] Conversation using vscode.lm: ${model.name}`);
+  const selected = models[0];
+  console.log(`[Yapper] Using vscode.lm: ${selected.name} (${selected.vendor}/${selected.family})`);
 
   const messages = [
     vscode.LanguageModelChatMessage.User(CONVERSATION_SYSTEM_PROMPT),
@@ -385,7 +424,7 @@ export async function handleConversation(
   // Add current user message
   messages.push(vscode.LanguageModelChatMessage.User(userMessage));
 
-  const response = await model.sendRequest(messages, {}, token);
+  const response = await selected.sendRequest(messages, {}, token);
   const chunks: string[] = [];
   for await (const fragment of response.text) {
     chunks.push(fragment);
@@ -411,26 +450,39 @@ Key points should be the most important takeaways (3-5 items).`;
 
 export async function handleSummarize(
   history: ConversationTurn[],
-  token: vscode.CancellationToken
+  token: vscode.CancellationToken,
+  model?: string,
 ): Promise<SummarizeResult> {
   // Format history as readable text
   const historyText = history
     .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
     .join("\n\n");
 
-  const models = await vscode.lm.selectChatModels();
+  let models: vscode.LanguageModelChat[];
+  if (model) {
+    models = await vscode.lm.selectChatModels({ family: model });
+    if (models.length === 0) {
+      models = await vscode.lm.selectChatModels({ id: model });
+    }
+    if (models.length === 0) {
+      console.warn(`[Yapper] Requested model '${model}' not found, using first available`);
+      models = await vscode.lm.selectChatModels();
+    }
+  } else {
+    models = await vscode.lm.selectChatModels();
+  }
   if (models.length === 0) {
     throw new Error("No AI model available. Install GitHub Copilot in VS Code.");
   }
-  const model = models[0];
-  console.log(`[Yapper] Summarize using vscode.lm: ${model.name}`);
+  const selected = models[0];
+  console.log(`[Yapper] Using vscode.lm: ${selected.name} (${selected.vendor}/${selected.family})`);
 
   const messages = [
     vscode.LanguageModelChatMessage.User(SUMMARIZE_SYSTEM_PROMPT),
     vscode.LanguageModelChatMessage.User(`Conversation:\n\n${historyText}`),
   ];
 
-  const response = await model.sendRequest(messages, {}, token);
+  const response = await selected.sendRequest(messages, {}, token);
   const chunks: string[] = [];
   for await (const fragment of response.text) {
     chunks.push(fragment);

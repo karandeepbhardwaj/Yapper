@@ -17,6 +17,9 @@ import type {
   SummarizeResultResponse,
   CommandRequest,
   CommandResultResponse,
+  ListModelsRequest,
+  ListModelsResponse,
+  ModelInfo,
 } from "./protocol";
 import { refineWithCopilot, handleConversation, handleSummarize, handleCommand } from "./copilot-bridge";
 
@@ -121,6 +124,9 @@ function startServer(context: vscode.ExtensionContext) {
             case "command":
               await handleCommandMessage(ws, message as CommandRequest, tokenSource);
               break;
+            case "list-models":
+              await handleListModels(ws, message as ListModelsRequest);
+              break;
             default:
               sendError(ws, (message as { id?: string }).id || "unknown", `Unknown message type: ${(message as { type: string }).type}`);
           }
@@ -201,6 +207,7 @@ async function handleRefine(
     tokenSource.token,
     message.styleOverrides,
     message.codeMode,
+    message.model,
   );
 
   const response: ResultResponse = {
@@ -244,7 +251,8 @@ async function handleConversationMessage(
         };
         ws.send(JSON.stringify(chunkResponse));
       }
-    }
+    },
+    message.model,
   );
 
   if (ws.readyState === WebSocket.OPEN) {
@@ -272,7 +280,7 @@ async function handleSummarizeMessage(
     `[Yapper] Summarizing conversation (${message.history.length} turns)`
   );
 
-  const result = await handleSummarize(message.history, tokenSource.token);
+  const result = await handleSummarize(message.history, tokenSource.token, message.model);
 
   if (ws.readyState === WebSocket.OPEN) {
     const response: SummarizeResultResponse = {
@@ -302,7 +310,8 @@ async function handleCommandMessage(
     message.style,
     message.styleOverrides,
     message.codeMode,
-    tokenSource.token
+    tokenSource.token,
+    message.model,
   );
 
   const response: CommandResultResponse = {
@@ -315,6 +324,31 @@ async function handleCommandMessage(
 
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(response));
+  }
+}
+
+async function handleListModels(ws: WebSocket, message: ListModelsRequest) {
+  try {
+    const models = await vscode.lm.selectChatModels();
+    const modelList: ModelInfo[] = models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      vendor: m.vendor,
+      family: m.family,
+    }));
+
+    const response: ListModelsResponse = {
+      type: "models-list",
+      id: message.id,
+      models: modelList,
+    };
+
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(response));
+    }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Failed to list models";
+    sendError(ws, message.id, errorMessage);
   }
 }
 
