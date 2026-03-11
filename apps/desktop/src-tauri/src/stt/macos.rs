@@ -150,27 +150,38 @@ pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
     // Write PID so orphaned recorders can be killed on next launch
     let _ = std::fs::write(PID_FILE, child.id().to_string());
 
+    // Store child IMMEDIATELY so stop_recognition can find it during the sleep
+    *RECORDER_PROCESS.lock().map_err(|e| e.to_string())? = Some(child);
+
     // Give Swift time to compile (first run) and start recording
     tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
     // Clean up the temp script file after Swift has compiled it
     let _ = std::fs::remove_file(&script_path);
 
-    *RECORDER_PROCESS.lock().map_err(|e| e.to_string())? = Some(child);
     Ok(())
 }
 
 pub async fn stop_recognition() -> Result<String, String> {
     // Stop recording -- send SIGINT so recorder.stop() is called to finalize WAV
     if let Some(mut child) = RECORDER_PROCESS.lock().map_err(|e| e.to_string())?.take() {
-        unsafe { libc::kill(child.id() as i32, libc::SIGINT); }
-        // Wait for process to finish (recorder.stop() needs time to finalize)
-        match child.wait() {
-            Ok(_) => {}
-            Err(_) => {
-                // Force kill if it didn't stop
-                unsafe { libc::kill(child.id() as i32, libc::SIGKILL); }
-                let _ = child.wait();
+        let pid = child.id() as i32;
+        unsafe { libc::kill(pid, libc::SIGINT); }
+
+        // Wait up to 3 seconds for graceful exit, then force kill
+        let start = std::time::Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,     // exited
+                Ok(None) => {             // still running
+                    if start.elapsed().as_secs() >= 3 {
+                        unsafe { libc::kill(pid, libc::SIGKILL); }
+                        let _ = child.wait();
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(_) => break,
             }
         }
         let _ = std::fs::remove_file(PID_FILE);
