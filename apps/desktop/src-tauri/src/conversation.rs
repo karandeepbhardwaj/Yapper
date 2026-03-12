@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tauri::Emitter;
 
-use crate::bridge::{self, ConversationTurnMsg};
+use crate::providers::ConversationTurnMsg;
 use crate::history;
 
 static SESSION: Mutex<Option<ConversationSession>> = Mutex::new(None);
@@ -96,40 +96,23 @@ pub async fn send_conversation_turn(
         content: user_text.clone(),
     }).ok();
 
-    // Dispatch to direct API or VS Code bridge based on settings
+    // Converse via the local Ollama model.
     let settings = crate::commands::get_settings_internal(&app);
     let app_clone = app.clone();
     let session_id_clone = session_id.clone();
-    let result = if settings.ai_provider_mode == "apikey"
-        && !settings.ai_api_key.is_empty()
-        && !settings.ai_provider.is_empty()
-    {
-        crate::ai_provider::send_conversation_turn(
-            prior_history,
-            user_text,
-            &settings.ai_provider,
-            &settings.ai_api_key,
-            &settings.ai_model,
-            move |chunk| {
-                app_clone.emit("conversation-ai-chunk", AiChunkPayload {
-                    session_id: session_id_clone.clone(),
-                    content: chunk,
-                }).ok();
-            },
-        ).await?
-    } else {
-        bridge::send_conversation_turn(
-            prior_history,
-            user_text,
-            move |chunk| {
-                app_clone.emit("conversation-ai-chunk", AiChunkPayload {
-                    session_id: session_id_clone.clone(),
-                    content: chunk,
-                }).ok();
-            },
-            if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
-        ).await?
-    };
+    let result = crate::ai_provider::send_conversation_turn(
+        prior_history,
+        user_text,
+        "ollama",
+        "",
+        &settings.ollama_model,
+        move |chunk| {
+            app_clone.emit("conversation-ai-chunk", AiChunkPayload {
+                session_id: session_id_clone.clone(),
+                content: chunk,
+            }).ok();
+        },
+    ).await?;
 
     // Add assistant turn to session
     {
@@ -182,24 +165,14 @@ pub async fn end_conversation(app: tauri::AppHandle) -> Result<ConversationSumma
         return Err("Conversation has no turns".to_string());
     }
 
-    // Dispatch to direct API or VS Code bridge based on settings
+    // Summarize via the local Ollama model.
     let settings = crate::commands::get_settings_internal(&app);
-    let summary_result = if settings.ai_provider_mode == "apikey"
-        && !settings.ai_api_key.is_empty()
-        && !settings.ai_provider.is_empty()
-    {
-        crate::ai_provider::summarize_conversation(
-            history,
-            &settings.ai_provider,
-            &settings.ai_api_key,
-            &settings.ai_model,
-        ).await
-    } else {
-        bridge::summarize_conversation(
-            history,
-            if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
-        ).await
-    };
+    let summary_result = crate::ai_provider::summarize_conversation(
+        history,
+        "ollama",
+        "",
+        &settings.ollama_model,
+    ).await;
 
     let (summary_text, title, key_points) = match summary_result {
         Ok(r) => (r.summary, r.title, r.key_points),

@@ -1,7 +1,33 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 
-use crate::bridge::{RefinementResult, CommandResult, ConversationResponse, SummarizeResponse, ConversationTurnMsg};
+use crate::providers::ConversationTurnMsg;
+
+#[derive(Debug, Clone)]
+pub struct RefinementResult {
+    pub refined_text: String,
+    pub category: Option<String>,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SummarizeResponse {
+    pub summary: String,
+    pub title: String,
+    pub key_points: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommandResult {
+    pub result: String,
+    pub action: String,
+    pub params: Option<std::collections::HashMap<String, String>>,
+}
 
 // ---------------------------------------------------------------------------
 // Prompt constants
@@ -164,8 +190,52 @@ fn resolve_model<'a>(provider: &str, model: &'a str) -> &'a str {
     match provider {
         "anthropic" => "claude-haiku-4-5-20251001",
         "groq" => "llama-3.3-70b-versatile",
-        _ => "llama-3.3-70b-versatile",
+        "ollama" => "llama3.2",
+        _ => "llama3.2",
     }
+}
+
+/// Base URL for the local Ollama server. Override with YAPPER_OLLAMA_URL.
+fn ollama_base_url() -> String {
+    std::env::var("YAPPER_OLLAMA_URL")
+        .unwrap_or_else(|_| "http://localhost:11434".to_string())
+}
+
+/// Call a local Ollama model via its OpenAI-compatible chat endpoint.
+fn call_ollama(
+    system_prompt: &str,
+    user_prompt: &str,
+    temperature: f64,
+    model: &str,
+) -> Result<String, String> {
+    let body = serde_json::json!({
+        "model": model,
+        "temperature": temperature,
+        "stream": false,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+    });
+
+    let url = format!("{}/v1/chat/completions", ollama_base_url());
+    let mut response = ureq::post(&url)
+        .header("Content-Type", "application/json")
+        .send(body.to_string().as_str())
+        .map_err(|e| format!("Ollama call failed (is `ollama serve` running?): {e}"))?;
+
+    let resp_body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| format!("Ollama read response failed: {e}"))?;
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&resp_body).map_err(|e| format!("Ollama JSON parse failed: {e}"))?;
+
+    parsed["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("Ollama response missing content. Body: {}", resp_body))
 }
 
 fn call_provider_blocking(
@@ -179,6 +249,7 @@ fn call_provider_blocking(
     match provider {
         "groq" => call_groq(api_key, system_prompt, user_prompt, temperature, model),
         "anthropic" => call_anthropic(api_key, system_prompt, user_prompt, temperature, model),
+        "ollama" => call_ollama(system_prompt, user_prompt, temperature, model),
         other => Err(format!("Unknown provider: {}", other)),
     }
 }
@@ -337,6 +408,39 @@ fn call_provider_with_messages_blocking(
                 .as_str()
                 .map(|s| s.to_string())
                 .ok_or_else(|| format!("Anthropic response missing content. Body: {}", resp_body))
+        }
+        "ollama" => {
+            let mut msgs = vec![serde_json::json!({
+                "role": "system",
+                "content": system_prompt
+            })];
+            for m in messages {
+                msgs.push(serde_json::json!({
+                    "role": m.role,
+                    "content": m.content
+                }));
+            }
+            let body = serde_json::json!({
+                "model": model,
+                "temperature": temperature,
+                "stream": false,
+                "messages": msgs
+            });
+            let url = format!("{}/v1/chat/completions", ollama_base_url());
+            let mut response = ureq::post(&url)
+                .header("Content-Type", "application/json")
+                .send(body.to_string().as_str())
+                .map_err(|e| format!("Ollama call failed (is `ollama serve` running?): {e}"))?;
+            let resp_body = response
+                .body_mut()
+                .read_to_string()
+                .map_err(|e| format!("Ollama read response failed: {e}"))?;
+            let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+                .map_err(|e| format!("Ollama JSON parse failed: {e}"))?;
+            parsed["choices"][0]["message"]["content"]
+                .as_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| format!("Ollama response missing content. Body: {}", resp_body))
         }
         other => Err(format!("Unknown provider: {}", other)),
     }

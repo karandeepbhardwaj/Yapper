@@ -37,20 +37,15 @@ export interface ConversationSummary {
 
 export interface AppSettings {
   hotkey: string;
-  stt_engine: "classic" | "modern";
   default_style: string;
   style_overrides: Record<string, string>;
   metrics_enabled: boolean;
   code_mode: boolean;
   recording_mode: string;
   conversation_hotkey: string;
-  ai_provider_mode: string;    // "vscode" | "apikey"
-  ai_provider: string;         // "groq" | "anthropic"
-  ai_api_key: string;          // the actual key
-  vscode_model: string;
-  ai_model: string;
+  ollama_model: string;        // local LLM, e.g. "llama3.2"
+  ollama_url: string;          // e.g. "http://localhost:11434"
   theme: string;               // "light" | "dark" | "system"
-  stt_provider: "whisper" | "native";
   whisper_model: string;
   whisper_language: string;
   streaming_enabled: boolean;
@@ -60,20 +55,15 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   hotkey: "Cmd+Shift+.",
-  stt_engine: "classic",
   default_style: "Professional",
   style_overrides: {},
   metrics_enabled: true,
   code_mode: false,
   recording_mode: "toggle",
   conversation_hotkey: "Cmd+Shift+Y",
-  ai_provider_mode: "vscode",
-  ai_provider: "",
-  ai_api_key: "",
-  vscode_model: "",
-  ai_model: "",
+  ollama_model: "llama3.2",
+  ollama_url: "http://localhost:11434",
   theme: "system",
-  stt_provider: "whisper",
   whisper_model: "",
   whisper_language: "auto",
   streaming_enabled: true,

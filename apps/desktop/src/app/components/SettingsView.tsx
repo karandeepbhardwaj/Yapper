@@ -522,40 +522,17 @@ export function SettingsView({
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
   const [showFnTooltip, setShowFnTooltip] = useState(false);
 
-  // AI Provider: bridge status polling
-  const [bridgeConnected, setBridgeConnected] = useState<boolean | null>(null);
+  // Local LLM (Ollama): server status polling
+  const [ollamaConnected, setOllamaConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (settings.ai_provider_mode !== "vscode") return;
     const check = () => {
-      invoke<boolean>("check_bridge_status").then(setBridgeConnected).catch(() => setBridgeConnected(false));
+      invoke<boolean>("check_ollama_status").then(setOllamaConnected).catch(() => setOllamaConnected(false));
     };
     check();
     const interval = setInterval(check, 5000);
     return () => clearInterval(interval);
-  }, [settings.ai_provider_mode]);
-
-  // AI Provider: bridge models
-  const [bridgeModels, setBridgeModels] = useState<{id: string; name: string; vendor: string; family: string}[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [refreshSpin, setRefreshSpin] = useState(false);
-
-  const fetchBridgeModels = useCallback(() => {
-    setModelsLoading(true);
-    invoke<{id: string; name: string; vendor: string; family: string}[]>("list_bridge_models")
-      .then((models) => setBridgeModels(models))
-      .catch((e) => {
-        console.error("Failed to list models:", e);
-        setBridgeModels([]);
-      })
-      .finally(() => setModelsLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (bridgeConnected && settings.ai_provider_mode === "vscode") {
-      fetchBridgeModels();
-    }
-  }, [bridgeConnected, settings.ai_provider_mode, fetchBridgeModels]);
 
   // Speech Recognition: model status
   const [modelStatus, setModelStatus] = useState<{
@@ -587,14 +564,13 @@ export function SettingsView({
     };
   }, []);
 
-  // AI Provider: API key test
+  // Local LLM: model test
   const [keyTestResult, setKeyTestResult] = useState<"idle" | "testing" | "success" | "error">("idle");
-  const [showKey, setShowKey] = useState(false);
 
-  const testKey = async () => {
+  const testModel = async () => {
     setKeyTestResult("testing");
     try {
-      await invoke("test_api_key", { provider: settings.ai_provider, apiKey: settings.ai_api_key });
+      await invoke("test_ollama", { model: settings.ollama_model });
       setKeyTestResult("success");
     } catch {
       setKeyTestResult("error");
@@ -824,19 +800,6 @@ export function SettingsView({
             />
           </SettingRow>
 
-          {!isMac && (
-            <SettingRow
-              label="STT Engine"
-              description="Classic uses system speech; Modern uses enhanced recognition"
-            >
-              <SegmentedControl
-                options={[{ label: "Classic", value: "classic" }, { label: "Modern", value: "modern" }]}
-                value={settings.stt_engine}
-                onChange={(v) => update({ stt_engine: v })}
-              />
-            </SettingRow>
-          )}
-
         </SectionCard>
 
         {/* Speech Recognition */}
@@ -941,7 +904,7 @@ export function SettingsView({
                           </span>
                         ) : m.downloaded ? (
                           <button
-                            onClick={() => update({ whisper_model: m.name, stt_provider: "whisper" })}
+                            onClick={() => update({ whisper_model: m.name })}
                             style={{
                               padding: "5px 12px",
                               borderRadius: 8,
@@ -1080,245 +1043,90 @@ export function SettingsView({
           </SettingRow>
         </SectionCard>
 
-        {/* AI Provider */}
+        {/* Local AI (Ollama) */}
         <SectionCard>
-          <SectionHeader>AI Provider</SectionHeader>
+          <SectionHeader>Local AI (Ollama)</SectionHeader>
 
-          <SettingRow label="Mode" description="How Yapper calls the AI" hint="VS Code: uses GitHub Copilot through the VS Code extension. API Key: calls Groq or Anthropic directly, no VS Code needed.">
-            <SegmentedControl
-              options={[{ label: "VS Code", value: "vscode" }, { label: "API Key", value: "apikey" }]}
-              value={settings.ai_provider_mode}
-              onChange={(v) => update({ ai_provider_mode: v })}
+          <SettingRow
+            label="Status"
+            description={ollamaConnected === false ? "Ollama not reachable — run `ollama serve`" : undefined}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: ollamaConnected === null ? "#aaa" : ollamaConnected ? "#34c759" : "#ff3b30",
+                flexShrink: 0,
+              }} />
+              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--yapper-text-primary)" }}>
+                {ollamaConnected === null ? "Checking" : ollamaConnected ? "Connected" : "Not running"}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow
+            label="Model"
+            description="Local model pulled via `ollama pull`"
+            hint="Examples: llama3.2, llama3.1, mistral, qwen2.5. Run `ollama pull llama3.2` once before using."
+          >
+            <input
+              type="text"
+              value={settings.ollama_model}
+              onChange={(e) => update({ ollama_model: e.target.value })}
+              placeholder="llama3.2"
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--yapper-border, #e5e5e5)",
+                background: "var(--yapper-bg-input, #fff)",
+                color: "var(--yapper-text-primary)",
+                fontSize: 13,
+                width: 180,
+              }}
             />
           </SettingRow>
 
-          {settings.ai_provider_mode === "vscode" && (
-            <SettingRow
-              label="Status"
-              description={bridgeConnected === false ? "VS Code extension not detected" : undefined}
+          <SettingRow label="Server URL" description="Where Ollama is listening">
+            <input
+              type="text"
+              value={settings.ollama_url}
+              onChange={(e) => update({ ollama_url: e.target.value })}
+              placeholder="http://localhost:11434"
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--yapper-border, #e5e5e5)",
+                background: "var(--yapper-bg-input, #fff)",
+                color: "var(--yapper-text-primary)",
+                fontSize: 13,
+                width: 220,
+              }}
+            />
+          </SettingRow>
+
+          <SettingRow label="Test" description="Check the model responds">
+            <button
+              onClick={testModel}
+              disabled={keyTestResult === "testing" || !settings.ollama_model}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 10,
+                border: "1px solid var(--yapper-border, #e5e5e5)",
+                background: keyTestResult === "success" ? "#34c759"
+                  : keyTestResult === "error" ? "#ff3b30" : "var(--yapper-bg-input, #fff)",
+                color: keyTestResult === "success" || keyTestResult === "error" ? "#fff" : "var(--yapper-text-primary)",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: keyTestResult === "testing" || !settings.ollama_model ? "not-allowed" : "pointer",
+                opacity: !settings.ollama_model ? 0.5 : 1,
+              }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  background: bridgeConnected === null ? "#aaa" : bridgeConnected ? "#34c759" : "#ff3b30",
-                  flexShrink: 0,
-                }} />
-                <span style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "var(--yapper-text-primary)",
-                }}>
-                  {bridgeConnected === null ? "Checking" : bridgeConnected ? "Connected" : "Disconnected"}
-                </span>
-                {bridgeConnected === false && (
-                  <button
-                    onClick={() => invoke("open_vscode").catch(console.error)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "5px 12px",
-                      borderRadius: 10,
-                      border: "1px solid var(--yapper-border, #e5e5e5)",
-                      background: "var(--yapper-surface-low, #f5f5f5)",
-                      color: "var(--yapper-accent)",
-                      fontSize: 12,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Open <ExternalLink style={{ width: 10, height: 10 }} />
-                  </button>
-                )}
-              </div>
-            </SettingRow>
-          )}
-
-          {settings.ai_provider_mode === "vscode" && (
-            <SettingRow label="Model" description={!bridgeConnected ? "Connect VS Code to see available models" : undefined}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <select
-                  value={settings.vscode_model}
-                  onChange={(e) => update({ vscode_model: e.target.value })}
-                  disabled={!bridgeConnected || modelsLoading}
-                  style={{
-                    padding: "8px 14px",
-                    paddingRight: 30,
-                    borderRadius: 10,
-                    border: "1px solid var(--yapper-border, #ddd)",
-                    background: "var(--yapper-surface-low, #f5f5f5)",
-                    color: "var(--yapper-text-primary)",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: bridgeConnected ? "pointer" : "not-allowed",
-                    opacity: bridgeConnected ? 1 : 0.5,
-                    outline: "none",
-                    minWidth: 140,
-                    appearance: "none",
-                    WebkitAppearance: "none",
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "right 12px center",
-                  }}
-                >
-                  <option value="">Auto (first available)</option>
-                  {bridgeModels.map((m) => (
-                    <option key={m.id} value={m.family}>{m.name} ({m.vendor})</option>
-                  ))}
-                </select>
-                {bridgeConnected && (
-                  <motion.button
-                    onClick={() => {
-                      fetchBridgeModels();
-                      setRefreshSpin(true);
-                      setTimeout(() => setRefreshSpin(false), 800);
-                    }}
-                    disabled={modelsLoading}
-                    animate={{ rotate: refreshSpin ? 360 : 0 }}
-                    transition={{ duration: refreshSpin ? 0.8 : 0, ease: "easeInOut" }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 8,
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "var(--yapper-text-secondary)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <RefreshCw style={{ width: 14, height: 14 }} />
-                  </motion.button>
-                )}
-              </div>
-            </SettingRow>
-          )}
-
-          {settings.ai_provider_mode === "apikey" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <SettingRow label="Provider">
-                <SegmentedControl
-                  options={[{ label: "Groq", value: "groq" }, { label: "Anthropic", value: "anthropic" }]}
-                  value={settings.ai_provider || "groq"}
-                  onChange={(v) => update({ ai_provider: v })}
-                />
-              </SettingRow>
-
-              <SettingRow label="Model">
-                <select
-                  value={settings.ai_model}
-                  onChange={(e) => update({ ai_model: e.target.value })}
-                  style={{
-                    padding: "8px 14px",
-                    paddingRight: 30,
-                    borderRadius: 10,
-                    border: "1px solid var(--yapper-border, #ddd)",
-                    background: "var(--yapper-surface-low, #f5f5f5)",
-                    color: "var(--yapper-text-primary)",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    outline: "none",
-                    minWidth: 140,
-                    appearance: "none",
-                    WebkitAppearance: "none",
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "right 12px center",
-                  }}
-                >
-                  {(settings.ai_provider || "groq") === "anthropic" ? (
-                    <>
-                      <option value="">Claude Haiku 4.5 (default)</option>
-                      <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-                      <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="">Llama 3.3 70B (default)</option>
-                      <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-                    </>
-                  )}
-                </select>
-              </SettingRow>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--yapper-text-primary)" }}>
-                  API Key
-                </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    type={showKey ? "text" : "password"}
-                    value={settings.ai_api_key}
-                    onChange={(e) => update({ ai_api_key: e.target.value })}
-                    placeholder="Paste your API key"
-                    style={{
-                      flex: 1,
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: "1px solid var(--yapper-border, #ddd)",
-                      background: "var(--yapper-surface-low, #f5f5f5)",
-                      color: "var(--yapper-text-primary)",
-                      fontSize: 13,
-                      outline: "none",
-                    }}
-                  />
-                  <button
-                    onClick={() => setShowKey((v) => !v)}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: "1px solid var(--yapper-border, #ddd)",
-                      background: "var(--yapper-surface-low, #f5f5f5)",
-                      color: "var(--yapper-text-secondary)",
-                      fontSize: 12,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {showKey ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button
-                  onClick={testKey}
-                  disabled={keyTestResult === "testing" || !settings.ai_api_key}
-                  style={{
-                    padding: "7px 16px",
-                    borderRadius: 10,
-                    border: "none",
-                    background: keyTestResult === "success"
-                      ? "#34c759"
-                      : keyTestResult === "error"
-                      ? "#ff3b30"
-                      : "#DA7756",
-                    color: "#fff",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: keyTestResult === "testing" || !settings.ai_api_key ? "not-allowed" : "pointer",
-                    opacity: !settings.ai_api_key ? 0.5 : 1,
-                    transition: "background 0.2s",
-                  }}
-                >
-                  {keyTestResult === "testing"
-                    ? "Testing…"
-                    : keyTestResult === "success"
-                    ? "Key valid"
-                    : keyTestResult === "error"
-                    ? "Key invalid"
-                    : "Test Key"}
-                </button>
-              </div>
-            </div>
-          )}
+              {keyTestResult === "testing" ? "Testing…"
+                : keyTestResult === "success" ? "Works!"
+                : keyTestResult === "error" ? "Failed" : "Test model"}
+            </button>
+          </SettingRow>
         </SectionCard>
 
         {/* Style */}

@@ -1,7 +1,6 @@
 use crate::ai_provider;
-use crate::bridge;
 use crate::providers::{
-    AiProvider, CommandResult, ConversationResponse, Intent, RefinementResult,
+    AiProvider, CommandResult, ConversationResponse, ConversationTurnMsg, Intent, RefinementResult,
     StyleOverrides, SummaryResult,
 };
 
@@ -83,7 +82,7 @@ impl AiProvider for DirectAiProvider {
 
     fn converse(
         &self,
-        history: &[bridge::ConversationTurnMsg],
+        history: &[ConversationTurnMsg],
         user_message: &str,
         on_chunk: Option<Box<dyn Fn(&str) + Send>>,
     ) -> Result<ConversationResponse, String> {
@@ -111,7 +110,7 @@ impl AiProvider for DirectAiProvider {
 
     fn summarize(
         &self,
-        history: &[bridge::ConversationTurnMsg],
+        history: &[ConversationTurnMsg],
     ) -> Result<SummaryResult, String> {
         let result =
             tokio::runtime::Handle::current().block_on(ai_provider::summarize_conversation(
