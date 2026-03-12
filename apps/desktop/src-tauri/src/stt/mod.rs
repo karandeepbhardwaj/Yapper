@@ -84,30 +84,52 @@ pub async fn stop() -> Result<String, String> {
 }
 
 /// Direct platform STT start (no state management). Used by NativeOsProvider.
+/// Runs block_on in a separate thread to avoid "cannot block inside runtime" panic.
 pub fn platform_start(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let app = app.clone();
-        tokio::runtime::Handle::current().block_on(macos::start_recognition(&app))
+        let handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            handle.block_on(macos::start_recognition(&app))
+        })
+        .join()
+        .map_err(|_| "STT thread panicked".to_string())?
     }
     #[cfg(target_os = "windows")]
     {
         let app = app.clone();
-        tokio::runtime::Handle::current().block_on(windows::start_recognition(&app))
+        let handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            handle.block_on(windows::start_recognition(&app))
+        })
+        .join()
+        .map_err(|_| "STT thread panicked".to_string())?
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     Err("STT not supported on this platform".to_string())
 }
 
 /// Direct platform STT stop (no state management). Used by NativeOsProvider.
+/// Runs block_on in a separate thread to avoid "cannot block inside runtime" panic.
 pub fn platform_stop() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        tokio::runtime::Handle::current().block_on(macos::stop_recognition())
+        let handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            handle.block_on(macos::stop_recognition())
+        })
+        .join()
+        .map_err(|_| "STT thread panicked".to_string())?
     }
     #[cfg(target_os = "windows")]
     {
-        tokio::runtime::Handle::current().block_on(windows::stop_recognition())
+        let handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            handle.block_on(windows::stop_recognition())
+        })
+        .join()
+        .map_err(|_| "STT thread panicked".to_string())?
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     Err("STT not supported on this platform".to_string())
