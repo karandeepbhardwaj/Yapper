@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { MainWindow } from "./components/MainWindow";
 import { LandingPage } from "./components/LandingPage";
+import { ConversationView } from "./components/ConversationView";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
@@ -13,6 +14,10 @@ declare global {
   interface Window {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     webkitSpeechRecognition: any;
+  }
+  interface Document {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    startViewTransition?: (callback: () => void) => any;
   }
 }
 
@@ -41,8 +46,9 @@ type SpeechRecognitionEventLike = {
 export default function App() {
   const { hotkey, setHotkey, sttEngine, setSttEngine } = useSettings();
   const { latestResult, error, setError } = useTauriEvents();
-  const { historyItems, addItem, clearAll, deleteItem, togglePin } = useHistory();
+  const { historyItems, addItem, refresh, clearAll, deleteItem, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [activeView, setActiveView] = useState<"history" | "conversation">("history");
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
   });
@@ -153,8 +159,72 @@ export default function App() {
     }
   }, []);
 
-  const handleToggleDarkMode = () => {
+  const themeTransitionRef = useRef(false);
+
+  const handleToggleDarkMode = async (e?: React.MouseEvent) => {
+    if (themeTransitionRef.current) return;
+    themeTransitionRef.current = true;
+
     const nowDark = !isDarkMode;
+    const x = e?.clientX ?? window.innerWidth - 40;
+    const y = e?.clientY ?? 20;
+
+    const maxRadius = Math.ceil(
+      Math.sqrt(
+        Math.max(x, window.innerWidth - x) ** 2 +
+        Math.max(y, window.innerHeight - y) ** 2
+      )
+    );
+
+    // Use View Transition API if available (Chromium-based WebViews)
+    if (document.startViewTransition) {
+      document.startViewTransition(() => {
+        if (nowDark) {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
+        setIsDarkMode(nowDark);
+        emit("theme-changed", nowDark ? "dark" : "light");
+      });
+
+      // Light→Dark: dark circle expands FROM toggle (darkness spreads out)
+      // Dark→Light: dark circle shrinks TO toggle (darkness recedes back)
+      const style = document.createElement("style");
+      if (nowDark) {
+        style.textContent = `
+          ::view-transition-old(root) {
+            z-index: 9999;
+            animation: lightRecede 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          ::view-transition-new(root) { z-index: 999; animation: none; }
+          @keyframes lightRecede {
+            from { clip-path: circle(${maxRadius}px at ${x}px ${y}px); }
+            to { clip-path: circle(0px at ${x}px ${y}px); }
+          }
+        `;
+      } else {
+        style.textContent = `
+          ::view-transition-old(root) { z-index: 999; animation: none; }
+          ::view-transition-new(root) {
+            z-index: 9999;
+            animation: lightExpand 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          @keyframes lightExpand {
+            from { clip-path: circle(0px at ${x}px ${y}px); }
+            to { clip-path: circle(${maxRadius}px at ${x}px ${y}px); }
+          }
+        `;
+      }
+      document.head.appendChild(style);
+      setTimeout(() => {
+        style.remove();
+        themeTransitionRef.current = false;
+      }, 700);
+      return;
+    }
+
+    // Fallback: simple toggle with no overlay
     setIsDarkMode(nowDark);
     if (nowDark) {
       document.documentElement.classList.add("dark");
@@ -162,6 +232,7 @@ export default function App() {
       document.documentElement.classList.remove("dark");
     }
     emit("theme-changed", nowDark ? "dark" : "light");
+    themeTransitionRef.current = false;
   };
 
   const handleGetStarted = () => {
@@ -186,6 +257,23 @@ export default function App() {
           >
             <LandingPage onGetStarted={handleGetStarted} />
           </motion.div>
+        ) : activeView === "conversation" ? (
+          <motion.div
+            key="conversation"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.25 }}
+            className="h-screen"
+          >
+            <ConversationView
+              onBack={() => { setActiveView("history"); refresh(); }}
+              onConversationEnded={() => { setActiveView("history"); refresh(); }}
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={handleToggleDarkMode}
+              hotkey={hotkey}
+            />
+          </motion.div>
         ) : (
           <motion.div
             key="main"
@@ -205,6 +293,7 @@ export default function App() {
               onClearHistory={clearAll}
               onDeleteItem={deleteItem}
               onTogglePin={togglePin}
+              onStartConversation={() => setActiveView("conversation")}
             />
           </motion.div>
         )}

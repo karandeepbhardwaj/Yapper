@@ -2,8 +2,17 @@ import * as vscode from "vscode";
 import { WebSocketServer, WebSocket } from "ws";
 import * as http from "http";
 import { BRIDGE_PORT, BRIDGE_HOST } from "./protocol";
-import type { RefineRequest, ResultResponse, ErrorResponse } from "./protocol";
-import { refineWithCopilot } from "./copilot-bridge";
+import type {
+  IncomingMessage,
+  ResultResponse,
+  ErrorResponse,
+  ConversationRequest,
+  ConversationChunkResponse,
+  ConversationResultResponse,
+  SummarizeRequest,
+  SummarizeResultResponse,
+} from "./protocol";
+import { refineWithCopilot, handleConversation, handleSummarize } from "./copilot-bridge";
 
 let server: http.Server | undefined;
 let wss: WebSocketServer | undefined;
@@ -65,54 +74,33 @@ function startServer(context: vscode.ExtensionContext) {
 
     ws.on("message", async (data: Buffer) => {
       try {
-        const message: RefineRequest = JSON.parse(data.toString());
-
-        if (message.type !== "refine") {
-          sendError(ws, message.id || "unknown", `Unknown message type: ${message.type}`);
-          return;
-        }
-
-        if (!message.rawText || message.rawText.trim().length === 0) {
-          sendError(ws, message.id, "Empty transcript received");
-          return;
-        }
-
-        console.log(
-          `[Yapper] Refining text (${message.rawText.length} chars, style: ${message.style || "Professional"})`
-        );
-
+        const message: IncomingMessage = JSON.parse(data.toString());
         const tokenSource = new vscode.CancellationTokenSource();
-
-        // Handle client disconnect during processing
         ws.on("close", () => tokenSource.cancel());
 
         try {
-          const result = await refineWithCopilot(
-            message.rawText,
-            message.style || "Professional",
-            tokenSource.token
-          );
-
-          const response: ResultResponse = {
-            type: "result",
-            id: message.id,
-            refinedText: result.refinedText,
-            category: result.category,
-            title: result.title,
-          };
-
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(response));
+          switch (message.type) {
+            case "refine":
+              await handleRefine(ws, message, tokenSource);
+              break;
+            case "conversation":
+              await handleConversationMessage(ws, message, tokenSource);
+              break;
+            case "summarize":
+              await handleSummarizeMessage(ws, message, tokenSource);
+              break;
+            default:
+              sendError(ws, (message as { id?: string }).id || "unknown", `Unknown message type: ${(message as { type: string }).type}`);
           }
         } catch (err) {
+          const id = (message as { id?: string }).id || "unknown";
           const errorMessage =
             err instanceof vscode.LanguageModelError
               ? `Copilot error [${err.code}]: ${err.message}`
               : err instanceof Error
               ? err.message
-              : "Unknown error during refinement";
-
-          sendError(ws, message.id, errorMessage);
+              : "Unknown error";
+          sendError(ws, id, errorMessage);
         } finally {
           tokenSource.dispose();
         }
@@ -159,6 +147,109 @@ function startServer(context: vscode.ExtensionContext) {
     server = undefined;
     updateStatusBar();
   });
+}
+
+async function handleRefine(
+  ws: WebSocket,
+  message: IncomingMessage & { type: "refine" },
+  tokenSource: vscode.CancellationTokenSource
+) {
+  if (!message.rawText || message.rawText.trim().length === 0) {
+    sendError(ws, message.id, "Empty transcript received");
+    return;
+  }
+
+  console.log(
+    `[Yapper] Refining text (${message.rawText.length} chars, style: ${message.style || "Professional"})`
+  );
+
+  const result = await refineWithCopilot(
+    message.rawText,
+    message.style || "Professional",
+    tokenSource.token
+  );
+
+  const response: ResultResponse = {
+    type: "result",
+    id: message.id,
+    refinedText: result.refinedText,
+    category: result.category,
+    title: result.title,
+  };
+
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(response));
+  }
+}
+
+async function handleConversationMessage(
+  ws: WebSocket,
+  message: ConversationRequest,
+  tokenSource: vscode.CancellationTokenSource
+) {
+  if (!message.userMessage || message.userMessage.trim().length === 0) {
+    sendError(ws, message.id, "Empty conversation message received");
+    return;
+  }
+
+  console.log(
+    `[Yapper] Conversation turn (${message.history.length} prior turns, ${message.userMessage.length} chars)`
+  );
+
+  const result = await handleConversation(
+    message.history,
+    message.userMessage,
+    tokenSource.token,
+    (chunk) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        const chunkResponse: ConversationChunkResponse = {
+          type: "conversation_chunk",
+          id: message.id,
+          turnId: message.turnId,
+          content: chunk,
+        };
+        ws.send(JSON.stringify(chunkResponse));
+      }
+    }
+  );
+
+  if (ws.readyState === WebSocket.OPEN) {
+    const response: ConversationResultResponse = {
+      type: "conversation_result",
+      id: message.id,
+      turnId: message.turnId,
+      content: result.content,
+    };
+    ws.send(JSON.stringify(response));
+  }
+}
+
+async function handleSummarizeMessage(
+  ws: WebSocket,
+  message: SummarizeRequest,
+  tokenSource: vscode.CancellationTokenSource
+) {
+  if (!message.history || message.history.length === 0) {
+    sendError(ws, message.id, "Empty conversation history");
+    return;
+  }
+
+  console.log(
+    `[Yapper] Summarizing conversation (${message.history.length} turns)`
+  );
+
+  const result = await handleSummarize(message.history, tokenSource.token);
+
+  if (ws.readyState === WebSocket.OPEN) {
+    const response: SummarizeResultResponse = {
+      type: "summarize_result",
+      id: message.id,
+      summary: result.summary,
+      title: result.title,
+      keyPoints: result.keyPoints,
+    };
+    ws.send(JSON.stringify(response));
+  }
 }
 
 function stopServer() {

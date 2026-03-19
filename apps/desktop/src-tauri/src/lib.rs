@@ -1,6 +1,7 @@
 #![allow(unexpected_cfgs)]
 
 pub mod commands;
+pub mod conversation;
 mod hotkey;
 mod stt;
 mod bridge;
@@ -53,8 +54,13 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::change_stt_engine,
+            commands::stop_recording_raw,
             commands::check_speech_permission,
             commands::debug_log,
+            conversation::start_conversation,
+            conversation::send_conversation_turn,
+            conversation::end_conversation,
+            conversation::is_conversation_active,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");
