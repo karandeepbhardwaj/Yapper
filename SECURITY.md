@@ -46,5 +46,5 @@ The Yapper desktop app makes **zero external network requests**. All speech reco
 
 ### Dependencies
 - Rust dependencies are locked via `Cargo.lock`
-- Node dependencies are locked via `pnpm-lock.yaml`
+- Node dependencies are locked via `bun.lock`
 - No runtime downloads or dynamic code loading

@@ -1,6 +1,7 @@
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 /// Whether we're currently using the Fn key monitor (vs. standard global shortcut)
 static USING_FN_KEY: AtomicBool = AtomicBool::new(false);
@@ -80,15 +81,55 @@ fn is_fn_hotkey(hotkey: &str) -> bool {
     hotkey.trim().eq_ignore_ascii_case("fn")
 }
 
-/// Register the initial hotkey at app startup. Loads from saved settings if available.
+fn recording_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+    let hold_mode = crate::commands::HOLD_MODE.load(Ordering::Relaxed);
+    if hold_mode {
+        let app = app.clone();
+        match event.state {
+            ShortcutState::Pressed => {
+                tauri::async_runtime::spawn(async move {
+                    if crate::stt::get_state() == crate::stt::State::Idle {
+                        let _ = crate::commands::start_recording(app).await;
+                    }
+                });
+            }
+            ShortcutState::Released => {
+                tauri::async_runtime::spawn(async move {
+                    if crate::stt::get_state() == crate::stt::State::Recording {
+                        let _ = crate::commands::stop_recording(app).await;
+                    }
+                });
+            }
+        }
+    } else if event.state == ShortcutState::Pressed {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            crate::commands::toggle_recording(&app).await;
+        });
+    }
+}
+
+fn conversation_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+    if event.state == ShortcutState::Pressed {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if crate::conversation::is_active() {
+                let _ = crate::conversation::end_conversation(app).await;
+            } else {
+                let _ = crate::commands::open_main_window(app.clone()).await;
+                let _ = crate::commands::navigate_to(app, "conversation".to_string()).await;
+            }
+        });
+    }
+}
+
+/// Register the initial hotkeys at app startup.
 pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let default_hotkey = if cfg!(target_os = "macos") {
-        "Cmd+Shift+."
-    } else {
-        "Ctrl+Shift+."
-    };
-    let hotkey_str = load_saved_hotkey(app).unwrap_or_else(|| default_hotkey.to_string());
-    log::info!("[Hotkey] Registering: {}", hotkey_str);
+    let settings = load_saved_settings(app);
+    let hotkey_str = settings.0;
+    let convo_hotkey_str = settings.1;
+
+    log::info!("[Hotkey] Registering: {}, conversation: {}", hotkey_str, convo_hotkey_str);
 
     if is_fn_hotkey(&hotkey_str) {
         start_fn_key_monitor(app.handle());
@@ -104,65 +145,119 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             log::warn!("[Hotkey] Failed to parse '{}': {}, using default", hotkey_str, e);
             default_shortcut
         });
-
-        app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
-            if event.state == ShortcutState::Pressed {
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    crate::commands::toggle_recording(&app).await;
-                });
-            }
-        })?;
-        log::info!("[Hotkey] Global shortcut registered successfully");
+        app.global_shortcut().on_shortcut(shortcut, recording_handler)?;
     }
 
+    if let Ok(convo_shortcut) = parse_hotkey(&convo_hotkey_str) {
+        app.global_shortcut().on_shortcut(convo_shortcut, conversation_handler).ok();
+        log::info!("[Hotkey] Conversation shortcut registered: {}", convo_hotkey_str);
+    }
+
+    log::info!("[Hotkey] All shortcuts registered");
     Ok(())
 }
 
-/// Re-register the global shortcut at runtime when the user changes it.
+/// Re-register the recording shortcut at runtime when the user changes it.
 pub fn update(app: &tauri::AppHandle, new_hotkey: &str) -> Result<(), String> {
-    // Stop Fn key monitor if it was active
     if USING_FN_KEY.load(Ordering::Relaxed) {
         stop_fn_key_monitor();
         USING_FN_KEY.store(false, Ordering::Relaxed);
     }
 
-    // Unregister all standard shortcuts
     app.global_shortcut().unregister_all().map_err(|e| e.to_string())?;
 
     if is_fn_hotkey(new_hotkey) {
         start_fn_key_monitor(app);
         USING_FN_KEY.store(true, Ordering::Relaxed);
-        Ok(())
     } else {
         let new_shortcut = parse_hotkey(new_hotkey)?;
-        app.global_shortcut().on_shortcut(new_shortcut, move |app, _shortcut, event| {
-            if event.state == ShortcutState::Pressed {
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    crate::commands::toggle_recording(&app).await;
-                });
-            }
-        }).map_err(|e| e.to_string())?;
-        Ok(())
+        app.global_shortcut().on_shortcut(new_shortcut, recording_handler).map_err(|e| e.to_string())?;
     }
+
+    // Re-register conversation hotkey
+    let convo_hotkey = load_saved_conversation_hotkey(app)
+        .unwrap_or_else(|| if cfg!(target_os = "macos") { "Cmd+Shift+Y".to_string() } else { "Ctrl+Shift+Y".to_string() });
+    if let Ok(convo_shortcut) = parse_hotkey(&convo_hotkey) {
+        app.global_shortcut().on_shortcut(convo_shortcut, conversation_handler).ok();
+    }
+
+    Ok(())
 }
 
-fn load_saved_hotkey(app: &tauri::App) -> Option<String> {
+/// Re-register the conversation shortcut at runtime when user changes it.
+pub fn update_conversation(app: &tauri::AppHandle, new_convo_hotkey: &str) -> Result<(), String> {
+    app.global_shortcut().unregister_all().map_err(|e| e.to_string())?;
+
+    // Re-register main recording hotkey
+    let main_hotkey = load_saved_main_hotkey(app)
+        .unwrap_or_else(|| if cfg!(target_os = "macos") { "Cmd+Shift+.".to_string() } else { "Ctrl+Shift+.".to_string() });
+
+    if USING_FN_KEY.load(Ordering::Relaxed) || is_fn_hotkey(&main_hotkey) {
+        if !USING_FN_KEY.load(Ordering::Relaxed) {
+            start_fn_key_monitor(app);
+            USING_FN_KEY.store(true, Ordering::Relaxed);
+        }
+    } else {
+        let shortcut = parse_hotkey(&main_hotkey).map_err(|e| e.to_string())?;
+        app.global_shortcut().on_shortcut(shortcut, recording_handler).map_err(|e| e.to_string())?;
+    }
+
+    let convo_shortcut = parse_hotkey(new_convo_hotkey)?;
+    app.global_shortcut().on_shortcut(convo_shortcut, conversation_handler).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn load_saved_settings(app: &tauri::App) -> (String, String) {
+    let default_hotkey = if cfg!(target_os = "macos") { "Cmd+Shift+." } else { "Ctrl+Shift+." };
+    let default_convo = if cfg!(target_os = "macos") { "Cmd+Shift+Y" } else { "Ctrl+Shift+Y" };
+
+    let path = match app.path().app_config_dir() {
+        Ok(p) => p.join("settings.json"),
+        Err(_) => return (default_hotkey.to_string(), default_convo.to_string()),
+    };
+    let data = match std::fs::read_to_string(&path) {
+        Ok(d) => d,
+        Err(_) => return (default_hotkey.to_string(), default_convo.to_string()),
+    };
+    let settings: serde_json::Value = match serde_json::from_str(&data) {
+        Ok(v) => v,
+        Err(_) => return (default_hotkey.to_string(), default_convo.to_string()),
+    };
+
+    let hotkey = settings.get("hotkey")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_hotkey)
+        .to_string();
+    let convo = settings.get("conversation_hotkey")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_convo)
+        .to_string();
+
+    (hotkey, convo)
+}
+
+fn load_saved_main_hotkey(app: &tauri::AppHandle) -> Option<String> {
     let path = app.path().app_config_dir().ok()?.join("settings.json");
     let data = std::fs::read_to_string(path).ok()?;
     let settings: serde_json::Value = serde_json::from_str(&data).ok()?;
     settings.get("hotkey")?.as_str().map(|s| s.to_string())
 }
 
+fn load_saved_conversation_hotkey(app: &tauri::AppHandle) -> Option<String> {
+    let path = app.path().app_config_dir().ok()?.join("settings.json");
+    let data = std::fs::read_to_string(path).ok()?;
+    let settings: serde_json::Value = serde_json::from_str(&data).ok()?;
+    settings.get("conversation_hotkey")?.as_str().map(|s| s.to_string())
+}
+
 // --- Fn key monitoring via NSEvent flagsChanged ---
 
 /// Whether the Fn key monitor should fire toggle_recording.
-/// Set to false to disable without removing the monitor.
 static FN_MONITOR_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Store the AppHandle globally for the Fn key callback (same pattern as widget click).
-static mut FN_APP_HANDLE: Option<tauri::AppHandle> = None;
+/// Store the AppHandle globally for the Fn key callback.
+static FN_APP_HANDLE: Mutex<Option<tauri::AppHandle>> = Mutex::new(None);
 
 #[cfg(target_os = "macos")]
 fn start_fn_key_monitor(app: &tauri::AppHandle) {
@@ -174,8 +269,9 @@ fn start_fn_key_monitor(app: &tauri::AppHandle) {
     let handle = app.clone();
 
     std::thread::spawn(move || {
-        unsafe {
-            FN_APP_HANDLE = Some(handle);
+        {
+            let mut guard = FN_APP_HANDLE.lock().unwrap();
+            *guard = Some(handle);
         }
 
         let mask = NSEventMask::FlagsChanged;
@@ -196,12 +292,36 @@ fn start_fn_key_monitor(app: &tauri::AppHandle) {
             let other_mods = raw_flags & ((1 << 17) | (1 << 18) | (1 << 19) | (1 << 20));
 
             if fn_down && !was_down && other_mods == 0 {
-                unsafe {
-                    if let Some(ref handle) = FN_APP_HANDLE {
-                        let h = handle.clone();
+                let hold_mode = crate::commands::HOLD_MODE.load(Ordering::Relaxed);
+                let guard = FN_APP_HANDLE.lock().unwrap();
+                if let Some(ref handle) = *guard {
+                    let h = handle.clone();
+                    if hold_mode {
+                        tauri::async_runtime::spawn(async move {
+                            if crate::stt::get_state() == crate::stt::State::Idle {
+                                let _ = crate::commands::start_recording(h).await;
+                            }
+                        });
+                    } else {
                         tauri::async_runtime::spawn(async move {
                             crate::commands::toggle_recording(&h).await;
                         });
+                    }
+                }
+            }
+
+            if !fn_down && was_down && other_mods == 0 {
+                let hold_mode = crate::commands::HOLD_MODE.load(Ordering::Relaxed);
+                if hold_mode {
+                    if let Ok(guard) = FN_APP_HANDLE.lock() {
+                        if let Some(ref handle) = *guard {
+                            let h = handle.clone();
+                            tauri::async_runtime::spawn(async move {
+                                if crate::stt::get_state() == crate::stt::State::Recording {
+                                    let _ = crate::commands::stop_recording(h).await;
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -218,7 +338,7 @@ fn start_fn_key_monitor(app: &tauri::AppHandle) {
             std::mem::forget(m);
         }
 
-        // Local monitor — returns the event to pass through
+        // Local monitor
         let local_block: RcBlock<dyn Fn(NonNull<NSEvent>) -> *mut NSEvent> =
             RcBlock::new(|event: NonNull<NSEvent>| {
                 handle_fn_event(unsafe { event.as_ref() });

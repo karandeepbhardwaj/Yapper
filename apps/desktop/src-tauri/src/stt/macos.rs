@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 static RECORDER_PROCESS: Lazy<Mutex<Option<std::process::Child>>> = Lazy::new(|| Mutex::new(None));
 static AUDIO_FILE: &str = "/tmp/yapper_recording.wav";
 
-// Swift recorder script — uses native sample rate, records until killed
+// Swift recorder script -- uses native sample rate, records until killed
 static SWIFT_RECORDER: &str = r#"
 import AVFoundation
 import Foundation
@@ -47,7 +47,7 @@ do {
 }
 "#;
 
-// Swift transcriber — uses RunLoop so callbacks fire properly
+// Swift transcriber -- uses RunLoop so callbacks fire properly
 static SWIFT_TRANSCRIBER: &str = r#"
 import Speech
 import Foundation
@@ -79,6 +79,27 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
 CFRunLoopRun()
 "#;
 
+/// Write a Swift script to a temp file with restricted permissions and return the path.
+fn write_temp_swift(prefix: &str, content: &str) -> Result<std::path::PathBuf, String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_file = tempfile::Builder::new()
+        .prefix(prefix)
+        .suffix(".swift")
+        .tempfile_in("/tmp")
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+
+    let (_, path) = temp_file.keep().map_err(|e| format!("Failed to persist temp file: {}", e))?;
+
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to write script: {}", e))?;
+
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("Failed to set permissions: {}", e))?;
+
+    Ok(path)
+}
+
 pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
     let _ = app;
 
@@ -91,14 +112,12 @@ pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
     // Clean up old audio file
     let _ = std::fs::remove_file(AUDIO_FILE);
 
-    // Write recorder script
-    let script_path = "/tmp/yapper_recorder.swift";
-    std::fs::write(script_path, SWIFT_RECORDER)
-        .map_err(|e| format!("Failed to write script: {}", e))?;
+    // Write recorder script to temp file with restricted permissions
+    let script_path = write_temp_swift("yapper_recorder_", SWIFT_RECORDER)?;
 
     // Start recording subprocess
     let child = std::process::Command::new("swift")
-        .args([script_path, AUDIO_FILE])
+        .args([script_path.to_str().unwrap(), AUDIO_FILE])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -108,12 +127,15 @@ pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
     // Give Swift time to compile (first run) and start recording
     std::thread::sleep(std::time::Duration::from_millis(2000));
 
+    // Clean up the temp script file after Swift has compiled it
+    let _ = std::fs::remove_file(&script_path);
+
     *RECORDER_PROCESS.lock().map_err(|e| e.to_string())? = Some(child);
     Ok(())
 }
 
 pub async fn stop_recognition() -> Result<String, String> {
-    // Stop recording — send SIGINT so recorder.stop() is called to finalize WAV
+    // Stop recording -- send SIGINT so recorder.stop() is called to finalize WAV
     if let Some(mut child) = RECORDER_PROCESS.lock().map_err(|e| e.to_string())?.take() {
         unsafe { libc::kill(child.id() as i32, libc::SIGINT); }
         // Wait for process to finish (recorder.stop() needs time to finalize)
@@ -136,21 +158,20 @@ pub async fn stop_recognition() -> Result<String, String> {
     match std::fs::metadata(AUDIO_FILE) {
         Ok(m) if m.len() > 1000 => {}
         Ok(m) => return Err(format!("Recording too short ({} bytes)", m.len())),
-        Err(_) => return Err("Recording file not found — recorder may not have started".to_string()),
+        Err(_) => return Err("Recording file not found -- recorder may not have started".to_string()),
     }
 
-    // Write transcriber script
-    let script_path = "/tmp/yapper_transcriber.swift";
-    std::fs::write(script_path, SWIFT_TRANSCRIBER)
-        .map_err(|e| format!("Failed to write script: {}", e))?;
+    // Write transcriber script to temp file with restricted permissions
+    let script_path = write_temp_swift("yapper_transcriber_", SWIFT_TRANSCRIBER)?;
 
     // Run transcription
     let output = std::process::Command::new("swift")
-        .args([script_path, AUDIO_FILE])
+        .args([script_path.to_str().unwrap(), AUDIO_FILE])
         .output()
         .map_err(|e| format!("Failed to run transcriber: {}", e))?;
 
-    // Clean up audio file
+    // Clean up temp script and audio file
+    let _ = std::fs::remove_file(&script_path);
     let _ = std::fs::remove_file(AUDIO_FILE);
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -159,7 +180,7 @@ pub async fn stop_recognition() -> Result<String, String> {
     if !stdout.is_empty() {
         Ok(stdout)
     } else if stderr.contains("No speech") {
-        Err("No speech detected — try speaking louder".to_string())
+        Err("No speech detected -- try speaking louder".to_string())
     } else if !stderr.is_empty() {
         Err(format!("Transcription error: {}", stderr))
     } else {

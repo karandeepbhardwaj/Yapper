@@ -20,7 +20,7 @@
 
 <!-- How did you test these changes? -->
 
-- [ ] Tested with `pnpm tauri dev`
+- [ ] Tested with `bun tauri dev`
 - [ ] Tested VS Code extension in Extension Development Host
 - [ ] Ran `cargo clippy` with no warnings
 - [ ] Ran `cargo fmt --check` with no issues

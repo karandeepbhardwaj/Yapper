@@ -1,9 +1,34 @@
 use serde::{Deserialize, Serialize};
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use std::time::Duration;
 use tungstenite::{connect, Message, WebSocket, stream::MaybeTlsStream};
 
-const VSCODE_BRIDGE_URL: &str = "ws://127.0.0.1:9147";
+const VSCODE_BRIDGE_BASE: &str = "ws://127.0.0.1:9147";
+
+fn bridge_url() -> String {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").ok()
+    } else {
+        std::env::var("HOME").ok()
+    };
+    let token = home
+        .map(|h| std::path::PathBuf::from(h).join(".yapper").join("bridge-token"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if token.is_empty() {
+        VSCODE_BRIDGE_BASE.to_string()
+    } else {
+        format!("{}?token={}", VSCODE_BRIDGE_BASE, token)
+    }
+}
+
+static BRIDGE_FAIL_COUNT: AtomicU32 = AtomicU32::new(0);
+static BRIDGE_COOLDOWN_UNTIL: AtomicU64 = AtomicU64::new(0);
+const BRIDGE_FAIL_THRESHOLD: u32 = 3;
+const BRIDGE_COOLDOWN_SECS: u64 = 30;
 
 #[derive(Serialize)]
 struct RefineRequest {
@@ -95,7 +120,7 @@ fn refine_text_blocking(
 
     let request = RefineRequest {
         msg_type: "refine".to_string(),
-        id: uuid_simple(),
+        id: crate::store::uuid_simple(),
         raw_text: raw_text.to_string(),
         style,
         style_overrides,
@@ -193,8 +218,8 @@ fn send_conversation_turn_blocking(
 
     let request = ConversationRequest {
         msg_type: "conversation".to_string(),
-        id: uuid_simple(),
-        turn_id: uuid_simple(),
+        id: crate::store::uuid_simple(),
+        turn_id: crate::store::uuid_simple(),
         history: history.to_vec(),
         user_message: user_message.to_string(),
     };
@@ -269,7 +294,7 @@ fn summarize_conversation_blocking(
 
     let request = SummarizeRequest {
         msg_type: "summarize".to_string(),
-        id: uuid_simple(),
+        id: crate::store::uuid_simple(),
         history: history.to_vec(),
     };
 
@@ -311,30 +336,40 @@ fn summarize_conversation_blocking(
 // --- Shared helpers ---
 
 fn open_bridge_socket() -> Result<WebSocket<MaybeTlsStream<TcpStream>>, String> {
-    // Quick TCP check with 500ms timeout — fail fast if bridge isn't running
+    // Circuit breaker check
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let cooldown = BRIDGE_COOLDOWN_UNTIL.load(Ordering::Relaxed);
+    if now < cooldown {
+        return Err("Bridge in cooldown after repeated failures".to_string());
+    }
+
     let addr = "127.0.0.1:9147";
     let stream = TcpStream::connect_timeout(
         &addr.parse().unwrap(),
         Duration::from_millis(500),
-    ).map_err(|e| format!("Bridge not available: {}", e))?;
+    ).map_err(|e| {
+        let fails = BRIDGE_FAIL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        if fails >= BRIDGE_FAIL_THRESHOLD {
+            BRIDGE_COOLDOWN_UNTIL.store(now + BRIDGE_COOLDOWN_SECS, Ordering::Relaxed);
+            BRIDGE_FAIL_COUNT.store(0, Ordering::Relaxed);
+            log::warn!("Bridge failed {} times, cooling down for {}s", fails, BRIDGE_COOLDOWN_SECS);
+        }
+        format!("Bridge not available: {}", e)
+    })?;
     drop(stream);
 
-    let (socket, _response) = connect(VSCODE_BRIDGE_URL)
+    let (socket, _response) = connect(bridge_url())
         .map_err(|e| format!("Failed to connect to VS Code bridge: {}", e))?;
 
-    // Set read timeout — Copilot can take up to 30 seconds to respond
+    // Success -- reset circuit breaker
+    BRIDGE_FAIL_COUNT.store(0, Ordering::Relaxed);
+
     if let MaybeTlsStream::Plain(ref s) = socket.get_ref() {
         let _ = s.set_read_timeout(Some(Duration::from_secs(30)));
     }
 
     Ok(socket)
-}
-
-fn uuid_simple() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{:x}", nanos)
 }

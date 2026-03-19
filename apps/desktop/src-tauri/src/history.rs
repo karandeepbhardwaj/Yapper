@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+
+use crate::store;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationTurn {
@@ -15,7 +16,7 @@ pub struct ConversationData {
     pub key_points: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HistoryEntry {
     pub id: String,
     pub timestamp: String,
@@ -37,19 +38,8 @@ pub struct HistoryEntry {
     pub duration_seconds: Option<u64>,
 }
 
-fn history_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("history.json"))
-}
-
 pub fn get_all(app: &tauri::AppHandle) -> Result<Vec<HistoryEntry>, String> {
-    let path = history_path(app)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&data).map_err(|e| e.to_string())
+    store::load::<HistoryEntry>(app, "history.json")
 }
 
 pub fn add_entry(
@@ -81,9 +71,7 @@ pub fn add_entry(
     // Keep last 100 entries
     entries.truncate(100);
 
-    let path = history_path(app)?;
-    let data = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(&path, data).map_err(|e| e.to_string())
+    store::save(app, "history.json", &entries)
 }
 
 pub fn add_conversation_entry(
@@ -120,9 +108,7 @@ pub fn add_conversation_entry(
     entries.insert(0, entry);
     entries.truncate(100);
 
-    let path = history_path(app)?;
-    let data = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(&path, data).map_err(|e| e.to_string())
+    store::save(app, "history.json", &entries)
 }
 
 pub fn toggle_pin(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
@@ -131,21 +117,17 @@ pub fn toggle_pin(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         let currently_pinned = entry.is_pinned.unwrap_or(false);
         entry.is_pinned = Some(!currently_pinned);
     }
-    let path = history_path(app)?;
-    let data = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(&path, data).map_err(|e| e.to_string())
+    store::save(app, "history.json", &entries)
 }
 
 pub fn delete_entry(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
     let mut entries = get_all(app)?;
     entries.retain(|e| e.id != id);
-    let path = history_path(app)?;
-    let data = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(&path, data).map_err(|e| e.to_string())
+    store::save(app, "history.json", &entries)
 }
 
 pub fn clear(app: &tauri::AppHandle) -> Result<(), String> {
-    let path = history_path(app)?;
+    let path = store::data_path(app, "history.json")?;
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }

@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 import { WebSocketServer, WebSocket } from "ws";
 import * as http from "http";
+import * as crypto from "crypto";
+import * as os from "os";
+import * as path from "path";
+import * as fs from "fs";
 import { BRIDGE_PORT, BRIDGE_HOST } from "./protocol";
 import type {
   IncomingMessage,
@@ -18,6 +22,16 @@ let server: http.Server | undefined;
 let wss: WebSocketServer | undefined;
 let statusBarItem: vscode.StatusBarItem;
 let connectedClients = 0;
+let bridgeToken: string | undefined;
+
+function getBridgeTokenPath(): string {
+  const homeDir = os.homedir();
+  const dir = path.join(homeDir, ".yapper");
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  return path.join(dir, "bridge-token");
+}
 
 export function activate(context: vscode.ExtensionContext) {
   // Create status bar item
@@ -65,7 +79,20 @@ function startServer(context: vscode.ExtensionContext) {
   const httpServer = http.createServer();
   wss = new WebSocketServer({ server: httpServer });
 
-  wss.on("connection", (ws: WebSocket) => {
+  bridgeToken = crypto.randomBytes(32).toString("hex");
+  const tokenPath = getBridgeTokenPath();
+  fs.writeFileSync(tokenPath, bridgeToken, { mode: 0o600 });
+
+  wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
+    // Validate auth token
+    const url = new URL(req.url || "", `http://${BRIDGE_HOST}:${BRIDGE_PORT}`);
+    const token = url.searchParams.get("token");
+    if (token !== bridgeToken) {
+      console.log("[Yapper] Client rejected: invalid token");
+      ws.close(4001, "Invalid token");
+      return;
+    }
+
     connectedClients++;
     updateStatusBar();
     console.log(
@@ -266,6 +293,9 @@ function stopServer() {
     server = undefined;
   }
 
+  try { fs.unlinkSync(getBridgeTokenPath()); } catch {}
+  bridgeToken = undefined;
+
   connectedClients = 0;
   updateStatusBar();
   vscode.window.showInformationMessage("Yapper Bridge stopped.");
@@ -295,4 +325,5 @@ function updateStatusBar() {
 
 export function deactivate() {
   stopServer();
+  try { fs.unlinkSync(getBridgeTokenPath()); } catch {}
 }

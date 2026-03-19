@@ -1,3 +1,68 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Focus styles for accessibility */
+button:focus-visible {
+  outline: 2px solid var(--yapper-accent, #DA7756);
+  outline-offset: 2px;
+}
+
+/* Hover utility classes — replace inline style mutations */
+.hover-opacity {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.hover-opacity:hover {
+  opacity: 1;
+}
+
+.hover-opacity-low {
+  opacity: 0.3;
+  transition: opacity 0.15s;
+}
+.hover-opacity-low:hover {
+  opacity: 1;
+}
+
+.hover-opacity-medium {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+.hover-opacity-medium:hover {
+  opacity: 1;
+}
+
+.hover-opacity-high {
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.hover-opacity-high:hover {
+  opacity: 1;
+}
+
+.icon-btn-hover {
+  opacity: 0.3;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.icon-btn-hover:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.delete-btn-hover {
+  opacity: 0.4;
+  transition: opacity 0.15s, color 0.15s;
+}
+.delete-btn-hover:hover {
+  opacity: 1;
+  color: #e25c5c;
+}
+
+.copy-btn-hover {
+  opacity: 0.3;
+  transition: opacity 0.15s;
+}
+.copy-btn-hover:hover {
+  opacity: 1;
+}

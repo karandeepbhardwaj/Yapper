@@ -21,6 +21,7 @@ function WidgetApp() {
   const [state, setState] = useState<WidgetState>("idle");
   const [isHovered, setIsHovered] = useState(false);
   const [hotkey, setHotkey] = useState("fn");
+  const [convoHotkey, setConvoHotkey] = useState("Cmd+Shift+Y");
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
@@ -57,11 +58,17 @@ function WidgetApp() {
     await invoke("stop_recording");
   };
 
-  // Load hotkey from settings
+  // Load hotkey from settings + listen for changes
   useEffect(() => {
-    invoke<{ hotkey: string }>("get_settings").then((s) => {
+    invoke<{ hotkey: string; conversation_hotkey: string }>("get_settings").then((s) => {
       if (s?.hotkey) setHotkey(s.hotkey);
-    }).catch(() => {});
+      if (s?.conversation_hotkey) setConvoHotkey(s.conversation_hotkey);
+    }).catch((e) => console.error("Failed to load settings:", e));
+
+    const unsub = listen<string>("hotkey-changed", (event) => {
+      if (event.payload) setHotkey(event.payload);
+    });
+    return () => { unsub.then((fn) => fn()); };
   }, []);
 
   const formatHotkey = (hk: string): string => {
@@ -79,7 +86,7 @@ function WidgetApp() {
     // Just reset UI state — no refinement, no paste, no save
     setState("idle");
     // Reset backend STT state without triggering the pipeline
-    invoke("cancel_recording").catch(() => {});
+    invoke("cancel_recording").catch((e) => console.error("Failed to cancel recording:", e));
   };
 
   // Determine pill dimensions
@@ -121,7 +128,9 @@ function WidgetApp() {
               pointerEvents: "auto",
             }}
           >
-            Hold <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(hotkey)}</span> to start dictating
+            <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(hotkey)}</span> to dictate
+            {" · "}
+            <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(convoHotkey)}</span> to yapp
           </motion.div>
         )}
       </AnimatePresence>
@@ -185,6 +194,7 @@ function WidgetApp() {
               {/* Discard (X) button */}
               <motion.button
                 onClick={handleDiscard}
+                aria-label="Cancel recording"
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.85 }}
                 style={{
@@ -285,6 +295,7 @@ function WidgetApp() {
               {/* Stop button */}
               <motion.button
                 onClick={handleStop}
+                aria-label="Stop recording"
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.85 }}
                 style={{

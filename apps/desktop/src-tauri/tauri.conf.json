@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build"
   },
   "app": {
     "macOSPrivateApi": true,
@@ -55,7 +55,22 @@
     ],
     "macOS": {
       "entitlements": null,
-      "infoPlist": "./Info.plist"
+      "infoPlist": "./Info.plist",
+      "dmg": {
+        "background": "icons/dmg-background.png",
+        "windowSize": {
+          "width": 540,
+          "height": 500
+        },
+        "appPosition": {
+          "x": 270,
+          "y": 100
+        },
+        "applicationFolderPosition": {
+          "x": 270,
+          "y": 350
+        }
+      }
     }
   }
 }

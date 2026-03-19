@@ -10,7 +10,7 @@ Thanks for your interest in contributing to Yapper! This guide will help you get
 
 - **Rust** 1.75+ ([rustup.rs](https://rustup.rs))
 - **Node.js** 20+ ([nodejs.org](https://nodejs.org))
-- **pnpm** 9+ (`npm install -g pnpm`)
+- **Bun** (latest) ([bun.sh](https://bun.sh))
 - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
 - **Windows**: Visual Studio Build Tools with C++ workload
 - **VS Code** with the Yapper Bridge extension (for testing refinement)
@@ -20,7 +20,7 @@ Thanks for your interest in contributing to Yapper! This guide will help you get
 ```bash
 git clone https://github.com/karandeepbhardwaj/Yapper.git
 cd Yapper
-pnpm install
+bun install
 ```
 
 ---
@@ -31,7 +31,7 @@ pnpm install
 
 ```bash
 # Start the Tauri dev server with hot reload
-pnpm tauri dev
+bun tauri dev
 ```
 
 This launches both the Vite frontend dev server and the Rust backend simultaneously.
@@ -120,7 +120,7 @@ extensions/vscode-bridge/  — VS Code extension (multi-provider LLM)
    ```
 
 3. **Test your changes**:
-   - Run `pnpm tauri dev` and verify the desktop app works
+   - Run `bun tauri dev` and verify the desktop app works
    - If you changed the VS Code extension, test with the Extension Development Host
    - Run `cargo clippy` and `cargo fmt --check` for Rust changes
 

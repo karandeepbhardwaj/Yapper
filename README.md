@@ -105,7 +105,7 @@ xattr -cr /Applications/Yapper.app
 |---|---|---|
 | Rust | 1.75+ | [rustup.rs](https://rustup.rs) |
 | Node.js | 20+ | [nodejs.org](https://nodejs.org) |
-| pnpm | 9+ | `npm install -g pnpm` |
+| Bun | latest | [bun.sh](https://bun.sh) |
 | Xcode CLI Tools (macOS) | latest | `xcode-select --install` |
 | VS Code | latest | For testing the bridge |
 
@@ -115,13 +115,13 @@ xattr -cr /Applications/Yapper.app
 git clone https://github.com/karandeepbhardwaj/Yapper.git
 cd Yapper
 
-pnpm install
+bun install
 
 # Development mode (hot reload)
-pnpm tauri dev
+bun tauri dev
 
 # Production build
-pnpm tauri build
+bun tauri build
 ```
 
 Build output: `apps/desktop/src-tauri/target/release/bundle/`
@@ -224,7 +224,7 @@ Settings are persisted per-platform in the app config directory:
 | Search | Fuse.js (fuzzy search) |
 | macOS interop | `objc2` + `objc2-app-kit` + `block2` |
 | Windows interop | `windows` crate (Win32 + WinRT) |
-| Build tooling | Vite, esbuild, pnpm workspaces |
+| Build tooling | Vite, esbuild, bun workspaces |
 | CI/CD | GitHub Actions (macOS + Windows builds) |
 
 ---

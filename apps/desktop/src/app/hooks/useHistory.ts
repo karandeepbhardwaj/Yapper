@@ -99,7 +99,8 @@ export function useHistory() {
           setHistoryItems(items);
         }
       })
-      .catch(() => {
+      .catch((e) => {
+        console.error("Failed to load history:", e);
         setHistoryItems(SAMPLE_DATA);
       });
   }, []);
@@ -108,8 +109,8 @@ export function useHistory() {
     try {
       const items = await getHistory();
       setHistoryItems(items.length === 0 ? SAMPLE_DATA : items);
-    } catch {
-      // keep current state
+    } catch (e) {
+      console.error("Failed to refresh history:", e);
     }
   }, []);
 
@@ -120,21 +121,21 @@ export function useHistory() {
   const clearAll = useCallback(async () => {
     try {
       await clearHistoryApi();
-    } catch {}
+    } catch (e) { console.error("Failed to clear history:", e); }
     setHistoryItems([]);
   }, []);
 
   const deleteItem = useCallback(async (id: string) => {
     try {
       await deleteHistoryItemApi(id);
-    } catch {}
+    } catch (e) { console.error("Failed to delete history item:", e); }
     setHistoryItems((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
   const togglePin = useCallback(async (id: string) => {
     try {
       await togglePinItemApi(id);
-    } catch {}
+    } catch (e) { console.error("Failed to toggle pin item:", e); }
     setHistoryItems((prev) =>
       prev.map((item) =>
         item.id === id ? { ...item, isPinned: !item.isPinned } : item

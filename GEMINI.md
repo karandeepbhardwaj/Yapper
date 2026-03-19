@@ -19,8 +19,8 @@ Yapper is a Tauri v2 desktop app (Rust + React 18) for voice-to-text with AI ref
 ## Commands
 
 ```bash
-pnpm dev                    # Dev mode (Vite + Tauri)
-pnpm tauri build            # Production build (.dmg)
+bun dev                    # Dev mode (Vite + Tauri)
+bun tauri build            # Production build (.dmg)
 cargo check                 # Verify Rust compiles
 cd extensions/vscode-bridge && npm run compile  # Build VS Code extension
 ```

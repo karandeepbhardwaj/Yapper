@@ -39,6 +39,8 @@ export interface AppSettings {
   style_overrides: Record<string, string>;
   metrics_enabled: boolean;
   code_mode: boolean;
+  recording_mode: string;
+  conversation_hotkey: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -48,6 +50,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   style_overrides: {},
   metrics_enabled: true,
   code_mode: false,
+  recording_mode: "toggle",
+  conversation_hotkey: "Cmd+Shift+Y",
 };
 
 export interface DictionaryEntry {

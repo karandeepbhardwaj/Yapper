@@ -47,19 +47,10 @@ pub struct ConversationSummary {
     pub duration_seconds: u64,
 }
 
-fn uuid_simple() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{:x}", nanos)
-}
-
 #[tauri::command]
 pub async fn start_conversation() -> Result<String, String> {
     let mut session = SESSION.lock().map_err(|e| e.to_string())?;
-    let id = uuid_simple();
+    let id = crate::store::uuid_simple();
     *session = Some(ConversationSession {
         id: id.clone(),
         turns: Vec::new(),

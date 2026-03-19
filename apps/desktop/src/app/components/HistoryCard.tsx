@@ -2,6 +2,9 @@ import { useState, useRef } from "react";
 import { Copy, ChevronDown, Check, Star, Pin, Trash2, MessageCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import type { ConversationData } from "../lib/types";
+import { FONT_SIZE, SPACING, BORDER_RADIUS } from "../lib/tokens";
+
+/* Extracted standalone components (Finding #14) */
 
 function CopyButton({ text, isPinned }: { text: string; isPinned?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -11,9 +14,11 @@ function CopyButton({ text, isPinned }: { text: string; isPinned?: boolean }) {
     e.stopPropagation();
     try {
       if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).catch(() => {});
+        navigator.clipboard.writeText(text).catch((err) => console.error("Failed to copy to clipboard:", err));
       }
-    } catch {}
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err);
+    }
     setCopied(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setCopied(false), 800);
@@ -22,7 +27,9 @@ function CopyButton({ text, isPinned }: { text: string; isPinned?: boolean }) {
   return (
     <button
       onClick={handleCopy}
+      aria-label="Copy to clipboard"
       title="Copy"
+      className={copied ? "" : (isPinned ? "hover-opacity-high" : "copy-btn-hover")}
       style={{
         display: "flex",
         alignItems: "center",
@@ -32,11 +39,9 @@ function CopyButton({ text, isPinned }: { text: string; isPinned?: boolean }) {
         cursor: "pointer",
         borderRadius: 4,
         color: isPinned ? "rgba(255,255,255,0.85)" : "var(--yapper-text-secondary)",
-        opacity: copied ? 1 : isPinned ? 0.7 : 0.4,
+        opacity: copied ? 1 : undefined,
         transition: "opacity 0.15s",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.opacity = "0.4"; }}
     >
       {copied
         ? <Check style={{ width: 11, height: 11, color: isPinned ? "#fff" : "var(--yapper-accent)" }} />
@@ -83,7 +88,7 @@ function ConversationTurnBubble({
               : role === "user"
                 ? "#fff"
                 : "var(--yapper-text-secondary)",
-            fontSize: 12,
+            fontSize: FONT_SIZE.sm,
             lineHeight: 1.5,
             ...(isPinnedCard ? {
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 3px rgba(0,0,0,0.1)",
@@ -100,12 +105,14 @@ function ConversationTurnBubble({
 function IconButton({
   onClick,
   title,
+  ariaLabel,
   isPinned,
   isActive,
   children,
 }: {
   onClick: (e: React.MouseEvent) => void;
   title: string;
+  ariaLabel: string;
   isPinned?: boolean;
   isActive?: boolean;
   children: React.ReactNode;
@@ -114,6 +121,8 @@ function IconButton({
     <button
       onClick={onClick}
       title={title}
+      aria-label={ariaLabel}
+      className="icon-btn-hover"
       style={{
         display: "flex",
         alignItems: "center",
@@ -123,16 +132,11 @@ function IconButton({
         borderRadius: 6,
         border: "none",
         cursor: "pointer",
-        opacity: isActive ? 1 : isPinned ? 0.7 : 0.3,
+        opacity: isActive ? 1 : isPinned ? 0.7 : undefined,
         color: isActive
           ? isPinned ? "#fff" : "var(--yapper-accent)"
           : isPinned ? "rgba(255,255,255,0.85)" : "var(--yapper-text-secondary)",
         transition: "opacity 0.15s, transform 0.15s",
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.transform = "scale(1.15)"; }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.opacity = isActive ? "1" : isPinned ? "0.7" : "0.3";
-        e.currentTarget.style.transform = "scale(1)";
       }}
     >
       {children}
@@ -228,7 +232,7 @@ export function HistoryCard({
     ta.style.cssText = "position:fixed;left:-9999px;top:-9999px";
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand("copy"); } catch {}
+    try { document.execCommand("copy"); } catch (e) { console.error("Failed to copy to clipboard:", e); }
     document.body.removeChild(ta);
   };
 
@@ -251,8 +255,8 @@ export function HistoryCard({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
       style={{
-        borderRadius: 16,
-        padding: "16px 18px",
+        borderRadius: BORDER_RADIUS.xl,
+        padding: `${SPACING.lg}px 18px`,
         background: isPinnedCard
           ? "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)"
           : "var(--yapper-surface-lowest, #ffffff)",
@@ -269,7 +273,7 @@ export function HistoryCard({
         transition: "background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease",
       }}
     >
-      {/* Isomorphic depth — pinned only (non-pinned use inset box-shadow) */}
+      {/* Isomorphic depth -- pinned only (non-pinned use inset box-shadow) */}
       {isPinnedCard && (
         <>
           <div
@@ -305,16 +309,16 @@ export function HistoryCard({
         alignItems: "center",
         justifyContent: "space-between",
         marginBottom: 10,
-        gap: 8,
+        gap: SPACING.sm,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, flex: 1, minWidth: 0 }}>
           {isPinnedCard && (
             <div style={{
               display: "flex",
               alignItems: "center",
               gap: 5,
               padding: "2px 8px 2px 6px",
-              borderRadius: 8,
+              borderRadius: BORDER_RADIUS.sm,
               background: "rgba(0,0,0,0.12)",
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
             }}>
@@ -335,7 +339,7 @@ export function HistoryCard({
               style={{
                 display: "inline-block",
                 padding: "3px 10px",
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.sm,
                 fontSize: 9,
                 fontWeight: 600,
                 textTransform: "uppercase",
@@ -356,7 +360,9 @@ export function HistoryCard({
         <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
           <button
             onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+            aria-label="Copy to clipboard"
             title="Copy"
+            className={isCopied ? "" : (isPinnedCard ? "hover-opacity-high" : "hover-opacity-low")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -371,13 +377,11 @@ export function HistoryCard({
               color: isCopied
                 ? isPinnedCard ? "#fff" : "var(--yapper-accent)"
                 : isPinnedCard ? "rgba(255,255,255,0.85)" : "var(--yapper-text-secondary)",
-              opacity: isCopied ? 1 : 0.3,
+              opacity: isCopied ? 1 : undefined,
               transition: "all 0.2s ease",
               fontSize: 10,
               fontWeight: 500,
             }}
-            onMouseEnter={(e) => { if (!isCopied) e.currentTarget.style.opacity = "1"; }}
-            onMouseLeave={(e) => { if (!isCopied) e.currentTarget.style.opacity = "0.3"; }}
           >
             {isCopied ? (
               <>
@@ -392,6 +396,7 @@ export function HistoryCard({
             <IconButton
               onClick={(e) => { e.stopPropagation(); handlePin(); }}
               title={isPinned ? "Unpin" : "Pin"}
+              ariaLabel="Pin item"
               isPinned={isPinnedCard}
               isActive={isPinned}
             >
@@ -408,6 +413,7 @@ export function HistoryCard({
             <IconButton
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
               title="Delete"
+              ariaLabel="Delete item"
               isPinned={isPinnedCard}
             >
               <Trash2 style={{ width: 13, height: 13 }} />
@@ -421,11 +427,11 @@ export function HistoryCard({
         <h3 style={{
           fontFamily: "var(--font-headline, 'Manrope', sans-serif)",
           fontWeight: 700,
-          fontSize: 15,
+          fontSize: FONT_SIZE.lg,
           lineHeight: 1.35,
           letterSpacing: "-0.02em",
           color: isPinnedCard ? "#fff" : "var(--yapper-text-primary)",
-          marginBottom: 8,
+          marginBottom: SPACING.sm,
           display: "-webkit-box",
           WebkitLineClamp: 2,
           WebkitBoxOrient: "vertical",
@@ -439,7 +445,7 @@ export function HistoryCard({
       {/* Refined Text */}
       <div
         style={{
-          fontSize: 13,
+          fontSize: FONT_SIZE.base,
           lineHeight: 1.7,
           color: isPinnedCard ? "rgba(255,255,255,0.9)" : "var(--yapper-text-secondary)",
           display: "-webkit-box",
@@ -458,9 +464,10 @@ export function HistoryCard({
             onClick={(e) => { e.stopPropagation(); setIsConversationExpanded(!isConversationExpanded); }}
             whileHover={{ opacity: 0.8 }}
             whileTap={{ scale: 0.95 }}
+            aria-label="Toggle conversation turns"
             className="flex items-center gap-1.5"
             style={{
-              fontSize: 11,
+              fontSize: FONT_SIZE.xs,
               fontWeight: 500,
               color: isPinnedCard ? "#fff" : "var(--yapper-accent)",
               background: "none",
@@ -496,7 +503,7 @@ export function HistoryCard({
                 <div
                   style={{
                     marginTop: 10,
-                    borderRadius: 12,
+                    borderRadius: BORDER_RADIUS.md,
                     background: isPinnedCard
                       ? "rgba(255,255,255,0.12)"
                       : "var(--yapper-surface-low, rgba(0,0,0,0.02))",
@@ -562,8 +569,8 @@ export function HistoryCard({
                     </div>
                     <ul style={{
                       margin: 0,
-                      paddingLeft: 16,
-                      fontSize: 12,
+                      paddingLeft: SPACING.lg,
+                      fontSize: FONT_SIZE.sm,
                       lineHeight: 1.6,
                       color: isPinnedCard ? "rgba(255,255,255,0.9)" : "var(--yapper-text-secondary)",
                     }}>
@@ -580,7 +587,7 @@ export function HistoryCard({
       )}
 
       {/* Bottom row: Raw Transcript toggle + Timestamp */}
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: BORDER_RADIUS.md }}>
         <div style={{
           display: "flex",
           alignItems: "center",
@@ -591,9 +598,10 @@ export function HistoryCard({
               onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
               whileHover={{ opacity: 0.8 }}
               whileTap={{ scale: 0.95 }}
+              aria-label="Toggle raw transcript"
               className="flex items-center gap-1.5"
               style={{
-                fontSize: 11,
+                fontSize: FONT_SIZE.xs,
                 fontWeight: 500,
                 color: isPinnedCard ? "rgba(255,255,255,0.75)" : "var(--yapper-text-secondary)",
                 background: "none",
@@ -618,7 +626,7 @@ export function HistoryCard({
           )}
 
           <span style={{
-            fontSize: 11,
+            fontSize: FONT_SIZE.xs,
             fontWeight: 400,
             color: isPinnedCard ? "rgba(255,255,255,0.75)" : "var(--yapper-text-secondary)",
             whiteSpace: "nowrap",
@@ -642,7 +650,7 @@ export function HistoryCard({
                   marginTop: 10,
                   padding: 14,
                   borderRadius: 10,
-                  fontSize: 12,
+                  fontSize: FONT_SIZE.sm,
                   lineHeight: 1.7,
                   background: isPinnedCard ? "rgba(0,0,0,0.1)" : "var(--yapper-surface-low, var(--yapper-bg-light))",
                   color: isPinnedCard ? "rgba(255,255,255,0.85)" : "var(--yapper-text-secondary)",
