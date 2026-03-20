@@ -54,6 +54,7 @@ pub fn run() {
             commands::save_settings,
             commands::change_stt_engine,
             commands::check_speech_permission,
+            commands::debug_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

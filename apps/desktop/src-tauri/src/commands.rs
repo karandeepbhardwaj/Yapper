@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
-use crate::{autopaste, bridge, history, hotkey, stt};
+use crate::{autopaste, bridge, history, stt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
@@ -190,14 +190,9 @@ pub async fn toggle_pin_item(app: tauri::AppHandle, id: String) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn change_hotkey(app: tauri::AppHandle, hotkey_str: String) -> Result<(), String> {
-    println!("[Hotkey] change_hotkey called with: '{}'", hotkey_str);
-}
-
-#[tauri::command]
-pub fn debug_log(msg: String) {
-    println!("[FE-DEBUG] {}", msg);
-    if let Err(e) = hotkey::update(&app, &hotkey_str) {
+pub async fn change_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<(), String> {
+    println!("[Hotkey] change_hotkey called with: '{}'", hotkey);
+    if let Err(e) = crate::hotkey::update(&app, &hotkey) {
         println!("[Hotkey] update FAILED: {}", e);
         return Err(e);
     }
@@ -211,9 +206,14 @@ pub fn debug_log(msg: String) {
     } else {
         AppSettings::default()
     };
-    settings.hotkey = hotkey_str;
+    settings.hotkey = hotkey;
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn debug_log(msg: String) {
+    println!("[FE-DEBUG] {}", msg);
 }
 
 #[tauri::command]
