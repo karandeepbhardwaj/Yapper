@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MainWindow } from "./components/MainWindow";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
@@ -9,6 +9,7 @@ export default function App() {
   const { settings, updateSettings } = useSettings();
   const { widgetState, latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem } = useHistory();
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Add new history item when refinement completes
   useEffect(() => {
@@ -17,20 +18,23 @@ export default function App() {
     }
   }, [latestResult, addItem]);
 
-  // Dark mode
+  // Dark mode — check system preference on mount
   useEffect(() => {
-    // Check system preference on mount
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (prefersDark) {
       document.documentElement.classList.add("dark");
+      setIsDarkMode(true);
     }
   }, []);
 
-  const isDarkMode = document.documentElement.classList.contains("dark");
-
   const handleToggleDarkMode = () => {
-    const nowDark = !document.documentElement.classList.contains("dark");
-    document.documentElement.classList.toggle("dark");
+    const nowDark = !isDarkMode;
+    setIsDarkMode(nowDark);
+    if (nowDark) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
     emit("theme-changed", nowDark ? "dark" : "light");
   };
 
