@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::Emitter;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
