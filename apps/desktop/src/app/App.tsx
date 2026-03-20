@@ -1,10 +1,9 @@
 import { useEffect } from "react";
-import { FloatingWidget } from "./components/FloatingWidget";
 import { MainWindow } from "./components/MainWindow";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
-import { startRecording, stopRecording } from "./lib/tauri-bridge";
+import { emit } from "@tauri-apps/api/event";
 
 export default function App() {
   const { settings, updateSettings } = useSettings();
@@ -30,20 +29,14 @@ export default function App() {
   const isDarkMode = document.documentElement.classList.contains("dark");
 
   const handleToggleDarkMode = () => {
+    const nowDark = !document.documentElement.classList.contains("dark");
     document.documentElement.classList.toggle("dark");
-  };
-
-  const handleWidgetStateChange = async (newState: string) => {
-    if (newState === "listening") {
-      await startRecording();
-    } else if (newState === "idle" && widgetState === "listening") {
-      await stopRecording();
-    }
+    emit("theme-changed", nowDark ? "dark" : "light");
   };
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-8 transition-colors duration-300"
+      className="h-screen overflow-hidden"
       style={{
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         background: "var(--background)",
@@ -56,10 +49,6 @@ export default function App() {
         settings={settings}
         onUpdateSettings={updateSettings}
       />
-
-      {settings.showFloatingWidget && (
-        <FloatingWidget state={widgetState} onStateChange={handleWidgetStateChange} />
-      )}
 
       {error && (
         <div

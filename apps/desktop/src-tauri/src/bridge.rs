@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::net::TcpStream;
+use std::time::Duration;
 use tungstenite::{connect, Message};
 
 const VSCODE_BRIDGE_URL: &str = "ws://127.0.0.1:9147";
@@ -22,6 +24,28 @@ struct RefineResponse {
 }
 
 pub async fn refine_text(raw_text: &str) -> Result<String, String> {
+    let raw = raw_text.to_string();
+
+    // Run blocking WebSocket call on a dedicated thread to avoid starving tokio
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        refine_text_blocking(&raw)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?;
+
+    result
+}
+
+fn refine_text_blocking(raw_text: &str) -> Result<String, String> {
+    // Quick TCP check with 500ms timeout — fail fast if bridge isn't running
+    let addr = "127.0.0.1:9147";
+    let stream = TcpStream::connect_timeout(
+        &addr.parse().unwrap(),
+        Duration::from_millis(500),
+    ).map_err(|e| format!("Bridge not available: {}", e))?;
+    drop(stream);
+
+    // Now do the actual WebSocket connection (we know the port is open)
     let request = RefineRequest {
         msg_type: "refine".to_string(),
         id: uuid_simple(),
@@ -36,7 +60,6 @@ pub async fn refine_text(raw_text: &str) -> Result<String, String> {
     socket.send(Message::Text(request_json))
         .map_err(|e| format!("Failed to send message: {}", e))?;
 
-    // Collect response (may come in chunks)
     let mut refined = String::new();
 
     loop {

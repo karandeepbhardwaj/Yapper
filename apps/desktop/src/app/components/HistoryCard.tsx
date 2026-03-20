@@ -2,6 +2,34 @@ import { useState } from "react";
 import { Copy, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
+function formatTimestamp(raw: string): string {
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) return raw; // fallback for pre-existing formatted strings
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const entryDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const time = date.toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  if (entryDay.getTime() === today.getTime()) {
+    return `Today at ${time}`;
+  } else if (entryDay.getTime() === yesterday.getTime()) {
+    return `Yesterday at ${time}`;
+  } else {
+    const dateStr = date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    return `${dateStr} at ${time}`;
+  }
+}
+
 interface HistoryCardProps {
   timestamp: string;
   refinedText: string;
@@ -70,7 +98,7 @@ export function HistoryCard({ timestamp, refinedText, rawTranscript }: HistoryCa
           className="text-xs"
           style={{ color: "var(--claude-text-secondary)" }}
         >
-          {timestamp}
+          {formatTimestamp(timestamp)}
         </span>
       </div>
 

@@ -20,5 +20,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showFloatingWidget: true,
   language: "en-US",
   refinementStyle: "Professional",
-  hotkey: "Alt+Space",
+  hotkey: "Cmd+Shift+.",
 };

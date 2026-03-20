@@ -32,7 +32,7 @@ pub fn add_entry(app: &tauri::AppHandle, raw_transcript: &str, refined_text: &st
     let now = chrono::Local::now();
     let entry = HistoryEntry {
         id: now.timestamp_millis().to_string(),
-        timestamp: now.format("%l:%M %p").to_string().trim().to_string(),
+        timestamp: now.to_rfc3339(),
         refined_text: refined_text.to_string(),
         raw_transcript: raw_transcript.to_string(),
     };

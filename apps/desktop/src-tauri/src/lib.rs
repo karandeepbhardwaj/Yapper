@@ -33,15 +33,29 @@ impl Default for AppSettings {
 
 #[tauri::command]
 async fn start_recording(app: tauri::AppHandle) -> Result<(), String> {
+    if stt::get_state() != stt::State::Idle {
+        return Err("Not idle".to_string());
+    }
     app.emit("stt-state-changed", "listening").map_err(|e| e.to_string())?;
-    stt::start(&app).await.map_err(|e| e.to_string())
+    stt::start(&app).await.map_err(|e| {
+        stt::set_state(stt::State::Idle);
+        app.emit("stt-state-changed", "idle").ok();
+        e.to_string()
+    })
 }
 
 #[tauri::command]
 async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
+    if stt::get_state() != stt::State::Recording {
+        return Err("Not recording".to_string());
+    }
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
 
-    let raw_transcript = stt::stop().await.map_err(|e| e.to_string())?;
+    let raw_transcript = stt::stop().await.map_err(|e| {
+        stt::set_state(stt::State::Idle);
+        app.emit("stt-state-changed", "idle").ok();
+        e.to_string()
+    })?;
 
     // Send to VS Code extension for refinement
     let refined_text = bridge::refine_text(&raw_transcript)
@@ -97,6 +111,7 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         refined_text,
     }).map_err(|e| e.to_string())?;
 
+    stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
 
     Ok(())
