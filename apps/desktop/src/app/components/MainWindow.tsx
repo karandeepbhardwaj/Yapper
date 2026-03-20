@@ -33,9 +33,9 @@ export function MainWindow({ isDarkMode, onToggleDarkMode, historyItems, setting
           data-tauri-drag-region
           style={{
             background: "var(--claude-bg-lighter)",
-            height: 52,
+            height: 38,
             paddingLeft: 78,
-            paddingRight: 16,
+            paddingRight: 12,
             borderBottom: "1px solid var(--claude-border)",
           }}
         >
@@ -82,8 +82,8 @@ export function MainWindow({ isDarkMode, onToggleDarkMode, historyItems, setting
               onClick={onToggleDarkMode}
               className="flex items-center justify-center transition-all duration-200"
               style={{
-                width: 32,
-                height: 32,
+                width: 28,
+                height: 28,
                 borderRadius: 8,
                 background: "var(--claude-bg-light)",
                 border: "1px solid var(--claude-border)",
@@ -112,8 +112,8 @@ export function MainWindow({ isDarkMode, onToggleDarkMode, historyItems, setting
               onClick={() => setIsSettingsOpen(true)}
               className="flex items-center justify-center transition-all duration-200"
               style={{
-                width: 32,
-                height: 32,
+                width: 28,
+                height: 28,
                 borderRadius: 8,
                 background: "var(--claude-bg-light)",
                 border: "1px solid var(--claude-border)",

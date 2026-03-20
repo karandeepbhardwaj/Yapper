@@ -39,29 +39,28 @@ interface HistoryCardProps {
 export function HistoryCard({ timestamp, refinedText, rawTranscript }: HistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const copyTimer = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCopy = () => {
-    // Fallback copy method for when Clipboard API is blocked
+    // Copy text
     try {
-      // Try modern Clipboard API first
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(refinedText).then(() => {
-          setIsCopied(true);
-          setTimeout(() => setIsCopied(false), 2000);
-        }).catch(() => {
-          // Fallback to legacy method
-          fallbackCopy();
-        });
+        navigator.clipboard.writeText(refinedText).catch(fallbackCopy);
       } else {
         fallbackCopy();
       }
-    } catch (err) {
+    } catch {
       fallbackCopy();
     }
+
+    // Show check icon briefly
+    setIsCopied(true);
+    if (copyTimer[0]) clearTimeout(copyTimer[0]);
+    copyTimer[0] = setTimeout(() => setIsCopied(false), 800);
   };
 
   const fallbackCopy = () => {
-    // Create a temporary textarea element
     const textArea = document.createElement("textarea");
     textArea.value = refinedText;
     textArea.style.position = "fixed";
@@ -70,16 +69,15 @@ export function HistoryCard({ timestamp, refinedText, rawTranscript }: HistoryCa
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
-
-    try {
-      document.execCommand('copy');
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy text:', err);
-    }
-
+    try { document.execCommand('copy'); } catch {}
     document.body.removeChild(textArea);
+  };
+
+  // Reset copied state when mouse leaves the card
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    setIsCopied(false);
+    if (copyTimer[0]) clearTimeout(copyTimer[0]);
   };
 
   return (
@@ -103,7 +101,11 @@ export function HistoryCard({ timestamp, refinedText, rawTranscript }: HistoryCa
       </div>
 
       {/* Refined Text */}
-      <div className="relative group">
+      <div
+        className="relative"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={handleMouseLeave}
+      >
         <div
           className="text-sm leading-relaxed mb-3 pr-8"
           style={{ color: "var(--claude-text-primary)" }}
@@ -114,33 +116,19 @@ export function HistoryCard({ timestamp, refinedText, rawTranscript }: HistoryCa
         {/* Copy Button */}
         <button
           onClick={handleCopy}
-          className="absolute top-0 right-0 p-2 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100"
+          className="absolute top-0 right-0 p-2 rounded-lg transition-opacity duration-150"
           style={{
             background: "var(--claude-bg-light)",
             border: "1px solid var(--claude-border)",
+            opacity: isHovered ? 1 : 0,
+            cursor: "pointer",
           }}
         >
-          <AnimatePresence mode="wait">
-            {isCopied ? (
-              <motion.div
-                key="check"
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0 }}
-              >
-                <Check className="w-4 h-4" style={{ color: "var(--claude-orange)" }} />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="copy"
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0 }}
-              >
-                <Copy className="w-4 h-4" style={{ color: "var(--claude-text-secondary)" }} />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {isCopied ? (
+            <Check className="w-4 h-4" style={{ color: "var(--claude-orange)" }} />
+          ) : (
+            <Copy className="w-4 h-4" style={{ color: "var(--claude-text-secondary)" }} />
+          )}
         </button>
       </div>
 
