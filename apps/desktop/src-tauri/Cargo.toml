@@ -25,12 +25,12 @@ libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-cocoa = "0.26"
-objc = "0.2"
-block = "0.1"
+block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSLocale", "NSError", "NSArray"] }
-objc2-speech = { version = "0.3", features = ["SFSpeechRecognizer", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFTranscription", "SFSpeechRecognitionTask"] }
-objc2-avf-audio = { version = "0.3", features = ["AVAudioEngine", "AVAudioNode", "AVAudioIONode", "AVAudioFormat", "AVAudioTypes", "AVAudioBuffer"] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSPanel", "NSWindow", "NSScreen", "NSEvent", "NSColor",
+    "NSView", "NSResponder", "NSApplication", "NSGraphics",
+] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [

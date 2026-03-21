@@ -152,6 +152,10 @@ static mut FN_APP_HANDLE: Option<tauri::AppHandle> = None;
 
 #[cfg(target_os = "macos")]
 fn start_fn_key_monitor(app: &tauri::AppHandle) {
+    use std::ptr::NonNull;
+    use objc2_app_kit::{NSEvent, NSEventMask};
+    use block2::RcBlock;
+
     FN_MONITOR_ACTIVE.store(true, Ordering::Relaxed);
     let handle = app.clone();
 
@@ -160,69 +164,57 @@ fn start_fn_key_monitor(app: &tauri::AppHandle) {
             FN_APP_HANDLE = Some(handle);
         }
 
-        unsafe {
-            use objc::*;
-            use block::ConcreteBlock;
+        let mask = NSEventMask::FlagsChanged;
 
-            // NSFlagsChangedMask = 1 << 12 (NSEventTypeFlagsChanged)
-            let mask: u64 = 1 << 12;
+        fn handle_fn_event(event: &NSEvent) {
+            if !FN_MONITOR_ACTIVE.load(Ordering::Relaxed) {
+                return;
+            }
 
-            // Shared logic for handling Fn flagsChanged events
-            fn handle_fn_event(event: cocoa::base::id) {
+            static FN_WAS_DOWN: AtomicBool = AtomicBool::new(false);
+
+            let flags = event.modifierFlags();
+            let raw_flags: usize = unsafe { std::mem::transmute(flags) };
+            let fn_down = (raw_flags & (1 << 23)) != 0;
+            let was_down = FN_WAS_DOWN.swap(fn_down, Ordering::Relaxed);
+
+            // Shift=17, Ctrl=18, Alt=19, Cmd=20
+            let other_mods = raw_flags & ((1 << 17) | (1 << 18) | (1 << 19) | (1 << 20));
+
+            if fn_down && !was_down && other_mods == 0 {
                 unsafe {
-                    use objc::*;
-                    if !FN_MONITOR_ACTIVE.load(Ordering::Relaxed) {
-                        return;
-                    }
-
-                    static FN_WAS_DOWN: AtomicBool = AtomicBool::new(false);
-
-                    // NSEventModifierFlagFunction = 1 << 23
-                    let flags: u64 = msg_send![event, modifierFlags];
-                    let fn_down = (flags & (1 << 23)) != 0;
-                    let was_down = FN_WAS_DOWN.swap(fn_down, Ordering::Relaxed);
-
-                    // Shift=17, Ctrl=18, Alt=19, Cmd=20
-                    let other_mods = flags & ((1 << 17) | (1 << 18) | (1 << 19) | (1 << 20));
-
-                    // Fire on Fn key DOWN only, with no other modifiers held
-                    if fn_down && !was_down && other_mods == 0 {
-                        if let Some(ref handle) = FN_APP_HANDLE {
-                            let h = handle.clone();
-                            tauri::async_runtime::spawn(async move {
-                                crate::commands::toggle_recording(&h).await;
-                            });
-                        }
+                    if let Some(ref handle) = FN_APP_HANDLE {
+                        let h = handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            crate::commands::toggle_recording(&h).await;
+                        });
                     }
                 }
             }
+        }
 
-            // Global monitor: block returns void
-            let global_block = ConcreteBlock::new(move |event: cocoa::base::id| {
-                handle_fn_event(event);
+        // Global monitor
+        let global_block = RcBlock::new(|event: NonNull<NSEvent>| {
+            handle_fn_event(unsafe { event.as_ref() });
+        });
+
+        let _monitor = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(mask, &global_block);
+        std::mem::forget(global_block);
+        if let Some(m) = _monitor {
+            std::mem::forget(m);
+        }
+
+        // Local monitor — returns the event to pass through
+        let local_block: RcBlock<dyn Fn(NonNull<NSEvent>) -> *mut NSEvent> =
+            RcBlock::new(|event: NonNull<NSEvent>| {
+                handle_fn_event(unsafe { event.as_ref() });
+                event.as_ptr() as *mut NSEvent
             });
-            let global_block = global_block.copy();
 
-            let _monitor: cocoa::base::id = msg_send![
-                class!(NSEvent),
-                addGlobalMonitorForEventsMatchingMask: mask
-                handler: &*global_block
-            ];
-            std::mem::forget(global_block);
-
-            // Local monitor: block MUST return NSEvent* (the event to pass through)
-            let local_block = ConcreteBlock::new(move |event: cocoa::base::id| -> cocoa::base::id {
-                handle_fn_event(event);
-                event // pass the event through
-            });
-            let local_block = local_block.copy();
-
-            let _local_monitor: cocoa::base::id = msg_send![
-                class!(NSEvent),
-                addLocalMonitorForEventsMatchingMask: mask
-                handler: &*local_block
-            ];
-            std::mem::forget(local_block);
+        let _local_monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &local_block) };
+        std::mem::forget(local_block);
+        if let Some(m) = _local_monitor {
+            std::mem::forget(m);
         }
     });
 }
