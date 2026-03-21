@@ -4,20 +4,15 @@ import { Mic, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-// Don't import shared styles — they add borders/backgrounds that break transparency
 
 type WidgetState = "idle" | "listening" | "processing";
 
 function WidgetApp() {
   const [state, setState] = useState<WidgetState>("idle");
-  const dragStartPos = useRef({ x: 0, y: 0 });
-  const didDrag = useRef(false);
   const mouseDownTime = useRef(0);
 
   useEffect(() => {
     const unlistenState = listen<string>("stt-state-changed", (event) => {
-      console.log("[WIDGET] stt-state-changed:", event.payload);
       setState(event.payload as WidgetState);
     });
     const unlistenTheme = listen<string>("theme-changed", (event) => {
@@ -42,36 +37,20 @@ function WidgetApp() {
     };
   }, []);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    dragStartPos.current = { x: e.screenX, y: e.screenY };
+  const handlePointerDown = () => {
     mouseDownTime.current = Date.now();
-    didDrag.current = false;
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (mouseDownTime.current === 0) return;
-    const dx = Math.abs(e.screenX - dragStartPos.current.x);
-    const dy = Math.abs(e.screenY - dragStartPos.current.y);
-    // If moved more than 5px, start dragging
-    if (!didDrag.current && (dx > 5 || dy > 5)) {
-      didDrag.current = true;
-      getCurrentWindow().startDragging();
-    }
   };
 
   const handlePointerUp = async () => {
     const elapsed = Date.now() - mouseDownTime.current;
     mouseDownTime.current = 0;
-
-    // If it was a short press without dragging, treat as click
-    if (!didDrag.current && elapsed < 500) {
+    if (elapsed < 400) {
       if (state === "idle") {
         await invoke("start_recording");
       } else if (state === "listening") {
         await invoke("stop_recording");
       }
     }
-    didDrag.current = false;
   };
 
   return (
@@ -83,14 +62,12 @@ function WidgetApp() {
         alignItems: "center",
         justifyContent: "center",
         background: "transparent",
-        overflow: "visible",
       }}
     >
-      <motion.button
+      {/* Always render the full circle — window resize handles collapse/expand */}
+      <div
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        disabled={state === "processing"}
         style={{
           width: 64,
           height: 64,
@@ -98,56 +75,22 @@ function WidgetApp() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          border: state === "idle" ? "1px solid var(--claude-border)" : "none",
-          outline: "none",
-          cursor: state === "processing" ? "wait" : "grab",
+          cursor: state === "processing" ? "wait" : "pointer",
           background:
             state === "idle"
               ? "var(--claude-bg-lighter)"
               : state === "listening"
               ? "var(--claude-orange)"
               : "var(--claude-orange-dark)",
-          boxShadow: state === "idle" ? "none" : undefined,
+          border: state === "idle" ? "1px solid var(--claude-border)" : "none",
         }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        animate={
-          state === "listening"
-            ? {
-                boxShadow: [
-                  "0 0 0 0 rgba(232, 155, 125, 0.7)",
-                  "0 0 0 16px rgba(232, 155, 125, 0)",
-                ],
-              }
-            : { boxShadow: "0 0 0 0 rgba(0, 0, 0, 0)" }
-        }
-        transition={
-          state === "listening"
-            ? {
-                boxShadow: {
-                  duration: 1.5,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                },
-              }
-            : { boxShadow: { duration: 0.2 } }
-        }
       >
         {state === "idle" && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <Mic style={{ width: 24, height: 24, color: "var(--claude-text-secondary)" }} />
-          </motion.div>
+          <Mic style={{ width: 24, height: 24, color: "var(--claude-text-secondary)" }} />
         )}
 
         {state === "listening" && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            style={{ position: "relative" }}
-          >
+          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Mic style={{ width: 24, height: 24, color: "white" }} />
             <div
               style={{
@@ -162,36 +105,24 @@ function WidgetApp() {
               {[0, 1, 2].map((i) => (
                 <motion.div
                   key={i}
-                  style={{
-                    width: 2,
-                    backgroundColor: "white",
-                    borderRadius: 9999,
-                  }}
+                  style={{ width: 2, backgroundColor: "white", borderRadius: 9999 }}
                   animate={{ height: ["4px", "12px", "4px"] }}
-                  transition={{
-                    duration: 0.6,
-                    repeat: Infinity,
-                    delay: i * 0.15,
-                    ease: "easeInOut",
-                  }}
+                  transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
                 />
               ))}
             </div>
-          </motion.div>
+          </div>
         )}
 
         {state === "processing" && (
           <motion.div
-            initial={{ opacity: 0, rotate: 0 }}
-            animate={{ opacity: 1, rotate: 360 }}
-            transition={{
-              rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-            }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
           >
             <Sparkles style={{ width: 24, height: 24, color: "white" }} />
           </motion.div>
         )}
-      </motion.button>
+      </div>
     </div>
   );
 }
