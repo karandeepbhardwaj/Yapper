@@ -2,7 +2,7 @@
 
 :root {
   --font-size: 16px;
-  --background: #ffffff;
+  --background: #f8f9fa;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
@@ -40,19 +40,25 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* Claude-inspired accent colors */
-  --claude-orange: #CC785C;
-  --claude-orange-light: #E89B7D;
-  --claude-orange-dark: #B85C3D;
-  --claude-bg-light: #F5F5F5;
-  --claude-bg-lighter: #FAFAFA;
-  --claude-text-primary: #1A1A1A;
-  --claude-text-secondary: #666666;
-  --claude-border: #E5E5E5;
+  /* Yapper accent colors */
+  --yapper-accent: #ae3200;
+  --yapper-accent-light: #ffdbd0;
+  --yapper-accent-dark: #852400;
+  --yapper-bg-light: #f3f4f5;
+  --yapper-bg-lighter: #f8f9fa;
+  --yapper-text-primary: #191c1d;
+  --yapper-text-secondary: #474747;
+  --yapper-border: #c6c6c6;
+  --yapper-surface: #f8f9fa;
+  --yapper-surface-low: #f3f4f5;
+  --yapper-surface-lowest: #ffffff;
+  --yapper-surface-high: #e7e8e9;
+  --font-headline: 'Manrope', sans-serif;
+  --font-body: 'Inter', sans-serif;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: #191c1d;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.145 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -87,15 +93,19 @@
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
 
-  /* Claude-inspired accent colors for dark mode */
-  --claude-orange: #E89B7D;
-  --claude-orange-light: #F5B299;
-  --claude-orange-dark: #CC785C;
-  --claude-bg-light: #1F1F1F;
-  --claude-bg-lighter: #2A2A2A;
-  --claude-text-primary: #E5E5E5;
-  --claude-text-secondary: #A3A3A3;
-  --claude-border: #333333;
+  /* Yapper accent colors for dark mode */
+  --yapper-accent: #ffb59e;
+  --yapper-accent-light: #ffdbd0;
+  --yapper-accent-dark: #ae3200;
+  --yapper-bg-light: #2e3132;
+  --yapper-bg-lighter: #191c1d;
+  --yapper-text-primary: #e1e3e4;
+  --yapper-text-secondary: #c6c6c6;
+  --yapper-border: #474747;
+  --yapper-surface: #191c1d;
+  --yapper-surface-low: #2e3132;
+  --yapper-surface-lowest: #121314;
+  --yapper-surface-high: #3a3d3e;
 }
 
 @theme inline {

@@ -26,11 +26,11 @@ export function FloatingWidget({ state, onStateChange }: FloatingWidgetProps) {
       style={{
         background:
           state === "idle"
-            ? "var(--claude-bg-lighter)"
+            ? "var(--yapper-bg-lighter)"
             : state === "listening"
-            ? "var(--claude-orange)"
-            : "var(--claude-orange-dark)",
-        border: state === "idle" ? "1px solid var(--claude-border)" : "none",
+            ? "var(--yapper-accent)"
+            : "var(--yapper-accent-dark)",
+        border: state === "idle" ? "1px solid var(--yapper-border)" : "none",
         cursor: state === "processing" ? "wait" : "pointer",
       }}
       whileHover={{ scale: 1.05 }}
@@ -59,7 +59,7 @@ export function FloatingWidget({ state, onStateChange }: FloatingWidgetProps) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.8 }}
         >
-          <Mic className="w-6 h-6" style={{ color: "var(--claude-text-secondary)" }} />
+          <Mic className="w-6 h-6" style={{ color: "var(--yapper-text-secondary)" }} />
         </motion.div>
       )}
 

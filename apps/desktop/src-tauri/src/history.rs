@@ -9,6 +9,12 @@ pub struct HistoryEntry {
     pub refined_text: String,
     #[serde(rename = "rawTranscript")]
     pub raw_transcript: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, rename = "isPinned", skip_serializing_if = "Option::is_none")]
+    pub is_pinned: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 fn history_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -35,6 +41,9 @@ pub fn add_entry(app: &tauri::AppHandle, raw_transcript: &str, refined_text: &st
         timestamp: now.to_rfc3339(),
         refined_text: refined_text.to_string(),
         raw_transcript: raw_transcript.to_string(),
+        category: None,
+        is_pinned: None,
+        title: None,
     };
 
     entries.insert(0, entry);

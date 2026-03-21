@@ -5,6 +5,9 @@ export interface HistoryItem {
   timestamp: string;
   refinedText: string;
   rawTranscript: string;
+  category?: string;
+  isPinned?: boolean;
+  title?: string;
 }
 
 export interface AppSettings {

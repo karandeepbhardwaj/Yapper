@@ -14,6 +14,14 @@ export default defineConfig({
   },
   assetsInclude: ["**/*.svg", "**/*.csv"],
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        widget: path.resolve(__dirname, "widget.html"),
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
