@@ -40,6 +40,7 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                             #[cfg(target_os = "macos")]
                             {
                                 use std::process::Command;
+                                // Set clipboard
                                 if let Ok(mut child) = Command::new("pbcopy")
                                     .stdin(std::process::Stdio::piped())
                                     .spawn()
@@ -49,10 +50,19 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                                         let _ = stdin.write_all(text_for_paste.as_bytes());
                                     }
                                     let _ = child.wait();
-                                    let _ = Command::new("osascript")
-                                        .args(["-e", "tell application \"System Events\" to keystroke \"v\" using command down"])
-                                        .output();
                                 }
+                                // Small delay then activate the frontmost app and paste
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                                let _ = Command::new("osascript")
+                                    .args(["-e", r#"
+                                        tell application "System Events"
+                                            set frontApp to name of first application process whose frontmost is true
+                                            tell application process frontApp
+                                                keystroke "v" using command down
+                                            end tell
+                                        end tell
+                                    "#])
+                                    .output();
                             }
                         });
 
