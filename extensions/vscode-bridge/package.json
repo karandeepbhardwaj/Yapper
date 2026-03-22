@@ -7,7 +7,9 @@
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -29,10 +31,10 @@
     ]
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && node esbuild.config.mjs",
     "watch": "tsc -watch -p ./",
     "prepackage": "npm run compile",
-    "package": "vsce package"
+    "package": "vsce package --no-dependencies"
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -41,7 +43,8 @@
     "@types/node": "^20",
     "@types/vscode": "^1.90.0",
     "@types/ws": "^8.5.12",
-    "typescript": "^5.5",
-    "@vscode/vsce": "^3"
+    "@vscode/vsce": "^3",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.5"
   }
 }
