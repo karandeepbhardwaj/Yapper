@@ -112,7 +112,7 @@ function WidgetApp() {
               transition={{ duration: 0.15 }}
               style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
             >
-              <Mic style={{ width: 14, height: 14, color: "#e5383b" }} />
+              <Mic style={{ width: 14, height: 14, color: "#ae3200" }} />
             </motion.div>
           )}
           {isListening && (
