@@ -1,0 +1,12 @@
+Read AGENTS.md for full project guidelines. Key rules:
+
+- Tauri v2 (Rust) + React 18 + TypeScript + Vite + Tailwind CSS v4
+- Zero network egress from the desktop app
+- Don't use enigo on macOS — use pbcopy + osascript for paste
+- Don't call AppKit from background threads — use run_on_main_thread
+- Don't resize NSPanel dynamically — handle visual changes in CSS/motion
+- Widget (widget.tsx) is a separate webview — no shared React state with main window
+- Use motion/react for animations, inline styles for custom UI
+- cocoa crate deprecation warnings are expected — don't try to fix
+- Stage specific files when committing, never git add -A
+- No Co-Authored-By lines in commits
