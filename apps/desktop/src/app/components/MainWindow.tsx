@@ -1,7 +1,7 @@
 import { Moon, Sun, Search, Trash2, X, Keyboard } from "lucide-react";
 import { HistoryCard } from "./HistoryCard";
 import { motion, AnimatePresence } from "motion/react";
-import { useState, useMemo, useEffect, useCallback, useRef, type CSSProperties } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Fuse from "fuse.js";
 import type { HistoryItem } from "../lib/types";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";

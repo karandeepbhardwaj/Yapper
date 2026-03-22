@@ -10,7 +10,7 @@ interface SttResult {
 }
 
 export function useTauriEvents() {
-  const [widgetState, setWidgetState] = useState<WidgetState>("idle");
+  const [, setWidgetState] = useState<WidgetState>("idle");
   const [latestResult, setLatestResult] = useState<HistoryItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,5 +42,5 @@ export function useTauriEvents() {
     };
   }, []);
 
-  return { widgetState, setWidgetState, latestResult, error, setError };
+  return { latestResult, error, setError };
 }

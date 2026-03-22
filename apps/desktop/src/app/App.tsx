@@ -8,52 +8,45 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "motion/react";
 
-// Web Speech API type declarations
+// Web Speech API — webkitSpeechRecognition for Tauri WebView
 declare global {
   interface Window {
-    webkitSpeechRecognition: new () => SpeechRecognition;
-    SpeechRecognition: new () => SpeechRecognition;
-  }
-  interface SpeechRecognition extends EventTarget {
-    continuous: boolean;
-    interimResults: boolean;
-    lang: string;
-    start(): void;
-    stop(): void;
-    onresult: ((event: SpeechRecognitionEvent) => void) | null;
-    onerror: ((event: { error: string }) => void) | null;
-    onend: (() => void) | null;
-  }
-  interface SpeechRecognitionEvent {
-    results: SpeechRecognitionResultList;
-    resultIndex: number;
-  }
-  interface SpeechRecognitionResultList {
-    length: number;
-    item(index: number): SpeechRecognitionResult;
-    [index: number]: SpeechRecognitionResult;
-  }
-  interface SpeechRecognitionResult {
-    isFinal: boolean;
-    length: number;
-    item(index: number): SpeechRecognitionAlternative;
-    [index: number]: SpeechRecognitionAlternative;
-  }
-  interface SpeechRecognitionAlternative {
-    transcript: string;
-    confidence: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    webkitSpeechRecognition: any;
   }
 }
 
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+};
+
+type SpeechRecognitionEventLike = {
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      [index: number]: { transcript: string; confidence: number };
+    };
+  };
+  resultIndex: number;
+};
+
 export default function App() {
   const { hotkey, setHotkey } = useSettings();
-  const { widgetState, latestResult, error, setError } = useTauriEvents();
+  const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, clearAll, deleteItem, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
   });
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   // Web Speech API — handles mic capture + speech-to-text
   useEffect(() => {
@@ -61,8 +54,8 @@ export default function App() {
     let isRecognizing = false;
 
     const unlistenStart = listen("start-speech-recognition", () => {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
+      const SpeechRecognitionCtor = window.webkitSpeechRecognition;
+      if (!SpeechRecognitionCtor) {
         console.error("Speech recognition not supported in this WebView");
         invoke("set_transcript", { text: "[Speech recognition not supported — WebView does not support Web Speech API]" });
         return;
@@ -71,12 +64,12 @@ export default function App() {
       finalTranscript = "";
       isRecognizing = true;
 
-      const recognition = new SpeechRecognition();
+      const recognition = new SpeechRecognitionCtor() as SpeechRecognitionLike;
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
         let interim = "";
         for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
