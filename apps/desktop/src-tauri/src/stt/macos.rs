@@ -9,10 +9,14 @@ static SWIFT_RECORDER: &str = r#"
 import AVFoundation
 import Foundation
 
+// Global flag for signal handler (can't capture locals in C signal handlers)
+var globalShouldStop = false
+signal(SIGINT) { _ in globalShouldStop = true }
+signal(SIGTERM) { _ in globalShouldStop = true }
+
 let url = URL(fileURLWithPath: CommandLine.arguments[1])
 try? FileManager.default.removeItem(at: url)
 
-// Use native sample rate from the audio engine
 let engine = AVAudioEngine()
 let nativeRate = engine.inputNode.outputFormat(forBus: 0).sampleRate
 
@@ -32,14 +36,11 @@ do {
     }
     fputs("Recording at \(nativeRate)Hz...\n", stderr)
 
-    // Use flag so recorder.stop() is called to finalize the WAV header
-    var shouldStop = false
-    signal(SIGINT) { _ in shouldStop = true }
-    signal(SIGTERM) { _ in shouldStop = true }
-    while !shouldStop {
+    while !globalShouldStop {
         Thread.sleep(forTimeInterval: 0.05)
     }
     recorder.stop()
+    fputs("Stopped and finalized\n", stderr)
 } catch {
     fputs("Error: \(error)\n", stderr)
     exit(1)
@@ -81,6 +82,15 @@ CFRunLoopRun()
 pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
     let _ = app;
 
+    // Kill any lingering recorder process from previous run
+    if let Some(mut old) = RECORDER_PROCESS.lock().map_err(|e| e.to_string())?.take() {
+        unsafe { libc::kill(old.id() as i32, libc::SIGKILL); }
+        let _ = old.wait();
+    }
+
+    // Clean up old audio file
+    let _ = std::fs::remove_file(AUDIO_FILE);
+
     // Write recorder script
     let script_path = "/tmp/yapper_recorder.swift";
     std::fs::write(script_path, SWIFT_RECORDER)
@@ -95,21 +105,32 @@ pub async fn start_recognition(app: &tauri::AppHandle) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to start recorder: {}", e))?;
 
-    // Give Swift a moment to compile and start
-    std::thread::sleep(std::time::Duration::from_millis(1500));
+    // Give Swift time to compile (first run) and start recording
+    std::thread::sleep(std::time::Duration::from_millis(2000));
 
     *RECORDER_PROCESS.lock().map_err(|e| e.to_string())? = Some(child);
     Ok(())
 }
 
 pub async fn stop_recognition() -> Result<String, String> {
-    // Stop recording
+    // Stop recording — send SIGINT so recorder.stop() is called to finalize WAV
     if let Some(mut child) = RECORDER_PROCESS.lock().map_err(|e| e.to_string())?.take() {
         unsafe { libc::kill(child.id() as i32, libc::SIGINT); }
-        let _ = child.wait();
+        // Wait for process to finish (recorder.stop() needs time to finalize)
+        match child.wait() {
+            Ok(_) => {}
+            Err(_) => {
+                // Force kill if it didn't stop
+                unsafe { libc::kill(child.id() as i32, libc::SIGKILL); }
+                let _ = child.wait();
+            }
+        }
+    } else {
+        return Err("No recording in progress".to_string());
     }
 
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // Wait for file to be fully written
+    std::thread::sleep(std::time::Duration::from_millis(500));
 
     // Check file
     match std::fs::metadata(AUDIO_FILE) {
