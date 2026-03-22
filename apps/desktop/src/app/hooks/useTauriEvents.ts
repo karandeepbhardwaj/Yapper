@@ -5,6 +5,8 @@ import type { WidgetState, HistoryItem } from "../lib/types";
 interface SttResult {
   rawTranscript: string;
   refinedText: string;
+  category?: string;
+  title?: string;
 }
 
 export function useTauriEvents() {
@@ -23,6 +25,8 @@ export function useTauriEvents() {
           timestamp: new Date().toISOString(),
           refinedText: event.payload.refinedText,
           rawTranscript: event.payload.rawTranscript,
+          category: event.payload.category,
+          title: event.payload.title,
         };
         setLatestResult(item);
         setWidgetState("idle");

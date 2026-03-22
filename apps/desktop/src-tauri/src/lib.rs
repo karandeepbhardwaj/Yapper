@@ -1,14 +1,17 @@
+#![allow(unexpected_cfgs)]
+
 mod hotkey;
 mod stt;
 mod bridge;
+#[cfg(not(target_os = "macos"))]
 mod autopaste;
 mod history;
 
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
-
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 fn is_mouse_near(center_x_logical: f64, center_y_logical: f64, radius_logical: f64) -> bool {
     use cocoa::foundation::NSPoint;
     use objc::*;
@@ -30,88 +33,6 @@ fn is_mouse_near(center_x_logical: f64, center_y_logical: f64, radius_logical: f
         let dy = mouse_loc.y - center_y_bl;
 
         (dx * dx + dy * dy).sqrt() <= radius_logical
-    }
-}
-
-#[allow(dead_code)]
-fn is_mouse_over_window_with_padding(window: &tauri::WebviewWindow, padding: f64) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        use cocoa::foundation::NSPoint;
-        use objc::*;
-
-        unsafe {
-            let mouse_loc: NSPoint = msg_send![class!(NSEvent), mouseLocation];
-            if let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) {
-                let scale = window.scale_factor().unwrap_or(1.0);
-                let wx = pos.x as f64 - padding;
-                let wy = pos.y as f64;
-                let ww = size.width as f64 / scale + padding * 2.0;
-                let wh = size.height as f64 / scale + padding * 2.0;
-
-                let screens: cocoa::base::id = msg_send![class!(NSScreen), screens];
-                let main_screen: cocoa::base::id = msg_send![screens, objectAtIndex: 0_usize];
-                let frame: cocoa::foundation::NSRect = msg_send![main_screen, frame];
-                let screen_height = frame.size.height;
-
-                let wy_flipped = screen_height - wy - wh + padding;
-
-                mouse_loc.x >= wx
-                    && mouse_loc.x <= wx + ww
-                    && mouse_loc.y >= wy_flipped
-                    && mouse_loc.y <= wy_flipped + wh
-            } else {
-                false
-            }
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (window, padding);
-        false
-    }
-}
-
-#[allow(dead_code)]
-fn is_mouse_over_window(window: &tauri::WebviewWindow) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        use cocoa::base::nil;
-        use cocoa::foundation::NSPoint;
-        use objc::*;
-
-        unsafe {
-            let mouse_loc: NSPoint = msg_send![class!(NSEvent), mouseLocation];
-            if let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) {
-                let scale = window.scale_factor().unwrap_or(1.0);
-                let wx = pos.x as f64;
-                let wy = pos.y as f64;
-                let ww = size.width as f64 / scale;
-                let wh = size.height as f64 / scale;
-
-                // macOS screen coords: origin at bottom-left
-                // Get screen height for conversion
-                let screens: cocoa::base::id = msg_send![class!(NSScreen), screens];
-                let main_screen: cocoa::base::id = msg_send![screens, objectAtIndex: 0_usize];
-                let frame: cocoa::foundation::NSRect = msg_send![main_screen, frame];
-                let screen_height = frame.size.height;
-
-                // Convert window position (top-left origin) to bottom-left origin
-                let wy_flipped = screen_height - wy - wh;
-
-                mouse_loc.x >= wx
-                    && mouse_loc.x <= wx + ww
-                    && mouse_loc.y >= wy_flipped
-                    && mouse_loc.y <= wy_flipped + wh
-            } else {
-                false
-            }
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = window;
-        false
     }
 }
 
@@ -166,9 +87,11 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
     })?;
 
     // Send to VS Code extension for refinement
-    let refined_text = bridge::refine_text(&raw_transcript)
-        .await
-        .unwrap_or_else(|_| raw_transcript.clone());
+    let bridge_result = bridge::refine_text(&raw_transcript).await;
+    let (refined_text, category, title) = match bridge_result {
+        Ok(r) => (r.refined_text, r.category, r.title),
+        Err(_) => (raw_transcript.clone(), None, None),
+    };
 
     // Auto-paste
     let text_for_paste = refined_text.clone();
@@ -211,16 +134,20 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
 
     // Notify frontend
     #[derive(Clone, Serialize)]
-    struct RefinementResult {
+    struct CmdResult {
         #[serde(rename = "rawTranscript")]
         raw_transcript: String,
         #[serde(rename = "refinedText")]
         refined_text: String,
+        category: Option<String>,
+        title: Option<String>,
     }
 
-    app.emit("refinement-complete", RefinementResult {
+    app.emit("refinement-complete", CmdResult {
         raw_transcript,
         refined_text,
+        category,
+        title,
     }).map_err(|e| e.to_string())?;
 
     stt::set_state(stt::State::Idle);
@@ -265,6 +192,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    std::process::exit(0);
+                }
+            }
+        })
         .setup(|app| {
             // Register global hotkey
             hotkey::register(app)?;
@@ -300,7 +234,6 @@ pub fn run() {
                         let Ok(size) = widget.outer_size() else { return };
                         let cx = pos.x as f64 / scale + (size.width as f64 / scale) / 2.0;
                         let cy = pos.y as f64 / scale + (size.height as f64 / scale) / 2.0;
-                        println!("[HOVER] Widget center: ({:.0}, {:.0}), scale: {}", cx, cy, scale);
 
                         loop {
                             std::thread::sleep(std::time::Duration::from_millis(80));
@@ -315,7 +248,6 @@ pub fn run() {
 
                             if hovering != was {
                                 WAS_HOVERING.store(hovering, Ordering::Relaxed);
-                                println!("[HOVER] Mouse hover: {}", hovering);
                                 if let Some(w) = app_handle.get_webview_window("widget") {
                                     let js = format!(
                                         "window.dispatchEvent(new CustomEvent('yapper-hover', {{detail: {}}}))",

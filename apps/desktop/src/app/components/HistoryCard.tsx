@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, ChevronDown, ChevronUp, Check, Star } from "lucide-react";
+import { Copy, ChevronDown, ChevronUp, Check, Star, Pin } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 function formatTimestamp(raw: string): string {
@@ -35,6 +35,7 @@ interface HistoryCardProps {
   category?: string;
   title?: string;
   isPinned?: boolean;
+  onTogglePin?: () => void;
 }
 
 export function HistoryCard({
@@ -45,6 +46,7 @@ export function HistoryCard({
   category,
   title,
   isPinned,
+  onTogglePin,
 }: HistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -93,8 +95,8 @@ export function HistoryCard({
       onMouseLeave={handleMouseLeave}
       className="cursor-pointer transition-all duration-300"
       style={{
-        borderRadius: 24,
-        padding: isFeatured ? 28 : 22,
+        borderRadius: 20,
+        padding: isFeatured ? 24 : 16,
         background: isPinnedCard
           ? "#000000"
           : isFeatured
@@ -111,17 +113,24 @@ export function HistoryCard({
       }}
     >
       {/* Header: category + timestamp */}
-      <div className="flex items-center justify-between" style={{ marginBottom: isFeatured ? 16 : 12 }}>
-        <div className="flex items-center gap-2">
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: isFeatured ? 16 : 10,
+        gap: 8,
+        minWidth: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {isPinnedCard && (
-            <div className="flex items-center gap-1.5">
-              <Star style={{ width: 14, height: 14, color: "var(--yapper-accent)", fill: "var(--yapper-accent)" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+              <Star style={{ width: 12, height: 12, color: "var(--yapper-accent)", fill: "var(--yapper-accent)", flexShrink: 0 }} />
               <span style={{
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: 300,
-                color: isPinnedCard ? "rgba(255,255,255,0.6)" : "var(--yapper-text-secondary)",
+                color: "rgba(255,255,255,0.6)",
               }}>
-                Pinned Recording
+                Pinned
               </span>
             </div>
           )}
@@ -129,14 +138,16 @@ export function HistoryCard({
             <span
               style={{
                 display: "inline-block",
-                padding: "4px 12px",
+                padding: "3px 8px",
                 borderRadius: 9999,
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: 700,
                 textTransform: "uppercase",
-                letterSpacing: "0.12em",
+                letterSpacing: "0.1em",
                 background: "var(--yapper-surface-high, var(--yapper-bg-light))",
                 color: "var(--yapper-text-secondary)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
             >
               {category}
@@ -144,9 +155,11 @@ export function HistoryCard({
           )}
         </div>
         <span style={{
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: 300,
           color: isPinnedCard ? "rgba(255,255,255,0.5)" : "var(--yapper-text-secondary)",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
         }}>
           {formatTimestamp(timestamp)}
         </span>
@@ -157,11 +170,16 @@ export function HistoryCard({
         <h3 style={{
           fontFamily: "var(--font-headline, 'Manrope', sans-serif)",
           fontWeight: 700,
-          fontSize: isFeatured ? 26 : 18,
-          lineHeight: 1.25,
+          fontSize: isFeatured ? 22 : 16,
+          lineHeight: 1.3,
           letterSpacing: "-0.02em",
           color: isPinnedCard ? "#ffffff" : "var(--yapper-text-primary)",
-          marginBottom: 10,
+          marginBottom: 8,
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          wordBreak: "break-word",
         }}>
           {title}
         </h3>
@@ -178,35 +196,72 @@ export function HistoryCard({
             WebkitLineClamp: isFeatured ? 5 : 3,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
-            paddingRight: 32,
+            paddingRight: 36,
           }}
         >
           {refinedText}
         </div>
 
-        {/* Copy Button */}
-        <button
-          onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+        {/* Action buttons (copy + pin) */}
+        <div
           className="absolute top-0 right-0 transition-opacity duration-150"
           style={{
-            width: 28,
-            height: 28,
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 8,
-            background: isPinnedCard ? "rgba(255,255,255,0.1)" : "var(--yapper-surface-high, var(--yapper-bg-light))",
-            border: "none",
-            cursor: "pointer",
+            flexDirection: "column",
+            gap: 4,
             opacity: isHovered ? 1 : 0,
           }}
         >
-          {isCopied ? (
-            <Check style={{ width: 14, height: 14, color: "var(--yapper-accent)" }} />
-          ) : (
-            <Copy style={{ width: 14, height: 14, color: isPinnedCard ? "rgba(255,255,255,0.6)" : "var(--yapper-text-secondary)" }} />
+          <button
+            onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+            title="Copy"
+            style={{
+              width: 26,
+              height: 26,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 7,
+              background: isPinnedCard ? "rgba(255,255,255,0.1)" : "var(--yapper-surface-high, var(--yapper-bg-light))",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            {isCopied ? (
+              <Check style={{ width: 13, height: 13, color: "var(--yapper-accent)" }} />
+            ) : (
+              <Copy style={{ width: 13, height: 13, color: isPinnedCard ? "rgba(255,255,255,0.6)" : "var(--yapper-text-secondary)" }} />
+            )}
+          </button>
+          {onTogglePin && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
+              title={isPinned ? "Unpin" : "Pin"}
+              style={{
+                width: 26,
+                height: 26,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 7,
+                background: isPinned
+                  ? "var(--yapper-accent)"
+                  : isPinnedCard
+                  ? "rgba(255,255,255,0.1)"
+                  : "var(--yapper-surface-high, var(--yapper-bg-light))",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              <Pin style={{
+                width: 13,
+                height: 13,
+                color: isPinned ? "#fff" : isPinnedCard ? "rgba(255,255,255,0.6)" : "var(--yapper-text-secondary)",
+                transform: isPinned ? "rotate(45deg)" : "none",
+              }} />
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
       {/* Raw Transcript Toggle */}

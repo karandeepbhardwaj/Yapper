@@ -87,7 +87,7 @@ function startServer(context: vscode.ExtensionContext) {
         ws.on("close", () => tokenSource.cancel());
 
         try {
-          const refinedText = await refineWithCopilot(
+          const result = await refineWithCopilot(
             message.rawText,
             message.style || "Professional",
             tokenSource.token
@@ -96,7 +96,9 @@ function startServer(context: vscode.ExtensionContext) {
           const response: ResultResponse = {
             type: "result",
             id: message.id,
-            refinedText,
+            refinedText: result.refinedText,
+            category: result.category,
+            title: result.title,
           };
 
           if (ws.readyState === WebSocket.OPEN) {

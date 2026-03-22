@@ -1,4 +1,4 @@
-import { Mic, Loader2, Sparkles } from "lucide-react";
+import { Mic, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 
 type WidgetState = "idle" | "listening" | "processing";

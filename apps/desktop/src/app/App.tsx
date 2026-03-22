@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 export default function App() {
   const { settings, updateSettings } = useSettings();
   const { widgetState, latestResult, error, setError } = useTauriEvents();
-  const { historyItems, addItem } = useHistory();
+  const { historyItems, addItem, clearAll, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
@@ -77,6 +77,8 @@ export default function App() {
               historyItems={historyItems}
               settings={settings}
               onUpdateSettings={updateSettings}
+              onClearHistory={clearAll}
+              onTogglePin={togglePin}
             />
           </motion.div>
         )}
