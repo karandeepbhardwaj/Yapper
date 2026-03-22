@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Mic, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { listen } from "@tauri-apps/api/event";
@@ -14,7 +14,6 @@ const COLLAPSED_HEIGHT = 6;
 function WidgetApp() {
   const [state, setState] = useState<WidgetState>("idle");
   const [isHovered, setIsHovered] = useState(false);
-  const mouseDownTime = useRef(0);
 
   const isExpanded = isHovered || state !== "idle";
 
@@ -54,26 +53,23 @@ function WidgetApp() {
     };
   }, []);
 
-  const handlePointerDown = () => {
-    mouseDownTime.current = Date.now();
+  const handleClick = async () => {
+    if (state === "idle") {
+      await invoke("start_recording");
+    } else if (state === "listening") {
+      await invoke("stop_recording");
+    }
   };
 
-  const handlePointerUp = async () => {
-    const elapsed = Date.now() - mouseDownTime.current;
-    mouseDownTime.current = 0;
-    if (elapsed < 400) {
-      if (state === "idle") {
-        await invoke("start_recording");
-      } else if (state === "listening") {
-        await invoke("stop_recording");
-      }
-    }
+  // Use mousedown to fire immediately on first click,
+  // even when the app isn't focused (bypasses activation delay)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleClick();
   };
 
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       style={{
         width: "100vw",
         height: "100vh",
@@ -85,8 +81,9 @@ function WidgetApp() {
     >
       {/* Animated container — morphs between pill and circle */}
       <motion.div
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onMouseDown={handleMouseDown}
         animate={{
           width: isExpanded ? EXPANDED_SIZE : COLLAPSED_WIDTH,
           height: isExpanded ? EXPANDED_SIZE : COLLAPSED_HEIGHT,

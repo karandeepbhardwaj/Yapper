@@ -1,6 +1,50 @@
 import { useState } from "react";
-import { Copy, ChevronDown, ChevronUp, Check, Star, Pin } from "lucide-react";
+import { Copy, ChevronDown, Check, Star, Pin } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+
+function IconButton({
+  onClick,
+  title,
+  isPinned,
+  isActive,
+  children,
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+  isPinned?: boolean;
+  isActive?: boolean;
+  children: React.ReactNode;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <motion.button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      whileTap={{ scale: 0.8 }}
+      animate={{
+        scale: hovered ? 1.2 : 1,
+        opacity: isActive ? 1 : hovered ? 1 : 0.25,
+      }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 0,
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        color: isActive
+          ? "var(--yapper-accent)"
+          : isPinned ? "rgba(255,255,255,0.5)" : "var(--yapper-text-secondary)",
+      }}
+    >
+      {children}
+    </motion.button>
+  );
+}
 
 function formatTimestamp(raw: string): string {
   const date = new Date(raw);
@@ -93,7 +137,7 @@ export function HistoryCard({
       animate={{ opacity: 1, y: 0 }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
-      className="cursor-pointer transition-all duration-300"
+      className="transition-all duration-300"
       style={{
         borderRadius: 20,
         padding: isFeatured ? 24 : 16,
@@ -202,72 +246,73 @@ export function HistoryCard({
           {refinedText}
         </div>
 
-        {/* Action buttons (copy + pin) */}
+        {/* Action icons (copy + pin) — always visible, faded until hover */}
         <div
-          className="absolute top-0 right-0 transition-opacity duration-150"
+          className="absolute top-0 right-0"
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 4,
-            opacity: isHovered ? 1 : 0,
+            gap: 6,
           }}
         >
-          <button
+          <IconButton
             onClick={(e) => { e.stopPropagation(); handleCopy(); }}
             title="Copy"
-            style={{
-              width: 26,
-              height: 26,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 7,
-              background: isPinnedCard ? "rgba(255,255,255,0.1)" : "var(--yapper-surface-high, var(--yapper-bg-light))",
-              border: "none",
-              cursor: "pointer",
-            }}
+
+            isPinned={isPinnedCard}
           >
-            {isCopied ? (
-              <Check style={{ width: 13, height: 13, color: "var(--yapper-accent)" }} />
-            ) : (
-              <Copy style={{ width: 13, height: 13, color: isPinnedCard ? "rgba(255,255,255,0.6)" : "var(--yapper-text-secondary)" }} />
-            )}
-          </button>
+            <AnimatePresence mode="wait">
+              {isCopied ? (
+                <motion.div
+                  key="check"
+                  initial={{ scale: 0, rotate: -90 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  exit={{ scale: 0 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                  style={{ display: "flex" }}
+                >
+                  <Check style={{ width: 14, height: 14, color: "var(--yapper-accent)" }} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="copy"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0 }}
+                  transition={{ duration: 0.15 }}
+                  style={{ display: "flex" }}
+                >
+                  <Copy style={{ width: 14, height: 14 }} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </IconButton>
           {onTogglePin && (
-            <button
+            <IconButton
               onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
               title={isPinned ? "Unpin" : "Pin"}
-              style={{
-                width: 26,
-                height: 26,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 7,
-                background: isPinned
-                  ? "var(--yapper-accent)"
-                  : isPinnedCard
-                  ? "rgba(255,255,255,0.1)"
-                  : "var(--yapper-surface-high, var(--yapper-bg-light))",
-                border: "none",
-                cursor: "pointer",
-              }}
+  
+              isPinned={isPinnedCard}
+              isActive={isPinned}
             >
-              <Pin style={{
-                width: 13,
-                height: 13,
-                color: isPinned ? "#fff" : isPinnedCard ? "rgba(255,255,255,0.6)" : "var(--yapper-text-secondary)",
-                transform: isPinned ? "rotate(45deg)" : "none",
-              }} />
-            </button>
+              <motion.div
+                animate={{ rotate: isPinned ? 45 : 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                style={{ display: "flex" }}
+              >
+                <Pin style={{ width: 14, height: 14 }} />
+              </motion.div>
+            </IconButton>
           )}
         </div>
       </div>
 
       {/* Raw Transcript Toggle */}
       <div style={{ marginTop: "auto", paddingTop: 12 }}>
-        <button
+        <motion.button
           onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+          whileHover={{ opacity: 1 }}
+          whileTap={{ scale: 0.95 }}
           className="flex items-center gap-1.5"
           style={{
             fontSize: 11,
@@ -277,11 +322,19 @@ export function HistoryCard({
             border: "none",
             cursor: "pointer",
             padding: 0,
+            opacity: 0.5,
+            transition: "opacity 0.2s",
           }}
         >
-          {isExpanded ? <ChevronUp style={{ width: 12, height: 12 }} /> : <ChevronDown style={{ width: 12, height: 12 }} />}
+          <motion.div
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ display: "flex" }}
+          >
+            <ChevronDown style={{ width: 12, height: 12 }} />
+          </motion.div>
           <span>Raw Transcript</span>
-        </button>
+        </motion.button>
 
         <AnimatePresence>
           {isExpanded && (
