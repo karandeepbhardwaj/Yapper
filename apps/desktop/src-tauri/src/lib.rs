@@ -69,6 +69,8 @@ async fn toggle_recording(handle: &tauri::AppHandle) {
         }
         stt::State::Recording => {
             handle.emit("stt-state-changed", "processing").ok();
+            // Tell frontend to stop speech recognition and send transcript
+            handle.emit("stop-speech-recognition", ()).ok();
             let raw_transcript = match stt::stop().await {
                 Ok(t) => t,
                 Err(_) => {
@@ -250,6 +252,7 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         return Err("Not recording".to_string());
     }
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
+    app.emit("stop-speech-recognition", ()).ok();
 
     let raw_transcript = stt::stop().await.map_err(|e| {
         stt::set_state(stt::State::Idle);
@@ -329,11 +332,17 @@ async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
-    // Discard — just reset STT state, no refinement, no paste, no save
-    let _ = stt::stop().await; // stop audio capture, discard transcript
+    // Discard — stop recognition, no refinement, no paste, no save
+    app.emit("stop-speech-recognition", ()).ok();
+    let _ = stt::stop().await;
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").ok();
     Ok(())
+}
+
+#[tauri::command]
+fn set_transcript(text: String) {
+    stt::macos::set_transcript(&text);
 }
 
 #[tauri::command]
@@ -723,6 +732,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             cancel_recording,
+            set_transcript,
             get_history,
             clear_history,
             get_settings,
