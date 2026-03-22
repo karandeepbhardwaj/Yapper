@@ -56,6 +56,14 @@ pub fn add_entry(app: &tauri::AppHandle, raw_transcript: &str, refined_text: &st
     std::fs::write(&path, data).map_err(|e| e.to_string())
 }
 
+pub fn delete_entry(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
+    let mut entries = get_all(app)?;
+    entries.retain(|e| e.id != id);
+    let path = history_path(app)?;
+    let data = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    std::fs::write(&path, data).map_err(|e| e.to_string())
+}
+
 pub fn clear(app: &tauri::AppHandle) -> Result<(), String> {
     let path = history_path(app)?;
     if path.exists() {
