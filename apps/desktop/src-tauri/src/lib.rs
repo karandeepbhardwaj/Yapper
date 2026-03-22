@@ -482,8 +482,7 @@ pub fn run() {
                         let ns_window = widget.ns_window().unwrap() as cocoa::base::id;
                         unsafe {
                             use objc::*;
-                            use objc::declare::ClassDecl;
-                            use objc::runtime::{Class, Object, Sel, BOOL, YES};
+                            use objc::runtime::{Object, Sel, BOOL, YES};
 
                             // Swizzle acceptsFirstMouse: on the content view's class
                             // so the first click passes through instead of being consumed for activation
