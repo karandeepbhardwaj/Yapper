@@ -96,7 +96,7 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             if event.state == ShortcutState::Pressed {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    crate::toggle_recording(&app).await;
+                    crate::commands::toggle_recording(&app).await;
                 });
             }
         })?;
@@ -126,7 +126,7 @@ pub fn update(app: &tauri::AppHandle, new_hotkey: &str) -> Result<(), String> {
             if event.state == ShortcutState::Pressed {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    crate::toggle_recording(&app).await;
+                    crate::commands::toggle_recording(&app).await;
                 });
             }
         }).map_err(|e| e.to_string())?;
@@ -190,7 +190,7 @@ fn start_fn_key_monitor(app: &tauri::AppHandle) {
                         if let Some(ref handle) = FN_APP_HANDLE {
                             let h = handle.clone();
                             tauri::async_runtime::spawn(async move {
-                                crate::toggle_recording(&h).await;
+                                crate::commands::toggle_recording(&h).await;
                             });
                         }
                     }
