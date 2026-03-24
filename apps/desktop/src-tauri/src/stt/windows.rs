@@ -41,3 +41,9 @@ pub async fn stop_recognition() -> Result<String, String> {
         Ok(transcript)
     }
 }
+
+pub fn set_transcript(text: &str) {
+    if let Ok(mut t) = TRANSCRIPT.lock() {
+        *t = text.to_string();
+    }
+}
