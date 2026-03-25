@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-03-25
+
+### Added
+
+- Windows dual-engine STT: Classic (SAPI5 via PowerShell, offline) and Modern (WinRT, higher accuracy)
+- STT engine selection toggle in title bar (Windows only) with animated sliding highlight pill
+- Speech permission detection via Windows registry (`OnlineSpeechPrivacy\HasAccepted`)
+- Setup tooltip with screenshot when switching to Modern engine without the privacy setting enabled
+- `change_stt_engine` and `check_speech_permission` Tauri commands
+- STT engine preference persistence in `settings.json`, restored on app startup
+- `debug_log` Tauri command for frontend-to-backend debug tracing
+- `AppSettings.stt_engine` field with `#[serde(default)]` for backward compatibility
+
+### Fixed
+
+- Hotkey change not working: parameter name mismatch between JS (`hotkey`) and Rust (`hotkey_str`) caused the command to silently fail
+- Hotkey recording now uses `e.code` (physical key) instead of `e.key` to prevent Shift modifying key values (e.g., Shift+/ producing "?" instead of "/")
+- SAPI5 race condition: `stop_recognition` could be called while `start_recognition` was still initializing the PowerShell subprocess
+- SAPI5 empty transcripts: removed overly strict confidence threshold (was rejecting speech at 0.187 confidence)
+- SAPI5 `RecognizeAsyncStop()` used instead of `RecognizeAsyncCancel()` to process pending audio
+- Settings clobbering: `change_hotkey` now reads existing settings before writing to preserve `stt_engine` field
+- STT toggle animation no longer shakes adjacent hotkey text (`layout="position"` instead of bare `layout`)
+
 ## [0.0.4] - 2026-03-22
 
 ### Fixed

@@ -64,12 +64,12 @@ STT uses runtime-compiled Swift scripts in `/tmp/`. This is intentional — it a
 
 | File | Purpose | When to Edit |
 |------|---------|-------------|
-| `src-tauri/src/lib.rs` | Entry point, module declarations, Tauri builder | Adding new modules |
-| `src-tauri/src/commands.rs` | All Tauri commands, toggle_recording, AppSettings | Adding/changing commands |
+| `src-tauri/src/lib.rs` | Entry point (~61 lines): plugins, command registration, STT engine restore | Adding new modules/commands |
+| `src-tauri/src/commands.rs` | All Tauri commands (~317 lines): AppSettings, recording, history, hotkey, STT engine, speech permission | Adding/changing commands |
 | `src-tauri/src/widget/macos.rs` | NSPanel, hover/click detection (objc2) | macOS widget behavior |
 | `src-tauri/src/widget/windows.rs` | Win32 positioning, hover/click polling | Windows widget behavior |
 | `src-tauri/src/stt/macos.rs` | Swift-based STT | macOS recording/transcription |
-| `src-tauri/src/stt/windows.rs` | WinRT SpeechRecognizer | Windows recording/transcription |
+| `src-tauri/src/stt/windows.rs` | Dual-engine: Classic (SAPI5 PowerShell) + Modern (WinRT) | Windows recording/transcription |
 | `src-tauri/src/bridge.rs` | WebSocket client to VS Code | Changing refinement protocol |
 | `src-tauri/src/autopaste.rs` | Cross-platform paste | Paste behavior |
 | `src-tauri/src/hotkey.rs` | Global shortcut + Fn key | Hotkey behavior |
@@ -108,7 +108,10 @@ pnpm dev
 ### Adding a new Tauri command
 1. Define in `commands.rs` with `#[tauri::command]` and `pub`
 2. Register in `lib.rs` invoke_handler: `commands::my_command`
-3. Call from frontend with `invoke("my_command", { args })`
+3. Add a wrapper in `src/app/lib/tauri-bridge.ts`
+4. Call from frontend with `invoke("my_command", { args })`
+
+**Important**: Rust parameter names must exactly match JS invoke argument keys. A mismatch (e.g., Rust `hotkey_str` vs JS `hotkey`) causes a silent failure — the command never executes.
 
 ### Changing the refinement prompt
 Edit `extensions/vscode-bridge/src/copilot-bridge.ts` — the `SYSTEM_PROMPT` constant and `STYLE_MODIFIERS` map.

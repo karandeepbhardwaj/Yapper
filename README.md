@@ -16,7 +16,7 @@
 ## Features
 
 - **Voice capture** -- press a global hotkey and start talking
-- **On-device speech recognition** -- macOS `SFSpeechRecognizer` (offline) / Windows `SpeechRecognizer`
+- **On-device speech recognition** -- macOS `SFSpeechRecognizer` (offline) / Windows dual-engine: Classic (SAPI5 offline) or Modern (WinRT, higher accuracy)
 - **AI transcript refinement** -- multi-provider support (Groq, Gemini, Claude, GitHub Copilot) via VS Code extension bridge
 - **Auto-paste** refined text at your active cursor position
 - **Floating widget** -- follows you across macOS Spaces, positioned above taskbar on Windows
@@ -24,6 +24,7 @@
 - **Dark/light mode** with smooth transitions
 - **Customizable hotkey** -- `Cmd+Shift+.` (macOS) / `Ctrl+Shift+.` (Windows), or set your own
 - **Fn key recording** (macOS) -- use the Globe/Fn key as your trigger
+- **STT engine selection** (Windows) -- toggle between Classic (offline, no setup) and Modern (cloud-assisted, higher accuracy) with in-app permission guidance
 - **Zero egress** -- the desktop app makes no external network requests
 
 ---
@@ -49,11 +50,12 @@
 +-----------+--------------+
             |
      +------+-------+
-     | Native STT   |
-     | macOS: Swift  |
-     | Win: WinRT   |
-     | (on-device)  |
-     +--------------+
+     | Native STT          |
+     | macOS: Swift         |
+     | Win: Classic (SAPI5) |
+     |   or Modern (WinRT)  |
+     | (on-device)          |
+     +----------------------+
 ```
 
 ---
@@ -76,7 +78,7 @@ Download from the [latest release](https://github.com/karandeepbhardwaj/Yapper/r
 xattr -cr /Applications/Yapper.app
 ```
 
-**Windows permissions**: Grant microphone access in Settings > Privacy > Microphone. Grant accessibility for auto-paste if prompted.
+**Windows permissions**: Grant microphone access in Settings > Privacy > Microphone. For the Modern STT engine, enable Settings > Privacy & security > Speech > "Online speech recognition" (the app will guide you with a tooltip when needed).
 
 ### VS Code Extension
 
@@ -209,7 +211,7 @@ Settings are persisted per-platform in the app config directory:
 | Frontend | React 18, TypeScript, Tailwind CSS 4 |
 | Animations | Motion (Framer Motion) |
 | Speech-to-text (macOS) | `SFSpeechRecognizer` via Swift subprocess |
-| Speech-to-text (Windows) | `Windows.Media.SpeechRecognition` |
+| Speech-to-text (Windows) | Classic: SAPI5 via PowerShell, Modern: `Windows.Media.SpeechRecognition` |
 | AI refinement | Multi-provider: Groq, Gemini, Claude, Copilot |
 | Bridge protocol | WebSocket (`ws`) on `127.0.0.1:9147` |
 | Search | Fuse.js (fuzzy search) |
