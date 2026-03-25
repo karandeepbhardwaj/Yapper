@@ -2,121 +2,117 @@
 
 ## Vision
 
-A minimal, always-available voice capture tool for macOS that treats spoken words as first-class input. Speak naturally, get polished text at your cursor. No cloud dependency from the app itself — all speech recognition happens on-device, and AI refinement runs through your local VS Code instance.
+A minimal, always-available voice capture tool that treats spoken words as first-class input. Speak naturally, get polished text at your cursor. No cloud dependency from the app itself — all speech recognition happens on-device, and AI refinement runs through your local VS Code instance with multi-provider support.
 
 ## Design Principles
 
-1. **Invisible until needed** — The widget is a thin 40×5px pill at the bottom of the screen. It expands on hover, records on click, and collapses when done. Zero cognitive overhead.
-2. **Zero egress** — The desktop app makes no external network requests. STT is on-device (SFSpeechRecognizer). AI refinement goes through the local VS Code extension bridge only.
-3. **Works everywhere** — The widget uses NSPanel with `canJoinAllSpaces` + `fullScreenAuxiliary` to appear across all macOS Spaces, including full-screen apps.
-4. **Graceful degradation** — If VS Code isn't running or Copilot isn't available, raw transcripts are pasted instead. The app never blocks on missing dependencies.
+1. **Invisible until needed** — The widget is a thin pill at the bottom of the screen. It expands on hover, records on click, and collapses when done. Zero cognitive overhead.
+2. **Zero egress** — The desktop app makes no external network requests. STT is on-device. AI refinement goes through the local VS Code extension bridge only.
+3. **Works everywhere** — macOS: NSPanel with `canJoinAllSpaces` appears across all Spaces. Windows: always-on-top transparent window above taskbar.
+4. **Graceful degradation** — If VS Code isn't running or no AI provider is available, raw transcripts are pasted instead. The app never blocks on missing dependencies.
+5. **Cross-platform** — Platform-specific code is isolated in dedicated modules. Shared logic lives in `commands.rs`, `bridge.rs`, `history.rs`.
 
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    macOS Desktop                     │
-│                                                     │
-│  ┌─────────────┐     ┌──────────────────────────┐   │
-│  │   Widget     │     │     Main Window           │   │
-│  │  (NSPanel)   │     │   (History Dashboard)     │   │
-│  │  widget.tsx  │     │   MainWindow.tsx          │   │
-│  └──────┬──────┘     └────────────┬─────────────┘   │
-│         │    Tauri Events         │                  │
-│  ┌──────┴─────────────────────────┴─────────────┐   │
-│  │              Rust Backend (Tauri v2)           │   │
-│  │                                               │   │
-│  │  ┌──────────┐  ┌─────────┐  ┌─────────────┐  │   │
-│  │  │ STT      │  │ Bridge  │  │ Auto-paste   │  │   │
-│  │  │ (Swift)  │  │ (WS)    │  │ (osascript)  │  │   │
-│  │  └────┬─────┘  └────┬────┘  └──────────────┘  │   │
-│  └───────┼──────────────┼────────────────────────┘   │
-│          │              │                            │
-│  ┌───────┴───────┐  ┌──┴──────────────────────┐     │
-│  │ AVAudioRecorder│  │ VS Code Extension       │     │
-│  │ SFSpeech       │  │ (WebSocket :9147)       │     │
-│  │ (on-device)    │  │ → vscode.lm → Copilot   │     │
-│  └────────────────┘  └─────────────────────────┘     │
-└─────────────────────────────────────────────────────┘
++-----------------------------------------------------+
+|                    Desktop App                        |
+|                                                       |
+|  +-------------+     +--------------------------+     |
+|  |   Widget    |     |     Main Window           |     |
+|  |  (NSPanel / |     |   (History Dashboard)     |     |
+|  |   Win32)    |     |   MainWindow.tsx          |     |
+|  +------+------+     +------------+-------------+     |
+|         |    Tauri Events         |                    |
+|  +------+--------------------------+--------------+    |
+|  |              Rust Backend (Tauri v2)            |    |
+|  |                                                 |    |
+|  |  +--------+  +---------+  +-------------+      |    |
+|  |  | STT    |  | Bridge  |  | Auto-paste   |      |    |
+|  |  | (plat) |  | (WS)    |  | (plat)       |      |    |
+|  |  +---+----+  +----+----+  +--------------+      |    |
+|  +------+-------------+---------------------------+    |
+|         |              |                               |
+|  +------+--------+  +--+-------------------------+     |
+|  | Native STT    |  | VS Code Extension          |     |
+|  | macOS: Swift   |  | (WebSocket :9147)          |     |
+|  | Win: WinRT     |  | -> Groq / Gemini / Claude  |     |
+|  | (on-device)    |  |    / Copilot               |     |
+|  +----------------+  +----------------------------+     |
++-----------------------------------------------------+
 ```
 
 ## Pipeline
 
 ### Recording Phase
-1. User triggers recording (widget click or `Cmd+Shift+.`)
-2. Rust spawns Swift subprocess: `swift /tmp/yapper_recorder.swift /tmp/yapper_recording.wav`
-3. Swift uses `AVAudioRecorder` at native sample rate (typically 48kHz), mono 16-bit PCM
+1. User triggers recording (widget click or hotkey)
+2. **macOS**: Rust spawns Swift subprocess with AVAudioRecorder at native sample rate, mono 16-bit PCM
+3. **Windows**: Rust starts `SpeechRecognizer` via `windows::Media::SpeechRecognition` (in-process, no subprocess)
 4. Widget shows wave animation bars
-5. User stops → Rust sends SIGINT → Swift calls `recorder.stop()` to finalize WAV header
+5. User stops -> macOS: SIGINT to Swift, Windows: StopAsync()
 
 ### Transcription Phase
-1. Rust spawns second Swift subprocess: `swift /tmp/yapper_transcriber.swift /tmp/yapper_recording.wav`
-2. Swift uses `SFSpeechURLRecognitionRequest` with `SFSpeechRecognizer(locale: "en-US")`
-3. `CFRunLoopRun()` keeps the process alive until callback fires
-4. Transcript returned via stdout
+1. **macOS**: Rust spawns second Swift subprocess using `SFSpeechURLRecognitionRequest`. `CFRunLoopRun()` keeps process alive until callback. Transcript returned via stdout.
+2. **Windows**: Transcript accumulated in-process via `ResultGenerated` event handler during recording.
 
 ### Refinement Phase (optional)
 1. Rust connects to WebSocket at `127.0.0.1:9147` (500ms TCP timeout)
 2. Sends `{type: "refine", id, rawText, style}` to VS Code extension
-3. Extension calls `vscode.lm.selectChatModels({vendor: "copilot"})` → sends to Copilot
-4. Copilot returns `{refinedText, category, title}` as JSON
-5. If bridge unavailable → raw transcript used as fallback
+3. Extension tries providers in order: vscode.lm -> Groq -> Gemini -> Anthropic
+4. Provider returns `{refinedText, category, title}` as JSON
+5. If bridge unavailable -> raw transcript used as fallback
 
 ### Output Phase
-1. Refined (or raw) text copied to clipboard via `pbcopy`
-2. `osascript -e 'tell application "System Events" to keystroke "v" using command down'` pastes at cursor
+1. Refined (or raw) text copied to clipboard (pbcopy on macOS, PowerShell Set-Clipboard on Windows)
+2. Keystroke simulation pastes at cursor (osascript Cmd+V on macOS, PowerShell SendKeys Ctrl+V on Windows)
 3. Result saved to history with timestamp, category, title
 
 ## Widget States
 
 ```
 State 1: Collapsed (idle)
-┌────────────────────┐
-│ ════                │  40×5px pill, 50% opacity
-└────────────────────┘
++--------------------+
+| ====                |  40x5px pill, 50% opacity
++--------------------+
 
 State 2: Hover
-┌────────────────────┐
-│     🎤             │  52×24px pill with mic icon
-└────────────────────┘
++--------------------+
+|     mic             |  52x24px pill with mic icon
++--------------------+
 
 State 3: Recording
-┌────────────────────────────────────┐
-│  ✕  ▏▎▍▌▋▊▋▌▍▎▏▎▍  ⬛            │  160×32px with X, waves, stop
-└────────────────────────────────────┘
++------------------------------------+
+|  X  |||||||||||||||||  stop        |  160x32px with X, waves, stop
++------------------------------------+
 
 State 4: Processing
-┌────────────────────────────────────┐
-│  ═══════ hue gradient wave ══════  │  160×32px animated gradient
-└────────────────────────────────────┘
++------------------------------------+
+|  ======= hue gradient wave ======  |  160x32px animated gradient
++------------------------------------+
 ```
 
 ## Widget Positioning
 
-The widget positions itself centered horizontally on whichever screen the mouse is on, placed just above the dock:
+**macOS**: Centered on the screen containing the mouse cursor, 4px above the dock. Uses `NSEvent.mouseLocation` + `NSScreen.screens` for multi-monitor support. Repositioned every ~480ms.
 
-```rust
-let dock_h = screen.frame.height - screen.visibleFrame.height - screen.visibleFrame.origin.y;
-let y = dock_h + 8.0;  // 8px above dock
-let x = (screen.frame.width - widget_width) / 2.0;
-```
+**Windows**: Centered in the work area of the monitor containing the cursor, 4px above the taskbar. Uses `GetCursorPos` + `MonitorFromPoint` + `GetMonitorInfoW`. Same repositioning interval.
 
 ## Data Model
 
 ### History Item
 ```typescript
 {
-  id: string;            // crypto.randomUUID()
+  id: string;            // timestamp-based
   rawTranscript: string; // Original speech text
   refinedText: string;   // AI-refined text (or raw if no bridge)
   category: string;      // Auto-assigned: Interview, Thought, Work, Email, etc.
   title: string;         // AI-generated 3-8 word title
-  timestamp: number;     // Date.now()
-  pinned: boolean;       // User can pin items
+  timestamp: string;     // ISO timestamp
+  isPinned: boolean;     // User can pin items
 }
 ```
 
-### Refinement Modes (auto-detected by Copilot)
+### Refinement Modes (auto-detected by AI)
 | Mode | Trigger Phrases | Output |
 |------|----------------|--------|
 | General | Default | Cleaned-up transcript |
@@ -133,28 +129,25 @@ let x = (screen.frame.width - widget_width) / 2.0;
 
 ## Security Model
 
-- No API keys stored in the app
+- No API keys stored in the desktop app
 - No network requests from the desktop app
 - WebSocket bridge is localhost-only (127.0.0.1, not 0.0.0.0)
-- Audio files are temporary (`/tmp/yapper_recording.wav`) and deleted after transcription
-- History stored in `localStorage` (client-side only)
-- Copilot authentication is handled entirely by VS Code
+- Audio files are temporary (`/tmp/yapper_recording.wav`) and overwritten each recording
+- History stored as JSON in app data directory
+- LLM API keys are stored in VS Code settings (extension-side only)
+- AI provider authentication is handled by the VS Code extension
 
-## macOS Permissions Required
+## Permissions Required
 
+### macOS
 | Permission | Purpose | Configured In |
 |-----------|---------|---------------|
 | Microphone | Audio recording | Info.plist `NSMicrophoneUsageDescription` |
 | Speech Recognition | On-device STT | Info.plist `NSSpeechRecognitionUsageDescription` |
 | Accessibility | Auto-paste via keystroke simulation | System Settings (manual) |
 
-## Future Considerations
-
-- Windows STT implementation (currently a stub)
-- Linux support (PipeWire audio + Whisper.cpp for STT)
-- On-device refinement (local LLM instead of Copilot)
-- Multi-language support (SFSpeechRecognizer supports many locales)
-- Audio playback from history
-- Export history as markdown/JSON
-- Customizable widget position (drag to reposition)
-- Plugin system for custom refinement backends
+### Windows
+| Permission | Purpose | Configured In |
+|-----------|---------|---------------|
+| Microphone | Audio recording | Settings > Privacy > Microphone |
+| Speech Recognition | On-device STT | Settings > Privacy > Speech |

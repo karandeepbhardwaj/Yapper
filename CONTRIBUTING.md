@@ -4,27 +4,28 @@ Thanks for your interest in contributing to Yapper! This guide will help you get
 
 ---
 
-## :computer: Development Environment Setup
+## Development Environment Setup
 
 ### Prerequisites
 
 - **Rust** 1.75+ ([rustup.rs](https://rustup.rs))
 - **Node.js** 20+ ([nodejs.org](https://nodejs.org))
 - **pnpm** 9+ (`npm install -g pnpm`)
-- **Xcode Command Line Tools** (`xcode-select --install`)
-- **VS Code** with GitHub Copilot extension (for testing the bridge)
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+- **Windows**: Visual Studio Build Tools with C++ workload
+- **VS Code** with the Yapper Bridge extension (for testing refinement)
 
 ### Clone & Install
 
 ```bash
-git clone https://github.com/your-org/yapper.git
-cd yapper
+git clone https://github.com/karandeepbhardwaj/Yapper.git
+cd Yapper
 pnpm install
 ```
 
 ---
 
-## :hammer_and_wrench: Running in Dev Mode
+## Running in Dev Mode
 
 ### Desktop App
 
@@ -47,14 +48,15 @@ Then press **F5** in VS Code (with the extension folder open) to launch an Exten
 
 ---
 
-## :art: Code Style
+## Code Style
 
 ### Rust
 
 - Follow standard Rust formatting: run `cargo fmt` before committing
 - Run `cargo clippy` and address all warnings
-- Use meaningful variable names; avoid single-letter names outside of closures/iterators
-- Write doc comments (`///`) for all public items
+- Use `#[cfg(target_os = "...")]` for platform-specific code
+- macOS interop uses `objc2` + `objc2-app-kit` + `block2` (NOT `cocoa`/`objc`)
+- Windows interop uses the `windows` crate
 
 ### TypeScript
 
@@ -68,10 +70,32 @@ Then press **F5** in VS Code (with the extension folder open) to launch an Exten
 - No `console.log` in production code (use proper logging)
 - Keep files focused -- one component/module per file
 - Write descriptive commit messages (see below)
+- Stage specific files (not `git add -A`)
+- Don't add `Co-Authored-By` lines to commits
 
 ---
 
-## :incoming_envelope: Submitting Pull Requests
+## Project Structure
+
+```
+apps/desktop/
+  src/                     — React frontend
+  src-tauri/src/
+    lib.rs                 — Entry point (~44 lines)
+    commands.rs            — All Tauri commands
+    widget/                — Platform-specific widget code
+    stt/                   — Platform-specific STT code
+    bridge.rs              — WebSocket client
+    hotkey.rs              — Global shortcuts
+    history.rs             — History persistence
+    autopaste.rs           — Cross-platform paste
+
+extensions/vscode-bridge/  — VS Code extension (multi-provider LLM)
+```
+
+---
+
+## Submitting Pull Requests
 
 1. **Fork the repository** and create a feature branch from `main`:
    ```bash
@@ -99,11 +123,11 @@ Then press **F5** in VS Code (with the extension folder open) to launch an Exten
 - Keep PRs focused on a single change
 - Include screenshots or recordings for UI changes
 - Link related issues using `Closes #123` syntax
-- Ensure CI passes before requesting review
+- Ensure CI passes before requesting review (macOS + Windows builds must succeed)
 
 ---
 
-## :bug: Issue Templates
+## Issue Templates
 
 When opening an issue, please use the appropriate template:
 
@@ -114,6 +138,6 @@ Templates are available automatically when you create a new issue on GitHub.
 
 ---
 
-## :balance_scale: License
+## License
 
 By contributing to Yapper, you agree that your contributions will be licensed under the [MIT License](LICENSE).
