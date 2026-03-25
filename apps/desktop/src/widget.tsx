@@ -7,6 +7,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 type WidgetState = "idle" | "listening" | "processing";
 
+const isWindows = navigator.platform.toUpperCase().includes("WIN");
+
 // Pill sizes for each state
 const COLLAPSED_W = 40;
 const COLLAPSED_H = 5;
@@ -73,7 +75,9 @@ function WidgetApp() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "transparent",
+        background: isWindows ? "#1a1a1a" : "transparent",
+        borderRadius: isWindows ? 17 : 0,
+        overflow: isWindows ? "hidden" : undefined,
       }}
     >
       <motion.div
@@ -81,10 +85,10 @@ function WidgetApp() {
         onMouseLeave={() => setIsHovered(false)}
         onMouseDown={!isActive ? handlePillClick : undefined}
         animate={{
-          width: pillW,
-          height: pillH,
-          borderRadius: pillH / 2,
-          opacity: !isActive && !isHovered ? 0.5 : 1,
+          width: isWindows ? "100%" : pillW,
+          height: isWindows ? "100%" : pillH,
+          borderRadius: isWindows ? 17 : pillH / 2,
+          opacity: isWindows ? 1 : (!isActive && !isHovered ? 0.5 : 1),
         }}
         transition={{
           duration: 0.35,
@@ -93,7 +97,7 @@ function WidgetApp() {
         }}
         style={{
           background: "#1a1a1a",
-          border: "1.5px solid #3a3a3a",
+          border: isWindows ? "none" : "1.5px solid #3a3a3a",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
