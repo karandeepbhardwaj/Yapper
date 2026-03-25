@@ -151,17 +151,29 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
 
 pub fn setup(app: &tauri::App) {
     if let Some(widget) = app.get_webview_window("widget") {
-        let _ = widget.set_always_on_top(true);
+        log::info!("[Widget] Windows setup starting");
 
         // Set initial position
         let panel_w = 180.0;
         let panel_h = 34.0;
         if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
+            log::info!("[Widget] Positioning at ({}, {})", x, y);
             let _ = widget.set_position(tauri::LogicalPosition::new(x, y));
             WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h / 2.0);
+        } else {
+            log::warn!("[Widget] Could not determine widget position");
         }
+
+        // Ensure widget is visible and on top
+        let _ = widget.show();
+        let _ = widget.set_always_on_top(true);
+        let _ = widget.set_focus();
+
+        log::info!("[Widget] Windows setup complete");
 
         // Start hover/click/reposition thread
         start_hover_thread(app.handle().clone());
+    } else {
+        log::error!("[Widget] Could not find 'widget' window");
     }
 }
