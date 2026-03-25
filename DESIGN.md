@@ -47,13 +47,15 @@ A minimal, always-available voice capture tool that treats spoken words as first
 ### Recording Phase
 1. User triggers recording (widget click or hotkey)
 2. **macOS**: Rust spawns Swift subprocess with AVAudioRecorder at native sample rate, mono 16-bit PCM
-3. **Windows**: Rust starts `SpeechRecognizer` via `windows::Media::SpeechRecognition` (in-process, no subprocess)
+3. **Windows (Classic)**: Rust spawns PowerShell subprocess with inline C# using `System.Speech.Recognition` (SAPI5). Offline, no setup needed.
+3. **Windows (Modern)**: Rust starts `SpeechRecognizer` via `windows::Media::SpeechRecognition` (WinRT, in-process). Higher accuracy but requires "Online speech recognition" privacy setting.
 4. Widget shows wave animation bars
-5. User stops -> macOS: SIGINT to Swift, Windows: StopAsync()
+5. User stops -> macOS: SIGINT to Swift, Windows Classic: writes stop file (C# calls `RecognizeAsyncStop()`), Windows Modern: `StopAsync()`
 
 ### Transcription Phase
 1. **macOS**: Rust spawns second Swift subprocess using `SFSpeechURLRecognitionRequest`. `CFRunLoopRun()` keeps process alive until callback. Transcript returned via stdout.
-2. **Windows**: Transcript accumulated in-process via `ResultGenerated` event handler during recording.
+2. **Windows (Classic)**: Transcript returned via PowerShell stdout after `RecognizeAsyncStop()` finishes processing pending audio. Uses DictationGrammar + spelling grammar.
+2. **Windows (Modern)**: Transcript accumulated in-process via `ResultGenerated` event handler on `ContinuousRecognitionSession` during recording.
 
 ### Refinement Phase (optional)
 1. Rust connects to WebSocket at `127.0.0.1:9147` (500ms TCP timeout)
@@ -150,4 +152,15 @@ State 4: Processing
 | Permission | Purpose | Configured In |
 |-----------|---------|---------------|
 | Microphone | Audio recording | Settings > Privacy > Microphone |
-| Speech Recognition | On-device STT | Settings > Privacy > Speech |
+| Online speech recognition | Modern STT engine (WinRT) | Settings > Privacy & security > Speech (detected via registry key `HKCU\...\OnlineSpeechPrivacy\HasAccepted`) |
+
+> **Note:** The Classic STT engine (SAPI5) requires no additional permissions beyond microphone access. The app detects the privacy setting and shows a setup tooltip when the user switches to Modern engine.
+
+### AppSettings
+```json
+{
+  "hotkey": "Ctrl+Shift+.",
+  "stt_engine": "classic"
+}
+```
+Persisted to `{app_config_dir}/settings.json`. The `stt_engine` field ("classic" or "modern") controls which Windows STT engine is used. Restored on startup.

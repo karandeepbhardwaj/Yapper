@@ -19,11 +19,12 @@ You should receive a response within 48 hours. We will work with you to understa
 ## Security Model
 
 ### Network Isolation
-The Yapper desktop app makes **zero external network requests**. All speech recognition runs on-device via macOS `SFSpeechRecognizer`. The only network communication is a localhost WebSocket connection to the VS Code extension bridge (`127.0.0.1:9147`).
+The Yapper desktop app makes **zero external network requests**. All speech recognition runs on-device via macOS `SFSpeechRecognizer` or Windows SAPI5 (Classic engine). The Modern Windows engine uses `Windows.Media.SpeechRecognition` which may send audio to Microsoft for processing (requires user opt-in via "Online speech recognition" privacy setting). The only other network communication is a localhost WebSocket connection to the VS Code extension bridge (`127.0.0.1:9147`).
 
 ### Data Handling
-- Audio recordings are temporary files in `/tmp/` and are deleted immediately after transcription
-- History is stored in browser `localStorage` within the Tauri webview (local to the app)
+- Audio recordings are temporary files in `/tmp/` (macOS) or `%TEMP%` (Windows) and are overwritten each recording
+- History is stored as a JSON file in the app data directory (`history.json`, max 100 entries)
+- Settings (hotkey, STT engine) are stored in `settings.json` in the app config directory
 - No telemetry, analytics, or crash reporting is sent anywhere
 - No API keys or credentials are stored by the app
 
@@ -33,10 +34,15 @@ The Yapper desktop app makes **zero external network requests**. All speech reco
 - If the bridge is compromised, the blast radius is limited to text refinement results
 
 ### Permissions
-The app requires three macOS permissions:
+
+**macOS:**
 - **Microphone**: For audio recording (user-prompted)
 - **Speech Recognition**: For on-device STT (user-prompted)
 - **Accessibility**: For auto-paste via keystroke simulation (manually granted in System Settings)
+
+**Windows:**
+- **Microphone**: For audio recording (Settings > Privacy > Microphone)
+- **Online speech recognition** (Modern engine only): Settings > Privacy & security > Speech (the app detects this via registry and shows a setup tooltip)
 
 ### Dependencies
 - Rust dependencies are locked via `Cargo.lock`

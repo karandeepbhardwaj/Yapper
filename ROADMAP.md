@@ -3,13 +3,16 @@
 ## Completed
 
 - [x] CI/CD pipeline (GitHub Actions: build macOS + Windows, release on tag)
-- [x] Windows STT implementation (Windows.Media.SpeechRecognition)
-- [x] Windows widget (positioning, hover, click detection via Win32 APIs)
+- [x] Windows STT implementation — dual-engine: Classic (SAPI5 via PowerShell) + Modern (WinRT SpeechRecognizer)
+- [x] Windows STT engine selection UI (Classic/Modern toggle in title bar, Windows only)
+- [x] Windows speech permission detection (registry check) + setup tooltip with screenshot
+- [x] Windows widget (DPI-aware positioning, hover, click detection via Win32 APIs)
 - [x] Windows auto-paste (PowerShell Set-Clipboard + SendKeys)
 - [x] Multi-provider LLM support (Groq, Gemini, Claude, Copilot)
-- [x] Keyboard shortcut customization
-- [x] Fn key as hotkey (macOS only)
+- [x] Keyboard shortcut customization (physical key mapping via `e.code`)
+- [x] Fn key as hotkey (macOS only) with setup tooltip
 - [x] cocoa/objc/block -> objc2/objc2-app-kit/block2 migration
+- [x] Settings persistence (hotkey + STT engine in settings.json, restored on startup)
 
 ## v0.1.0 — Polish & Stability
 

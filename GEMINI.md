@@ -12,7 +12,7 @@ Yapper is a Tauri v2 desktop app (Rust + React 18) for voice-to-text with AI ref
 - Widget runs in a separate webview — communicate via Tauri events, not shared state
 - All AppKit calls must happen on the main thread
 - Don't use enigo for keyboard simulation on macOS — it crashes
-- cocoa crate deprecation warnings are expected and should not be fixed
+- macOS uses `objc2` + `objc2-app-kit` + `block2` (NOT deprecated `cocoa`/`objc`)
 - No Co-Authored-By lines in git commits
 - Stage specific files when committing (never `git add -A`)
 

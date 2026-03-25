@@ -80,15 +80,25 @@ Then press **F5** in VS Code (with the extension folder open) to launch an Exten
 ```
 apps/desktop/
   src/                     — React frontend
+    app/components/        — MainWindow, HistoryCard, LandingPage
+    app/hooks/             — useTauriEvents, useHistory, useSettings
+    app/lib/               — tauri-bridge.ts (invoke wrappers), types.ts
+    assets/                — fn-key-settings.png, windows-speech-settings.png
+    widget.tsx             — Floating pill widget (separate webview)
+    styles/                — CSS tokens + dark mode
   src-tauri/src/
-    lib.rs                 — Entry point (~44 lines)
-    commands.rs            — All Tauri commands
-    widget/                — Platform-specific widget code
-    stt/                   — Platform-specific STT code
-    bridge.rs              — WebSocket client
-    hotkey.rs              — Global shortcuts
-    history.rs             — History persistence
-    autopaste.rs           — Cross-platform paste
+    lib.rs                 — Entry point (~61 lines): plugins, command registration, STT engine restore
+    commands.rs            — All Tauri commands (~317 lines): AppSettings, recording, history, hotkey, STT engine
+    widget/mod.rs          — Platform dispatcher
+    widget/macos.rs        — NSPanel + hover/click (objc2)
+    widget/windows.rs      — Win32 DPI-aware positioning + hover/click
+    stt/mod.rs             — State machine (Idle/Recording/Processing) with atomic transitions
+    stt/macos.rs           — Swift subprocess STT
+    stt/windows.rs         — Dual-engine STT (~453 lines): Classic (SAPI5 PowerShell) + Modern (WinRT)
+    bridge.rs              — WebSocket client to VS Code extension
+    hotkey.rs              — Global shortcut register/update + Fn key monitor (macOS)
+    history.rs             — JSON file persistence (max 100 entries)
+    autopaste.rs           — Cross-platform paste (pbcopy/osascript or PowerShell)
 
 extensions/vscode-bridge/  — VS Code extension (multi-provider LLM)
 ```
