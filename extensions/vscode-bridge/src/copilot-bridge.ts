@@ -1,4 +1,8 @@
 import * as vscode from "vscode";
+import * as https from "https";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 const CATEGORY_LIST = "Interview, Thought, Work, Research, Strategy, Idea, Meeting, Personal, Creative, Note, Email, Message";
 
@@ -51,55 +55,7 @@ export interface RefinementResult {
   title: string;
 }
 
-export async function refineWithCopilot(
-  rawText: string,
-  style: string = "Professional",
-  token: vscode.CancellationToken
-): Promise<RefinementResult> {
-  const config = vscode.workspace.getConfiguration("yapper");
-  const preferredFamily = config.get<string>("modelFamily", "gpt-4o-mini");
-
-  // Try preferred model first, fall back to any available Copilot model
-  let models = await vscode.lm.selectChatModels({
-    vendor: "copilot",
-    family: preferredFamily,
-  });
-
-  if (models.length === 0) {
-    console.log(`[Yapper] Model family "${preferredFamily}" not available, falling back to any Copilot model`);
-    models = await vscode.lm.selectChatModels({
-      vendor: "copilot",
-    });
-  }
-
-  if (models.length === 0) {
-    throw new Error(
-      "No Copilot models available. Ensure GitHub Copilot is installed and activated."
-    );
-  }
-
-  const model = models[0];
-  console.log(`[Yapper] Using model: ${model.name} (family: ${model.family})`);
-  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
-
-  const messages = [
-    vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT),
-    vscode.LanguageModelChatMessage.User(`Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}`),
-  ];
-
-  const response = await model.sendRequest(messages, {}, token);
-
-  const chunks: string[] = [];
-  for await (const fragment of response.text) {
-    chunks.push(fragment);
-  }
-
-  const result = chunks.join("").trim();
-
-  if (!result) {
-    throw new Error("Copilot returned an empty response");
-  }
-
+function parseResult(result: string): RefinementResult {
   try {
     const cleaned = result
       .replace(/^```(?:json)?\s*/g, "")
@@ -112,10 +68,175 @@ export async function refineWithCopilot(
       title: parsed.title || "",
     };
   } catch {
-    return {
-      refinedText: result,
-      category: "Note",
-      title: "",
-    };
+    return { refinedText: result, category: "Note", title: "" };
   }
+}
+
+// Read API keys from VS Code settings file directly (fallback for config API issues)
+function readApiKeyFromSettingsFile(keyName: string): string {
+  try {
+    const settingsPath = process.platform === "win32"
+      ? path.join(os.homedir(), "AppData", "Roaming", "Code", "User", "settings.json")
+      : process.platform === "darwin"
+      ? path.join(os.homedir(), "Library", "Application Support", "Code", "User", "settings.json")
+      : path.join(os.homedir(), ".config", "Code", "User", "settings.json");
+
+    const content = fs.readFileSync(settingsPath, "utf-8");
+    // Strip JSON comments (VS Code settings can have // comments)
+    const stripped = content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    const settings = JSON.parse(stripped);
+    return settings[keyName] || "";
+  } catch {
+    return "";
+  }
+}
+
+function getApiKey(settingName: string, envVar: string): string {
+  // Try VS Code config API first
+  const fromConfig = vscode.workspace.getConfiguration("yapper").get<string>(settingName, "");
+  if (fromConfig) { return fromConfig; }
+  // Try environment variable
+  const fromEnv = process.env[envVar] || "";
+  if (fromEnv) { return fromEnv; }
+  // Try reading settings file directly
+  return readApiKeyFromSettingsFile(`yapper.${settingName}`);
+}
+
+// --- HTTP helper ---
+
+function httpPost(url: string, headers: Record<string, string>, body: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const req = https.request({
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => {
+        const body = Buffer.concat(chunks).toString();
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 300)}`));
+        } else {
+          resolve(body);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// --- API providers ---
+
+async function refineWithGroq(rawText: string, style: string, apiKey: string): Promise<RefinementResult> {
+  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
+  const body = JSON.stringify({
+    model: "llama-3.3-70b-versatile",
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: `Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}` },
+    ],
+    temperature: 0.3,
+  });
+
+  console.log("[Yapper] Using Groq API (llama-3.3-70b)");
+  const response = await httpPost("https://api.groq.com/openai/v1/chat/completions", {
+    "Authorization": `Bearer ${apiKey}`,
+  }, body);
+  const parsed = JSON.parse(response);
+  const text = parsed?.choices?.[0]?.message?.content || "";
+  if (!text) { throw new Error("Groq returned empty response"); }
+  return parseResult(text);
+}
+
+async function refineWithGemini(rawText: string, style: string, apiKey: string): Promise<RefinementResult> {
+  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
+  const prompt = `${SYSTEM_PROMPT}\n\nStyle: ${styleNote}\n\nRaw transcript:\n\n${rawText}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.3 },
+  });
+
+  console.log("[Yapper] Using Gemini API (gemini-2.0-flash)");
+  const response = await httpPost(url, {}, body);
+  const parsed = JSON.parse(response);
+  const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  if (!text) { throw new Error("Gemini returned empty response"); }
+  return parseResult(text);
+}
+
+async function refineWithAnthropic(rawText: string, style: string, apiKey: string): Promise<RefinementResult> {
+  const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
+  const body = JSON.stringify({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1024,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: `Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}` }],
+  });
+
+  console.log("[Yapper] Using Anthropic API (claude-sonnet-4)");
+  const response = await httpPost("https://api.anthropic.com/v1/messages", {
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+  }, body);
+  const parsed = JSON.parse(response);
+  const text = parsed?.content?.[0]?.text || "";
+  if (!text) { throw new Error("Anthropic returned empty response"); }
+  return parseResult(text);
+}
+
+// --- Main entry point ---
+
+export async function refineWithCopilot(
+  rawText: string,
+  style: string = "Professional",
+  token: vscode.CancellationToken
+): Promise<RefinementResult> {
+  // 1. Try vscode.lm API first (Copilot, Claude for VS Code, etc.)
+  try {
+    let models = await vscode.lm.selectChatModels();
+    if (models.length > 0) {
+      const model = models[0];
+      console.log(`[Yapper] Using vscode.lm: ${model.name} (${model.vendor}/${model.family})`);
+      const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
+      const messages = [
+        vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT),
+        vscode.LanguageModelChatMessage.User(`Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}`),
+      ];
+      const response = await model.sendRequest(messages, {}, token);
+      const chunks: string[] = [];
+      for await (const fragment of response.text) { chunks.push(fragment); }
+      const result = chunks.join("").trim();
+      if (result) { return parseResult(result); }
+    }
+  } catch (err) {
+    console.log(`[Yapper] vscode.lm failed: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // 2. Direct API fallbacks — try each provider if key is available
+  const providers: Array<{ name: string; settingKey: string; envVar: string; fn: (raw: string, style: string, key: string) => Promise<RefinementResult> }> = [
+    { name: "Groq",      settingKey: "groqApiKey",      envVar: "GROQ_API_KEY",      fn: refineWithGroq },
+    { name: "Gemini",    settingKey: "geminiApiKey",     envVar: "GEMINI_API_KEY",    fn: refineWithGemini },
+    { name: "Anthropic", settingKey: "anthropicApiKey",  envVar: "ANTHROPIC_API_KEY", fn: refineWithAnthropic },
+  ];
+
+  for (const provider of providers) {
+    const key = getApiKey(provider.settingKey, provider.envVar);
+    if (key) {
+      try {
+        return await provider.fn(rawText, style, key);
+      } catch (err) {
+        console.log(`[Yapper] ${provider.name} failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+
+  throw new Error(
+    "All refinement methods failed. Set an API key in VS Code settings (yapper.groqApiKey, yapper.geminiApiKey, or yapper.anthropicApiKey)."
+  );
 }

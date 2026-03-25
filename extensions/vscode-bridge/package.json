@@ -2,7 +2,7 @@
   "name": "yapper-bridge",
   "displayName": "Yapper Bridge",
   "description": "Local WebSocket bridge between Yapper desktop app and GitHub Copilot",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "yapper",
   "engines": {
     "vscode": "^1.90.0"
@@ -20,16 +20,32 @@
       "properties": {
         "yapper.modelFamily": {
           "type": "string",
-          "default": "gpt-4o-mini",
-          "enum": ["gpt-4o-mini", "gpt-4o", "claude-3.5-sonnet", "o3-mini", "o4-mini"],
+          "default": "gemini-2.0-flash",
+          "enum": ["gemini-2.0-flash", "gemini-2.5-pro", "claude-sonnet-4", "claude-haiku-4", "gpt-4o-mini", "gpt-4o"],
           "enumDescriptions": [
-            "Fastest — great for transcript refinement",
-            "More nuanced rewrites, slightly slower",
-            "Claude 3.5 Sonnet (if available via Copilot)",
-            "Reasoning model, slower but thorough",
-            "Latest reasoning model"
+            "Gemini 2.0 Flash — fast and free",
+            "Gemini 2.5 Pro — higher quality",
+            "Claude Sonnet 4 — great balance of speed and quality",
+            "Claude Haiku 4 — fastest Claude model",
+            "GPT-4o Mini — fast Copilot model",
+            "GPT-4o — more nuanced, slightly slower"
           ],
-          "description": "Preferred Copilot model family for transcript refinement"
+          "description": "Preferred model family for transcript refinement (works with Gemini, Claude, or Copilot)"
+        },
+        "yapper.groqApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Groq API key — free, fast, no credit card (https://console.groq.com/keys)"
+        },
+        "yapper.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Gemini API key (https://aistudio.google.com/apikey)"
+        },
+        "yapper.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API key"
         }
       }
     },
