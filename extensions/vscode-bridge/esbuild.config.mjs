@@ -10,6 +10,7 @@ await esbuild.build({
   target: "node18",
   allowOverwrite: true,
   minify: true,
+  sourcemap: false,
 });
 
 console.log("Bundled extension.js with ws dependency");

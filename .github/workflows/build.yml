@@ -101,6 +101,7 @@ jobs:
         run: |
           npx tsc -p ./
           node esbuild.config.mjs
+          rm -f out/*.map
           npx vsce package --no-dependencies
 
       - name: Upload VSIX artifact
