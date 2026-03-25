@@ -2,7 +2,7 @@
   "name": "yapper-bridge",
   "displayName": "Yapper Bridge",
   "description": "Local WebSocket bridge between Yapper desktop app and GitHub Copilot",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "yapper",
   "engines": {
     "vscode": "^1.90.0"
