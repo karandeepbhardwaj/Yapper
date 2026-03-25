@@ -75,8 +75,33 @@ jobs:
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
 
+  build-vsix:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build and package VSIX
+        working-directory: extensions/vscode-bridge
+        run: |
+          npm install
+          npm run compile
+          npx vsce package --no-dependencies
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yapper-vsix
+          path: extensions/vscode-bridge/*.vsix
+
   release:
-    needs: build
+    needs: [build, build-vsix]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -87,7 +112,7 @@ jobs:
         uses: actions/download-artifact@v4
 
       - name: List downloaded artifacts
-        run: find . -type f -name "*.dmg" -o -name "*.msi" -o -name "*.exe" | head -20
+        run: find . -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.exe" -o -name "*.vsix" \)
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -96,4 +121,5 @@ jobs:
             yapper-*/**/*.dmg
             yapper-*/**/*.msi
             yapper-*/**/*.exe
+            yapper-*/**/*.vsix
           generate_release_notes: true
