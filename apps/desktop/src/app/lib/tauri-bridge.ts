@@ -36,3 +36,11 @@ export async function togglePinItem(id: string): Promise<void> {
 export async function changeHotkey(hotkey: string): Promise<void> {
   await invoke("change_hotkey", { hotkey });
 }
+
+export async function changeSttEngine(engine: "classic" | "modern"): Promise<void> {
+  await invoke("change_stt_engine", { engine });
+}
+
+export async function checkSpeechPermission(): Promise<boolean> {
+  return await invoke("check_speech_permission");
+}

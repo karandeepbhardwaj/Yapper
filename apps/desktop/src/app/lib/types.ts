@@ -12,8 +12,10 @@ export interface HistoryItem {
 
 export interface AppSettings {
   hotkey: string;
+  stt_engine: "classic" | "modern";
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   hotkey: "Cmd+Shift+.",
+  stt_engine: "classic",
 };

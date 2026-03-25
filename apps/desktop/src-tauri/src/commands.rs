@@ -6,6 +6,12 @@ use crate::{autopaste, bridge, history, hotkey, stt};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub hotkey: String,
+    #[serde(default = "default_stt_engine")]
+    pub stt_engine: String,
+}
+
+fn default_stt_engine() -> String {
+    "classic".to_string()
 }
 
 impl Default for AppSettings {
@@ -15,6 +21,7 @@ impl Default for AppSettings {
             hotkey: "Cmd+Shift+.".to_string(),
             #[cfg(not(target_os = "macos"))]
             hotkey: "Ctrl+Shift+.".to_string(),
+            stt_engine: default_stt_engine(),
         }
     }
 }
@@ -24,9 +31,11 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
     match current {
         stt::State::Idle => {
             handle.emit("stt-state-changed", "listening").ok();
-            if let Err(_) = stt::start(handle).await {
+            if let Err(e) = stt::start(handle).await {
+                println!("[Toggle] STT start failed: {}", e);
                 stt::set_state(stt::State::Idle);
                 handle.emit("stt-state-changed", "idle").ok();
+                handle.emit("stt-error", e).ok();
             }
         }
         stt::State::Recording => {
@@ -182,11 +191,27 @@ pub async fn toggle_pin_item(app: tauri::AppHandle, id: String) -> Result<(), St
 
 #[tauri::command]
 pub async fn change_hotkey(app: tauri::AppHandle, hotkey_str: String) -> Result<(), String> {
-    hotkey::update(&app, &hotkey_str)?;
-    let settings = AppSettings { hotkey: hotkey_str };
+    println!("[Hotkey] change_hotkey called with: '{}'", hotkey_str);
+}
+
+#[tauri::command]
+pub fn debug_log(msg: String) {
+    println!("[FE-DEBUG] {}", msg);
+    if let Err(e) = hotkey::update(&app, &hotkey_str) {
+        println!("[Hotkey] update FAILED: {}", e);
+        return Err(e);
+    }
+    println!("[Hotkey] update succeeded");
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     let settings_path = path.join("settings.json");
+    let mut settings = if settings_path.exists() {
+        let data = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<AppSettings>(&data).unwrap_or_default()
+    } else {
+        AppSettings::default()
+    };
+    settings.hotkey = hotkey_str;
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
 }
@@ -208,6 +233,84 @@ pub async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Resu
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     let settings_path = path.join("settings.json");
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&settings_path, data).map_err(|e| e.to_string())
+}
+
+/// Check if Windows Online Speech Recognition privacy setting is enabled.
+/// Returns true if enabled or if not on Windows.
+#[tauri::command]
+pub async fn check_speech_permission() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::System::Registry::*;
+        use windows::core::PCWSTR;
+
+        let subkey: Vec<u16> = "Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy\0"
+            .encode_utf16().collect();
+        let value_name: Vec<u16> = "HasAccepted\0".encode_utf16().collect();
+
+        let mut hkey = HKEY::default();
+        let result = unsafe {
+            RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey.as_ptr()),
+                0,
+                KEY_READ,
+                &mut hkey,
+            )
+        };
+
+        if result.is_err() {
+            return Ok(false);
+        }
+
+        let mut data: u32 = 0;
+        let mut data_size: u32 = std::mem::size_of::<u32>() as u32;
+        let query = unsafe {
+            RegQueryValueExW(
+                hkey,
+                PCWSTR(value_name.as_ptr()),
+                None,
+                None,
+                Some(&mut data as *mut u32 as *mut u8),
+                Some(&mut data_size),
+            )
+        };
+        let _ = unsafe { RegCloseKey(hkey) };
+
+        if query.is_err() {
+            return Ok(false);
+        }
+
+        Ok(data == 1)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+pub async fn change_stt_engine(app: tauri::AppHandle, engine: String) -> Result<(), String> {
+    let is_modern = engine == "modern";
+    #[cfg(target_os = "windows")]
+    stt::windows::set_engine(is_modern);
+    #[cfg(not(target_os = "windows"))]
+    let _ = is_modern;
+
+    // Persist to settings
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    let settings_path = path.join("settings.json");
+    let mut settings = if settings_path.exists() {
+        let data = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<AppSettings>(&data).unwrap_or_default()
+    } else {
+        AppSettings::default()
+    };
+    settings.stt_engine = engine;
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
 }
