@@ -39,7 +39,7 @@ type SpeechRecognitionEventLike = {
 };
 
 export default function App() {
-  const { hotkey, setHotkey } = useSettings();
+  const { hotkey, setHotkey, sttEngine, setSttEngine } = useSettings();
   const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, clearAll, deleteItem, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -200,6 +200,8 @@ export default function App() {
               historyItems={historyItems}
               hotkey={hotkey}
               onHotkeyChange={setHotkey}
+              sttEngine={sttEngine}
+              onSttEngineChange={setSttEngine}
               onClearHistory={clearAll}
               onDeleteItem={deleteItem}
               onTogglePin={togglePin}

@@ -23,6 +23,21 @@ pub fn run() {
         .setup(|app| {
             hotkey::register(app)?;
             widget::setup(app);
+
+            // Restore STT engine preference on Windows
+            #[cfg(target_os = "windows")]
+            {
+                use tauri::Manager;
+                if let Ok(path) = app.path().app_config_dir() {
+                    let settings_path = path.join("settings.json");
+                    if let Ok(data) = std::fs::read_to_string(&settings_path) {
+                        if let Ok(settings) = serde_json::from_str::<commands::AppSettings>(&data) {
+                            stt::windows::set_engine(settings.stt_engine == "modern");
+                        }
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -37,6 +52,8 @@ pub fn run() {
             commands::change_hotkey,
             commands::get_settings,
             commands::save_settings,
+            commands::change_stt_engine,
+            commands::check_speech_permission,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

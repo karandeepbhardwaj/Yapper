@@ -4,9 +4,13 @@ import { motion, AnimatePresence } from "motion/react";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Fuse from "fuse.js";
 import type { HistoryItem } from "../lib/types";
+import { checkSpeechPermission } from "../lib/tauri-bridge";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";
+import winSpeechSettingsImg from "../../assets/windows-speech-settings.png";
 
 const isMac = navigator.platform.toUpperCase().includes("MAC");
+
+const isWindows = !navigator.platform.toUpperCase().includes("MAC");
 
 interface MainWindowProps {
   isDarkMode: boolean;
@@ -14,6 +18,8 @@ interface MainWindowProps {
   historyItems: HistoryItem[];
   hotkey: string;
   onHotkeyChange?: (hotkey: string) => void;
+  sttEngine?: "classic" | "modern";
+  onSttEngineChange?: (engine: "classic" | "modern") => void;
   onClearHistory?: () => void;
   onDeleteItem?: (id: string) => void;
   onTogglePin?: (id: string) => void;
@@ -44,19 +50,26 @@ function keyEventToHotkey(e: KeyboardEvent): string | null {
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
 
-  // Normalize the key name
-  let key = e.key;
-  if (key === ".") key = ".";
-  else if (key.length === 1) key = key.toUpperCase();
-  else {
-    // Map special keys
-    const keyMap: Record<string, string> = {
-      ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
-      Backspace: "Backspace", Delete: "Delete", Enter: "Enter",
-      Escape: "Escape", Tab: "Tab", Space: "Space",
-    };
-    key = keyMap[key] || key;
-  }
+  // Use e.code (physical key) to avoid Shift changing "/" to "?" etc.
+  const codeMap: Record<string, string> = {
+    KeyA: "A", KeyB: "B", KeyC: "C", KeyD: "D", KeyE: "E", KeyF: "F",
+    KeyG: "G", KeyH: "H", KeyI: "I", KeyJ: "J", KeyK: "K", KeyL: "L",
+    KeyM: "M", KeyN: "N", KeyO: "O", KeyP: "P", KeyQ: "Q", KeyR: "R",
+    KeyS: "S", KeyT: "T", KeyU: "U", KeyV: "V", KeyW: "W", KeyX: "X",
+    KeyY: "Y", KeyZ: "Z",
+    Digit0: "0", Digit1: "1", Digit2: "2", Digit3: "3", Digit4: "4",
+    Digit5: "5", Digit6: "6", Digit7: "7", Digit8: "8", Digit9: "9",
+    Period: ".", Comma: ",", Slash: "/", Backslash: "\\",
+    Semicolon: ";", Quote: "'", BracketLeft: "[", BracketRight: "]",
+    Minus: "-", Equal: "=", Backquote: "`", Space: "Space",
+    Enter: "Enter", Tab: "Tab", Backspace: "Backspace", Delete: "Delete",
+    Escape: "Escape",
+    ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+    F1: "F1", F2: "F2", F3: "F3", F4: "F4", F5: "F5", F6: "F6",
+    F7: "F7", F8: "F8", F9: "F9", F10: "F10", F11: "F11", F12: "F12",
+  };
+  const key = codeMap[e.code];
+  if (!key) return null; // Unknown key
 
   parts.push(key);
   return parts.join("+");
@@ -137,6 +150,8 @@ export function MainWindow({
   historyItems,
   hotkey,
   onHotkeyChange,
+  sttEngine = "classic",
+  onSttEngineChange,
   onClearHistory,
   onDeleteItem,
   onTogglePin,
@@ -145,23 +160,50 @@ export function MainWindow({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
   const [showFnTooltip, setShowFnTooltip] = useState(false);
+  const [showSpeechTooltip, setShowSpeechTooltip] = useState(false);
   const hotkeyBadgeRef = useRef<HTMLButtonElement>(null);
   const showAnimatedPlaceholder = !searchQuery && !isSearchFocused;
   const animatedPlaceholder = useTypingPlaceholder(showAnimatedPlaceholder);
+
+  // When switching to Modern STT, check if the speech permission is enabled
+  const handleSttEngineChange = useCallback(async (engine: "classic" | "modern") => {
+    if (engine === "modern" && isWindows) {
+      try {
+        const enabled = await checkSpeechPermission();
+        if (!enabled) {
+          setShowSpeechTooltip(true);
+        }
+      } catch {
+        // If check fails, show tooltip to be safe
+        setShowSpeechTooltip(true);
+      }
+    } else {
+      setShowSpeechTooltip(false);
+    }
+    onSttEngineChange?.(engine);
+  }, [onSttEngineChange]);
+
+  const [hotkeyDebug, setHotkeyDebug] = useState("");
 
   const handleHotkeyRecord = useCallback((e: KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
+    setHotkeyDebug(`key="${e.key}" code="${e.code}"`);
+
     if (e.key === "Escape") {
       setIsRecordingHotkey(false);
+      setHotkeyDebug("");
       return;
     }
 
     const newHotkey = keyEventToHotkey(e);
+    setHotkeyDebug(`key="${e.key}" code="${e.code}" → ${newHotkey ?? "null"}`);
+
     if (newHotkey) {
       onHotkeyChange?.(newHotkey);
       setIsRecordingHotkey(false);
+      setHotkeyDebug("");
       if (newHotkey === "Fn") {
         setShowFnTooltip(true);
       }
@@ -433,6 +475,173 @@ export function MainWindow({
                     opacity: 0.7,
                   }}>
                     Otherwise macOS will intercept the key for Dictation or Emoji.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* STT engine segmented toggle — Windows only */}
+          {isWindows && (
+            <div
+              title={sttEngine === "classic"
+                ? "Classic: offline SAPI5 — no settings needed"
+                : "Modern: WinRT — more accurate, requires Settings > Privacy > Speech"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                position: "relative",
+                borderRadius: 7,
+                background: "var(--yapper-surface-low, var(--yapper-bg-light))",
+                border: "1px solid var(--yapper-border)",
+                padding: 1,
+                gap: 0,
+              }}
+            >
+              {/* Sliding highlight pill */}
+              <motion.div
+                layout="position"
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                style={{
+                  position: "absolute",
+                  top: 1,
+                  bottom: 1,
+                  left: sttEngine === "classic" ? 1 : "50%",
+                  width: "calc(50% - 1px)",
+                  borderRadius: 6,
+                  background: "var(--yapper-surface-lowest, #ffffff)",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                }}
+              />
+              {(["classic", "modern"] as const).map((eng) => (
+                <button
+                  key={eng}
+                  onClick={() => handleSttEngineChange(eng)}
+                  style={{
+                    position: "relative",
+                    zIndex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: 9,
+                    fontWeight: sttEngine === eng ? 600 : 400,
+                    padding: "2px 7px",
+                    borderRadius: 6,
+                    color: sttEngine === eng ? "var(--yapper-accent)" : "var(--yapper-text-secondary)",
+                    fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+                    opacity: sttEngine === eng ? 1 : 0.55,
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    outline: "none",
+                    transition: "color 0.25s, opacity 0.25s, font-weight 0.25s",
+                  }}
+                >
+                  {eng === "classic" ? "Classic" : "Modern"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Windows speech permission tooltip */}
+          <AnimatePresence>
+            {isWindows && showSpeechTooltip && (
+              <motion.div
+                initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                transition={{ duration: 0.2 }}
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 10px)",
+                  right: 0,
+                  width: 340,
+                  padding: 16,
+                  borderRadius: 16,
+                  background: "var(--yapper-surface-lowest, #ffffff)",
+                  border: "1px solid var(--yapper-border)",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06)",
+                  zIndex: 100,
+                }}
+              >
+                {/* Tooltip arrow */}
+                <div style={{
+                  position: "absolute",
+                  top: -6,
+                  right: 50,
+                  width: 12,
+                  height: 12,
+                  background: "var(--yapper-surface-lowest, #ffffff)",
+                  border: "1px solid var(--yapper-border)",
+                  borderBottom: "none",
+                  borderRight: "none",
+                  transform: "rotate(45deg)",
+                }} />
+
+                <div style={{ position: "relative" }}>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                  }}>
+                    <span style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "var(--yapper-text-primary)",
+                      fontFamily: "var(--font-headline, 'Manrope', sans-serif)",
+                    }}>
+                      Enable Speech Recognition
+                    </span>
+                    <button
+                      onClick={() => setShowSpeechTooltip(false)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 2,
+                        display: "flex",
+                        opacity: 0.5,
+                      }}
+                    >
+                      <X style={{ width: 14, height: 14, color: "var(--yapper-text-secondary)" }} />
+                    </button>
+                  </div>
+
+                  <p style={{
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    color: "var(--yapper-text-secondary)",
+                    marginBottom: 12,
+                  }}>
+                    To use <strong style={{ color: "var(--yapper-text-primary)" }}>Modern</strong> speech recognition, open{" "}
+                    <strong style={{ color: "var(--yapper-text-primary)" }}>Settings &rarr; Privacy &amp; security &rarr; Speech</strong>{" "}
+                    and turn on{" "}
+                    <strong style={{ color: "var(--yapper-accent)" }}>Online speech recognition</strong>.
+                  </p>
+
+                  <div style={{
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    border: "1px solid var(--yapper-border)",
+                  }}>
+                    <img
+                      src={winSpeechSettingsImg}
+                      alt="Windows Privacy & security > Speech settings with Online speech recognition toggled On"
+                      style={{
+                        width: "100%",
+                        display: "block",
+                      }}
+                    />
+                  </div>
+
+                  <p style={{
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    color: "var(--yapper-text-secondary)",
+                    marginTop: 10,
+                    opacity: 0.7,
+                  }}>
+                    Without this, the app will fall back to Classic mode which has lower accuracy.
                   </p>
                 </div>
               </motion.div>
