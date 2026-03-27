@@ -20,6 +20,7 @@ const PILL_EASE = [0.34, 1.1, 0.64, 1] as const;
 function WidgetApp() {
   const [state, setState] = useState<WidgetState>("idle");
   const [isHovered, setIsHovered] = useState(false);
+  const [hotkey, setHotkey] = useState("fn");
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
@@ -44,6 +45,8 @@ function WidgetApp() {
 
   const handlePillClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Only left click (button 0) triggers recording
+    if (e.button !== 0) return;
     if (!isActive) {
       await invoke("start_recording");
     }
@@ -52,6 +55,23 @@ function WidgetApp() {
   const handleStop = async (e: React.MouseEvent) => {
     e.stopPropagation();
     await invoke("stop_recording");
+  };
+
+  // Load hotkey from settings
+  useEffect(() => {
+    invoke<{ hotkey: string }>("get_settings").then((s) => {
+      if (s?.hotkey) setHotkey(s.hotkey);
+    }).catch(() => {});
+  }, []);
+
+  const formatHotkey = (hk: string): string => {
+    if (hk.toLowerCase() === "fn") return "fn";
+    return hk
+      .replace(/Cmd\+/gi, "\u2318")
+      .replace(/Shift\+/gi, "\u21e7")
+      .replace(/Alt\+/gi, "\u2325")
+      .replace(/Ctrl\+/gi, "\u2303")
+      .replace(/Meta\+/gi, "\u2318");
   };
 
   const handleDiscard = (e: React.MouseEvent) => {
@@ -72,11 +92,41 @@ function WidgetApp() {
         width: "100vw",
         height: "100vh",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "flex-end",
+        paddingBottom: 4,
         background: "transparent",
+        pointerEvents: "none",
       }}
     >
+      {/* Tooltip on hover (idle only) */}
+      <AnimatePresence>
+        {isHovered && !isActive && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              marginBottom: 6,
+              padding: "6px 12px",
+              borderRadius: 10,
+              background: "#2a231d",
+              border: "1px solid rgba(255,255,255,0.06)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+              fontSize: 11,
+              color: "rgba(255,255,255,0.75)",
+              whiteSpace: "nowrap",
+              pointerEvents: "auto",
+            }}
+          >
+            Hold <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(hotkey)}</span> to start dictating
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Pill */}
       <motion.div
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -101,6 +151,7 @@ function WidgetApp() {
           cursor: isActive ? "default" : "pointer",
           overflow: "hidden",
           position: "relative",
+          pointerEvents: "auto",
         }}
       >
         <AnimatePresence mode="wait">

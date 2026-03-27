@@ -58,6 +58,7 @@ pub fn add_entry(
     refined_text: &str,
     category: Option<&str>,
     title: Option<&str>,
+    duration_seconds: Option<u64>,
 ) -> Result<(), String> {
     let mut entries = get_all(app)?;
 
@@ -72,7 +73,7 @@ pub fn add_entry(
         title: title.map(|s| s.to_string()),
         entry_type: None,
         conversation: None,
-        duration_seconds: None,
+        duration_seconds,
     };
 
     entries.insert(0, entry);

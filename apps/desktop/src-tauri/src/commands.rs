@@ -1,18 +1,37 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::Instant;
 use tauri::{Emitter, Manager};
 
-use crate::{autopaste, bridge, conversation, history, stt};
+use crate::{autopaste, bridge, conversation, dictionary, history, snippets, stt};
+
+static RECORDING_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub hotkey: String,
     #[serde(default = "default_stt_engine")]
     pub stt_engine: String,
+    #[serde(default = "default_style")]
+    pub default_style: String,
+    #[serde(default)]
+    pub style_overrides: HashMap<String, String>,
+    #[serde(default = "default_true")]
+    pub metrics_enabled: bool,
+    #[serde(default = "default_false")]
+    pub code_mode: bool,
 }
 
 fn default_stt_engine() -> String {
     "classic".to_string()
 }
+
+fn default_style() -> String {
+    "Professional".to_string()
+}
+
+fn default_true() -> bool { true }
+fn default_false() -> bool { false }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -22,7 +41,23 @@ impl Default for AppSettings {
             #[cfg(not(target_os = "macos"))]
             hotkey: "Ctrl+Shift+.".to_string(),
             stt_engine: default_stt_engine(),
+            default_style: default_style(),
+            style_overrides: HashMap::new(),
+            metrics_enabled: true,
+            code_mode: false,
         }
+    }
+}
+
+fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
+    let path = match app.path().app_config_dir() {
+        Ok(p) => p.join("settings.json"),
+        Err(_) => return AppSettings::default(),
+    };
+    if !path.exists() { return AppSettings::default(); }
+    match std::fs::read_to_string(&path) {
+        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
+        Err(_) => AppSettings::default(),
     }
 }
 
@@ -30,15 +65,21 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
     let current = stt::get_state();
     match current {
         stt::State::Idle => {
+            *RECORDING_START.lock().unwrap() = Some(Instant::now());
             handle.emit("stt-state-changed", "listening").ok();
             if let Err(e) = stt::start(handle).await {
                 println!("[Toggle] STT start failed: {}", e);
+                *RECORDING_START.lock().unwrap() = None;
                 stt::set_state(stt::State::Idle);
                 handle.emit("stt-state-changed", "idle").ok();
                 handle.emit("stt-error", e).ok();
             }
         }
         stt::State::Recording => {
+            let duration_secs = RECORDING_START.lock().unwrap().take()
+                .map(|s| s.elapsed().as_secs())
+                .unwrap_or(0);
+
             handle.emit("stt-state-changed", "processing").ok();
             handle.emit("stop-speech-recognition", ()).ok();
             let raw_transcript = match stt::stop().await {
@@ -58,7 +99,31 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
                 return;
             }
 
-            let bridge_result = bridge::refine_text(&raw_transcript).await;
+            // Check snippets first — if match, paste directly and skip AI
+            if let Some(expansion) = snippets::detect_and_expand(&raw_transcript, handle) {
+                let text_for_paste = expansion.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = autopaste::paste_text(&text_for_paste) {
+                        log::warn!("Auto-paste failed: {}", e);
+                    }
+                });
+                let _ = history::add_entry(handle, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs));
+                stt::set_state(stt::State::Idle);
+                handle.emit("stt-state-changed", "idle").ok();
+                return;
+            }
+
+            // Apply dictionary replacements before sending to AI
+            let processed_transcript = dictionary::apply_replacements(&raw_transcript, handle);
+
+            // Load style settings
+            let settings = get_settings_internal(handle);
+            let bridge_result = bridge::refine_text(
+                &processed_transcript,
+                Some(settings.default_style.clone()),
+                if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+                if settings.code_mode { Some(true) } else { None },
+            ).await;
             let (refined_text, category, title) = match bridge_result {
                 Ok(r) => (r.refined_text, r.category, r.title),
                 Err(_) => (raw_transcript.clone(), None, None),
@@ -71,7 +136,7 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
                 }
             });
 
-            let _ = history::add_entry(handle, &raw_transcript, &refined_text, category.as_deref(), title.as_deref());
+            let _ = history::add_entry(handle, &raw_transcript, &refined_text, category.as_deref(), title.as_deref(), Some(duration_secs));
 
             #[derive(Clone, Serialize)]
             struct ToggleResult {
@@ -100,8 +165,10 @@ pub async fn start_recording(app: tauri::AppHandle) -> Result<(), String> {
     if stt::get_state() != stt::State::Idle {
         return Err("Not idle".to_string());
     }
+    *RECORDING_START.lock().unwrap() = Some(Instant::now());
     app.emit("stt-state-changed", "listening").map_err(|e| e.to_string())?;
     stt::start(&app).await.map_err(|e| {
+        *RECORDING_START.lock().unwrap() = None;
         stt::set_state(stt::State::Idle);
         app.emit("stt-state-changed", "idle").ok();
         e.to_string()
@@ -113,6 +180,10 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
     if stt::get_state() != stt::State::Recording {
         return Err("Not recording".to_string());
     }
+    let duration_secs = RECORDING_START.lock().unwrap().take()
+        .map(|s| s.elapsed().as_secs())
+        .unwrap_or(0);
+
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
     app.emit("stop-speech-recognition", ()).ok();
 
@@ -122,7 +193,30 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         e.to_string()
     })?;
 
-    let bridge_result = bridge::refine_text(&raw_transcript).await;
+    // Check snippets first
+    if let Some(expansion) = snippets::detect_and_expand(&raw_transcript, &app) {
+        let text_for_paste = expansion.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = autopaste::paste_text(&text_for_paste) {
+                log::warn!("Auto-paste failed: {}", e);
+            }
+        });
+        history::add_entry(&app, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs))?;
+        stt::set_state(stt::State::Idle);
+        app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    // Apply dictionary replacements
+    let processed_transcript = dictionary::apply_replacements(&raw_transcript, &app);
+
+    let settings = get_settings_internal(&app);
+    let bridge_result = bridge::refine_text(
+        &processed_transcript,
+        Some(settings.default_style.clone()),
+        if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+        if settings.code_mode { Some(true) } else { None },
+    ).await;
     let (refined_text, category, title) = match bridge_result {
         Ok(r) => (r.refined_text, r.category, r.title),
         Err(_) => (raw_transcript.clone(), None, None),
@@ -136,7 +230,7 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         }
     });
 
-    history::add_entry(&app, &raw_transcript, &refined_text, category.as_deref(), title.as_deref())?;
+    history::add_entry(&app, &raw_transcript, &refined_text, category.as_deref(), title.as_deref(), Some(duration_secs))?;
 
     #[derive(Clone, Serialize)]
     struct CmdResult {
@@ -245,6 +339,40 @@ pub async fn change_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<(), 
 #[tauri::command]
 pub fn debug_log(msg: String) {
     println!("[FE-DEBUG] {}", msg);
+}
+
+#[tauri::command]
+pub async fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn navigate_to(app: tauri::AppHandle, view: String) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    app.emit("navigate-to", view).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn paste_last_transcript(app: tauri::AppHandle) -> Result<(), String> {
+    let entries = history::get_all(&app)?;
+    if let Some(entry) = entries.first() {
+        let text = entry.refined_text.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = autopaste::paste_text(&text) {
+                log::warn!("Paste last failed: {}", e);
+            }
+        });
+        Ok(())
+    } else {
+        Err("No history entries".to_string())
+    }
 }
 
 #[tauri::command]

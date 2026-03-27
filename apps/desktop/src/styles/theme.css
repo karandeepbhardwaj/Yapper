@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'DM Serif Display';
+  src: url('../assets/fonts/DMSerifDisplay-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -73,10 +81,16 @@
 @layer base {
   * {
     @apply border-border;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   body {
     @apply bg-background text-foreground;
   }
 
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }

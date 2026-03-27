@@ -8,6 +8,9 @@ mod bridge;
 mod autopaste;
 mod history;
 mod widget;
+mod dictionary;
+mod snippets;
+mod metrics;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -57,10 +60,25 @@ pub fn run() {
             commands::stop_recording_raw,
             commands::check_speech_permission,
             commands::debug_log,
+            commands::open_main_window,
+            commands::navigate_to,
+            commands::paste_last_transcript,
             conversation::start_conversation,
             conversation::send_conversation_turn,
             conversation::end_conversation,
             conversation::is_conversation_active,
+            conversation::discard_conversation,
+            dictionary::get_all_entries,
+            dictionary::add_entry,
+            dictionary::update_entry,
+            dictionary::delete_entry,
+            dictionary::toggle_favorite,
+            snippets::get_all_snippets,
+            snippets::add_snippet,
+            snippets::update_snippet,
+            snippets::delete_snippet,
+            snippets::toggle_snippet_favorite,
+            metrics::get_metrics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

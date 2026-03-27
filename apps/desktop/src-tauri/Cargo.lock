@@ -5422,6 +5422,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "once_cell",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

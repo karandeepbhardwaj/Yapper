@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Loader2, MessageCircle, Copy, Check, Moon, Sun } from "lucide-react";
+import { Loader2, Copy, Check, RotateCcw, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ConversationSummary } from "../lib/types";
@@ -57,8 +57,6 @@ interface Turn {
 interface ConversationViewProps {
   onBack: () => void;
   onConversationEnded: () => void;
-  isDarkMode: boolean;
-  onToggleDarkMode: (e?: React.MouseEvent) => void;
   hotkey: string;
 }
 
@@ -75,8 +73,6 @@ function formatHotkeyDisplay(hotkey: string): string {
 export function ConversationView({
   onBack,
   onConversationEnded,
-  isDarkMode,
-  onToggleDarkMode,
   hotkey,
 }: ConversationViewProps) {
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -185,6 +181,37 @@ export function ConversationView({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+  const cancelConversation = useCallback(async () => {
+    if (isRecording) {
+      try { await invoke("cancel_recording"); } catch {}
+      setIsRecording(false);
+    }
+    // Discard without saving
+    try { await invoke("discard_conversation"); } catch {}
+    onBack();
+  }, [isRecording, onBack]);
+
+  const refreshConversation = useCallback(async () => {
+    if (isRecording) {
+      try { await invoke("cancel_recording"); } catch {}
+      setIsRecording(false);
+    }
+    // Discard current session without saving, start fresh
+    try { await invoke("discard_conversation"); } catch {}
+    setTurns([]);
+    setStreamingContent("");
+    setError(null);
+    setRecordingSeconds(0);
+    setIsProcessing(false);
+    setIsEnding(false);
+    try {
+      const id = await invoke<string>("start_conversation");
+      setSessionId(id);
+    } catch (e) {
+      console.error("[Conversation] Failed to restart session:", e);
+    }
+  }, [isRecording]);
+
   const endConversation = useCallback(async () => {
     if (isRecording) {
       try { await invoke("cancel_recording"); } catch {}
@@ -239,12 +266,13 @@ export function ConversationView({
               position: "relative",
             }}
           >
-            {/* Icon with breathing hue behind it */}
+            {/* Yapp... with breathing hue beneath */}
             <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {/* Breathing hue */}
               <motion.div
                 animate={{
-                  scale: [1, 1.3, 1],
-                  opacity: [0.6, 1, 0.6],
+                  scale: [1, 1.5, 1],
+                  opacity: [0.25, 0.6, 0.25],
                 }}
                 transition={{
                   duration: 4,
@@ -253,29 +281,26 @@ export function ConversationView({
                 }}
                 style={{
                   position: "absolute",
-                  width: 280,
-                  height: 280,
+                  width: 240,
+                  height: 120,
                   borderRadius: "50%",
-                  background: "radial-gradient(circle, rgba(218,119,86,0.35) 0%, rgba(218,119,86,0.15) 35%, rgba(218,119,86,0.04) 55%, transparent 70%)",
-                  filter: "blur(25px)",
+                  background: "radial-gradient(ellipse, rgba(218,119,86,0.25) 0%, rgba(218,119,86,0.08) 40%, transparent 65%)",
+                  filter: "blur(30px)",
                   pointerEvents: "none",
                 }}
               />
-              <div
+              <span
                 style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: "50%",
-                  background: "var(--yapper-surface-lowest, #fff)",
-                  boxShadow: "0 8px 30px rgba(218,119,86,0.25), 0 3px 10px rgba(0,0,0,0.1), var(--yapper-card-shadow)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  fontFamily: "'DM Serif Display', serif",
+                  fontSize: 44,
+                  fontWeight: 400,
+                  color: "var(--yapper-accent)",
+                  lineHeight: 1,
                   position: "relative",
                 }}
               >
-                <MessageCircle style={{ width: 24, height: 24, color: "var(--yapper-accent)" }} />
-              </div>
+                Yapp<span style={{ fontSize: 14, position: "relative", top: 2, letterSpacing: 2 }}>...</span>
+              </span>
             </div>
 
             <p
@@ -486,121 +511,95 @@ export function ConversationView({
         )}
       </div>
 
-      {/* Floating bottom nav bar */}
+      {/* Bottom controls */}
       <div
         style={{
-          margin: "6px 20px 14px",
-          padding: "6px",
-          borderRadius: 14,
-          background: "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
-          boxShadow: "var(--yapper-accent-bar-shadow)",
-          border: "var(--yapper-accent-bar-border)",
+          margin: "8px 20px 16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexShrink: 0,
-          position: "relative",
-          zIndex: 10,
-          overflow: "hidden",
         }}
       >
-        {/* Isomorphic light overlay */}
-        <div style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: "50%",
-          background: "linear-gradient(160deg, rgba(255,255,255,0.08) 0%, transparent 40%)",
-          pointerEvents: "none",
-          borderRadius: "14px 14px 0 0",
-        }} />
-
-        {/* Left: back */}
+        {/* Left: Cancel */}
         <button
-          onClick={onBack}
+          onClick={cancelConversation}
           style={{
-            background: "rgba(0,0,0,0.12)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-            border: "none",
+            background: "var(--yapper-surface-lowest)",
+            boxShadow: "var(--yapper-card-shadow)",
+            border: "1px solid var(--yapper-border)",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            padding: 7,
+            gap: 4,
+            padding: "7px 12px",
             borderRadius: 10,
-            color: "#fff",
-            position: "relative",
-            zIndex: 1,
+            color: "var(--yapper-text-secondary)",
+            fontSize: 11,
+            fontWeight: 500,
           }}
         >
-          <ArrowLeft style={{ width: 14, height: 14 }} />
+          <X style={{ width: 11, height: 11 }} />
+          Cancel
         </button>
 
-        {/* Center: timer — absolute for true centering */}
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: "rgba(255,255,255,0.9)",
-            fontVariantNumeric: "tabular-nums",
-            position: "absolute",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 1,
-          }}
-        >
-          {formatTime(recordingSeconds)}
-        </span>
-
-        {/* Right: theme + end */}
-        <div className="flex items-center" style={{ gap: 5, position: "relative", zIndex: 1 }}>
-          <button
-            onClick={onToggleDarkMode}
+        {/* Center: Timer + Refresh */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span
             style={{
-              background: "rgba(0,0,0,0.12)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-              border: "none",
-              cursor: "pointer",
+              fontSize: 11,
+              fontWeight: 500,
+              color: "var(--yapper-text-secondary)",
+              fontVariantNumeric: "tabular-nums",
+              opacity: 0.6,
+            }}
+          >
+            {formatTime(recordingSeconds)}
+          </span>
+
+          <button
+            onClick={refreshConversation}
+            disabled={isEnding || turns.length === 0}
+            title="New conversation"
+            style={{
+              background: "var(--yapper-surface-lowest)",
+              boxShadow: "var(--yapper-card-shadow)",
+              border: "1px solid var(--yapper-border)",
+              cursor: turns.length === 0 ? "default" : "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              padding: 7,
-              borderRadius: 10,
-              color: "#fff",
+              padding: 6,
+              borderRadius: 8,
+              color: "var(--yapper-text-secondary)",
+              opacity: turns.length === 0 ? 0.3 : 0.7,
             }}
           >
-            <motion.div
-              initial={false}
-              animate={{ rotate: isDarkMode ? 180 : 0 }}
-              transition={{ duration: 0.3 }}
-              style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
-            >
-              {isDarkMode
-                ? <Moon style={{ width: 13, height: 13 }} />
-                : <Sun style={{ width: 13, height: 13 }} />
-              }
-            </motion.div>
-          </button>
-          <button
-            onClick={endConversation}
-            disabled={isEnding || turns.length === 0}
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              padding: "7px 14px",
-              borderRadius: 10,
-              color: turns.length === 0 ? "rgba(255,255,255,0.35)" : "#fff",
-              background: turns.length === 0 ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.18)",
-              boxShadow: turns.length > 0 ? "inset 0 1px 0 rgba(255,255,255,0.1), 0 1px 3px rgba(0,0,0,0.08)" : "none",
-              border: "none",
-              cursor: turns.length === 0 ? "default" : "pointer",
-              opacity: isEnding ? 0.5 : 1,
-            }}
-          >
-            {isEnding ? "Summarizing..." : "End"}
+            <RotateCcw style={{ width: 11, height: 11 }} />
           </button>
         </div>
+
+        {/* Right: End */}
+        <button
+          onClick={endConversation}
+          disabled={isEnding || turns.length === 0}
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            padding: "7px 14px",
+            borderRadius: 10,
+            color: turns.length === 0 ? "var(--yapper-text-secondary)" : "#fff",
+            background: turns.length === 0 ? "var(--yapper-surface-lowest)" : "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
+            boxShadow: turns.length > 0
+              ? "0 2px 8px rgba(218,119,86,0.3), inset 0 1px 1px rgba(255,255,255,0.15)"
+              : "var(--yapper-card-shadow)",
+            border: turns.length > 0 ? "1px solid rgba(255,255,255,0.12)" : "1px solid var(--yapper-border)",
+            cursor: turns.length === 0 ? "default" : "pointer",
+            opacity: isEnding ? 0.5 : turns.length === 0 ? 0.4 : 1,
+          }}
+        >
+          {isEnding ? "Saving..." : "End"}
+        </button>
       </div>
 
       <style>{`

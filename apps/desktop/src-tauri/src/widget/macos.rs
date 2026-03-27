@@ -148,16 +148,21 @@ fn create_panel(handle: &tauri::AppHandle) {
         | NSWindowCollectionBehavior::FullScreenAuxiliary;
     panel.setCollectionBehavior(behavior);
 
-    // Position above dock
-    let panel_w = 180.0;
-    let panel_h = 34.0;
+    // Position above dock — panel is tall (300px) but pill sits at bottom
+    let panel_w = 220.0;
+    let panel_h = 80.0;
     if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
         let primary_h = get_primary_screen_height();
         let origin = NSPoint::new(x, primary_h - y - panel_h);
         let new_frame = NSRect::new(origin, NSSize::new(panel_w, panel_h));
         panel.setFrame_display_animate(new_frame, true, false);
-        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h / 2.0);
+        // Hover center is at the pill at the bottom of the panel
+        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h - 17.0);
     }
+
+    // Start with mouse events ignored — clicks pass through to dock/desktop
+    // Hover thread will enable them when user hovers near the pill
+    unsafe { objc2::msg_send![&panel, setIgnoresMouseEvents: true] }
 
     // Show panel, hide original window
     panel.orderFrontRegardless();
@@ -243,14 +248,13 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
             tick = tick.wrapping_add(1);
 
             if tick % 6 == 0 {
-                let panel_w = 180.0;
-                let panel_h = 34.0;
+                let panel_w = 220.0;
+                let panel_h = 300.0;
                 if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
                     if (x - last_x).abs() > 2.0 || (y - last_y).abs() > 2.0 {
                         if load_panel_ptr().is_some() {
                             let _ = hover_handle.run_on_main_thread(move || {
                                 if let Some(panel_ptr) = load_panel_ptr() {
-                                    // SAFETY: panel_ptr is valid and we're on the main thread
                                     let panel: &NSPanel = unsafe { &*panel_ptr };
                                     let primary_h = get_primary_screen_height();
                                     let origin = NSPoint::new(x, primary_h - y - panel_h);
@@ -260,7 +264,7 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
                         }
                         last_x = x;
                         last_y = y;
-                        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h / 2.0);
+                        WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h - 17.0);
                     }
                 }
             }
@@ -269,13 +273,23 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
             if cx == 0.0 && cy == 0.0 { continue; }
 
             let is_active = crate::stt::get_state() != crate::stt::State::Idle;
-            let hovering = is_mouse_near(cx, cy, 40.0);
+            let hovering = is_mouse_near(cx, cy, 50.0);
             let should_expand = hovering || is_active;
             let was = WAS_HOVERING.load(Ordering::Relaxed);
             if should_expand != was {
                 WAS_HOVERING.store(should_expand, Ordering::Relaxed);
 
-                if let Some(w) = hover_handle.get_webview_window("widget") {
+                // Toggle mouse event passthrough — ignore when not hovering
+                let ignore_mouse = !should_expand;
+                let toggle_handle = hover_handle.clone();
+                let _ = hover_handle.run_on_main_thread(move || {
+                    if let Some(panel_ptr) = load_panel_ptr() {
+                        let panel: &NSPanel = unsafe { &*panel_ptr };
+                        unsafe { objc2::msg_send![panel, setIgnoresMouseEvents: ignore_mouse] }
+                    }
+                });
+
+                if let Some(w) = toggle_handle.get_webview_window("widget") {
                     let js = format!(
                         "window.dispatchEvent(new CustomEvent('yapper-hover', {{detail: {}}}))",
                         should_expand
