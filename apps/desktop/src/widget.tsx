@@ -5,11 +5,11 @@ import { motion, AnimatePresence } from "motion/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
-type WidgetState = "idle" | "listening" | "processing";
+type WidgetState = "idle" | "listening" | "processing" | "conversation";
 
 // Pill sizes for each state
-const COLLAPSED_W = 40;
-const COLLAPSED_H = 5;
+const COLLAPSED_W = 50;
+const COLLAPSED_H = 7;
 const HOVER_W = 52;
 const HOVER_H = 24;
 const RECORDING_W = 160;
@@ -23,7 +23,8 @@ function WidgetApp() {
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
-  const isActive = isListening || isProcessing;
+  const isConversation = state === "conversation";
+  const isActive = isListening || isProcessing || isConversation;
 
   // Rust-polled hover
   useEffect(() => {
@@ -62,8 +63,8 @@ function WidgetApp() {
   };
 
   // Determine pill dimensions
-  const pillW = isActive ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
-  const pillH = isActive ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
+  const pillW = isConversation ? HOVER_W : (isListening || isProcessing) ? RECORDING_W : isHovered ? HOVER_W : COLLAPSED_W;
+  const pillH = isConversation ? HOVER_H : (isListening || isProcessing) ? RECORDING_H : isHovered ? HOVER_H : COLLAPSED_H;
 
   return (
     <div
@@ -92,8 +93,8 @@ function WidgetApp() {
           opacity: { duration: 0.2 },
         }}
         style={{
-          background: "#1a1a1a",
-          border: "1.5px solid #3a3a3a",
+          background: "#1c1713",
+          border: "1.5px solid rgba(218, 119, 86, 0.35)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -112,7 +113,7 @@ function WidgetApp() {
               transition={{ duration: 0.15 }}
               style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
             >
-              <Mic style={{ width: 14, height: 14, color: "#ae3200" }} />
+              <Mic style={{ width: 14, height: 14, color: "#DA7756" }} />
             </motion.div>
           )}
           {isListening && (
@@ -121,12 +122,12 @@ function WidgetApp() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, delay: 0.12 }}
+              transition={{ duration: 0.2 }}
               style={{
+                width: "100%",
+                height: "100%",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
-                width: "100%",
                 padding: "0 6px",
               }}
             >
@@ -139,47 +140,98 @@ function WidgetApp() {
                   width: 22,
                   height: 22,
                   borderRadius: 11,
-                  background: "#3a3a3a",
+                  background: "rgba(255,255,255,0.08)",
                   border: "none",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
-                  color: "#aaa",
+                  color: "rgba(255,255,255,0.5)",
                   fontSize: 12,
                   fontWeight: 400,
                   lineHeight: 1,
+                  zIndex: 2,
                 }}
               >
                 ✕
               </motion.button>
 
-              {/* Wave bars */}
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 2.5 }}>
-                {Array.from({ length: 12 }).map((_, i) => (
+              {/* Aurora waveform center */}
+              <div style={{
+                flex: 1,
+                height: "100%",
+                position: "relative",
+                overflow: "hidden",
+                margin: "0 4px",
+              }}>
+                {/* Ambient glow pulse */}
+                <motion.div
+                  animate={{ opacity: [0.3, 0.6, 0.3] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "radial-gradient(ellipse at center, rgba(218,119,86,0.15) 0%, transparent 70%)",
+                  }}
+                />
+
+                {/* Flowing aurora ribbons using CSS animation for smoothness */}
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div
+                      key={`ribbon-${i}`}
+                      style={{
+                        position: "absolute",
+                        width: "120%",
+                        height: [14, 10, 18, 8, 12][i],
+                        left: "-10%",
+                        top: `${28 + [0, 8, -4, 12, 4][i]}%`,
+                        background: `linear-gradient(90deg,
+                          transparent 0%,
+                          rgba(218,119,86,${[0.4, 0.2, 0.35, 0.15, 0.25][i]}) 20%,
+                          rgba(245,201,168,${[0.5, 0.3, 0.4, 0.2, 0.35][i]}) 40%,
+                          rgba(218,119,86,${[0.45, 0.25, 0.5, 0.2, 0.3][i]}) 60%,
+                          rgba(232,168,124,${[0.3, 0.15, 0.25, 0.1, 0.2][i]}) 80%,
+                          transparent 100%
+                        )`,
+                        borderRadius: "50%",
+                        filter: `blur(${[3, 5, 2, 6, 4][i]}px)`,
+                        animation: `auroraRibbon${i} ${[3, 4.5, 2.5, 5, 3.5][i]}s ease-in-out infinite`,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Sparkle particles */}
+                {Array.from({ length: 6 }).map((_, i) => (
                   <motion.div
-                    key={i}
+                    key={`sp-${i}`}
                     style={{
-                      width: 2.5,
-                      borderRadius: 1.5,
-                      background: "#e5383b",
+                      position: "absolute",
+                      width: i % 2 === 0 ? 2.5 : 1.5,
+                      height: i % 2 === 0 ? 2.5 : 1.5,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      top: `${20 + Math.sin(i * 1.1) * 30}%`,
+                      left: `${8 + i * 16}%`,
+                      pointerEvents: "none",
                     }}
                     animate={{
-                      height: [3, 8 + Math.sin(i * 0.7) * 6, 3],
-                      opacity: [0.5, 1, 0.5],
+                      opacity: [0, 0.8, 0],
+                      scale: [0.2, 1, 0.2],
                     }}
                     transition={{
-                      duration: 0.6 + Math.random() * 0.3,
+                      duration: 1.5 + (i % 3) * 0.5,
                       repeat: Infinity,
-                      delay: i * 0.05,
+                      delay: i * 0.4,
                       ease: "easeInOut",
                     }}
                   />
                 ))}
               </div>
 
-              {/* Stop (send for refinement) button */}
+              {/* Stop button */}
               <motion.button
                 onClick={handleStop}
                 whileHover={{ scale: 1.15 }}
@@ -188,23 +240,17 @@ function WidgetApp() {
                   width: 22,
                   height: 22,
                   borderRadius: 11,
-                  background: "#e5383b",
+                  background: "#DA7756",
                   border: "none",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
+                  zIndex: 2,
                 }}
               >
-                <div
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: 1.5,
-                    background: "#fff",
-                  }}
-                />
+                <div style={{ width: 7, height: 7, borderRadius: 1.5, background: "#fff" }} />
               </motion.button>
             </motion.div>
           )}
@@ -237,14 +283,102 @@ function WidgetApp() {
                   width: "100%",
                   height: "100%",
                   borderRadius: "inherit",
-                  background: "linear-gradient(90deg, #1a1a1a, #4a6cf7, #9b59b6, #e74c3c, #f39c12, #4a6cf7, #1a1a1a)",
+                  background: "linear-gradient(90deg, #1c1713, #DA7756, #e8a87c, #f5c9a8, #e8a87c, #DA7756, #1c1713)",
                   backgroundSize: "200% 100%",
+                }}
+              />
+              {/* Sparkle particles */}
+              {Array.from({ length: 8 }).map((_, i) => (
+                <motion.div
+                  key={`sparkle-${i}`}
+                  style={{
+                    position: "absolute",
+                    width: i % 3 === 0 ? 3 : 2,
+                    height: i % 3 === 0 ? 3 : 2,
+                    borderRadius: "50%",
+                    background: "#fff",
+                    top: `${20 + Math.sin(i * 1.2) * 30}%`,
+                    left: `${8 + i * 11}%`,
+                  }}
+                  animate={{
+                    opacity: [0, 1, 0],
+                    scale: [0.3, 1, 0.3],
+                    y: [0, -3, 0],
+                  }}
+                  transition={{
+                    duration: 1.2 + (i % 3) * 0.4,
+                    repeat: Infinity,
+                    delay: i * 0.2,
+                    ease: "easeInOut",
+                  }}
+                />
+              ))}
+            </motion.div>
+          )}
+          {isConversation && (
+            <motion.div
+              key="conversation"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {/* Pulsing accent dot */}
+              <motion.div
+                animate={{
+                  scale: [1, 1.3, 1],
+                  opacity: [0.7, 1, 0.7],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: "#DA7756",
                 }}
               />
             </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
+      <style>{`
+        @keyframes auroraRibbon0 {
+          0%, 100% { transform: translateX(0%) scaleY(1); opacity: 0.7; }
+          25% { transform: translateX(8%) scaleY(1.3); opacity: 1; }
+          50% { transform: translateX(-5%) scaleY(0.8); opacity: 0.6; }
+          75% { transform: translateX(10%) scaleY(1.1); opacity: 0.9; }
+        }
+        @keyframes auroraRibbon1 {
+          0%, 100% { transform: translateX(5%) scaleY(1); opacity: 0.5; }
+          30% { transform: translateX(-8%) scaleY(1.4); opacity: 0.8; }
+          60% { transform: translateX(12%) scaleY(0.7); opacity: 0.4; }
+        }
+        @keyframes auroraRibbon2 {
+          0%, 100% { transform: translateX(-3%) scaleY(1.1); opacity: 0.8; }
+          35% { transform: translateX(10%) scaleY(0.6); opacity: 0.5; }
+          65% { transform: translateX(-7%) scaleY(1.5); opacity: 1; }
+        }
+        @keyframes auroraRibbon3 {
+          0%, 100% { transform: translateX(6%) scaleY(0.9); opacity: 0.4; }
+          40% { transform: translateX(-10%) scaleY(1.3); opacity: 0.7; }
+          70% { transform: translateX(4%) scaleY(0.8); opacity: 0.3; }
+        }
+        @keyframes auroraRibbon4 {
+          0%, 100% { transform: translateX(-4%) scaleY(1); opacity: 0.6; }
+          30% { transform: translateX(7%) scaleY(1.2); opacity: 0.9; }
+          55% { transform: translateX(-6%) scaleY(0.7); opacity: 0.4; }
+          80% { transform: translateX(9%) scaleY(1.4); opacity: 0.8; }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Moon, Sun, Search, Trash2, X, Keyboard } from "lucide-react";
+import { Moon, Sun, Search, Trash2, X, Keyboard, MessageCircle } from "lucide-react";
 import { HistoryCard } from "./HistoryCard";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -14,7 +14,7 @@ const isWindows = !navigator.platform.toUpperCase().includes("MAC");
 
 interface MainWindowProps {
   isDarkMode: boolean;
-  onToggleDarkMode: () => void;
+  onToggleDarkMode: (e?: React.MouseEvent) => void;
   historyItems: HistoryItem[];
   hotkey: string;
   onHotkeyChange?: (hotkey: string) => void;
@@ -23,6 +23,7 @@ interface MainWindowProps {
   onClearHistory?: () => void;
   onDeleteItem?: (id: string) => void;
   onTogglePin?: (id: string) => void;
+  onStartConversation?: () => void;
 }
 
 function formatHotkeyDisplay(hotkey: string): string {
@@ -155,6 +156,7 @@ export function MainWindow({
   onClearHistory,
   onDeleteItem,
   onTogglePin,
+  onStartConversation,
 }: MainWindowProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -695,25 +697,45 @@ export function MainWindow({
             }}>
               History
             </h2>
-            {historyItems.length > 0 && (
+            <div className="flex items-center" style={{ gap: 4 }}>
               <button
-                onClick={onClearHistory}
-                className="flex items-center gap-1.5 transition-all duration-200 hover:opacity-70"
+                onClick={onStartConversation}
+                className="flex items-center gap-1.5 transition-all duration-200 hover:opacity-80"
                 style={{
                   fontSize: 11,
-                  fontWeight: 500,
-                  color: "var(--yapper-text-secondary)",
-                  background: "none",
-                  border: "none",
+                  fontWeight: 600,
+                  color: "var(--yapper-accent)",
+                  background: "var(--yapper-surface-low, var(--yapper-bg-light))",
+                  border: "1px solid var(--yapper-accent)",
                   cursor: "pointer",
-                  padding: "4px 8px",
-                  borderRadius: 6,
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                  opacity: 0.9,
                 }}
               >
-                <Trash2 style={{ width: 12, height: 12 }} />
-                <span>Clear all</span>
+                <MessageCircle style={{ width: 12, height: 12 }} />
+                <span>Yapp</span>
               </button>
-            )}
+              {historyItems.length > 0 && (
+                <button
+                  onClick={onClearHistory}
+                  className="flex items-center gap-1.5 transition-all duration-200 hover:opacity-70"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: "var(--yapper-text-secondary)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                  }}
+                >
+                  <Trash2 style={{ width: 12, height: 12 }} />
+                  <span>Clear all</span>
+                </button>
+              )}
+            </div>
           </div>
           <p style={{
             fontFamily: "var(--font-body, 'Inter', sans-serif)",
@@ -832,7 +854,8 @@ export function MainWindow({
       </div>
 
       {/* Scrollable card list */}
-      <div className="flex-1 overflow-y-auto yapper-scroll" style={{ padding: "12px 20px 20px 20px" }}>
+      <div className="flex-1 overflow-y-auto yapper-scroll" style={{ padding: "12px 20px 20px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: "100%", maxWidth: 720 }}>
         {filteredItems.length === 0 ? (
           <div
             className="text-center"
@@ -856,32 +879,32 @@ export function MainWindow({
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <AnimatePresence>
-              {filteredItems.map((item, index) => (
-                <motion.div
-                  key={item.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }}
-                  transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
-                >
-                  <HistoryCard
-                    timestamp={item.timestamp}
-                    refinedText={item.refinedText}
-                    rawTranscript={item.rawTranscript}
-                    variant={getVariant(index, item)}
-                    category={item.category}
-                    title={item.title}
-                    isPinned={item.isPinned}
-                    onTogglePin={() => onTogglePin?.(item.id)}
-                    onDelete={() => onDeleteItem?.(item.id)}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
+            {filteredItems.map((item, index) => (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
+              >
+                <HistoryCard
+                  timestamp={item.timestamp}
+                  refinedText={item.refinedText}
+                  rawTranscript={item.rawTranscript}
+                  variant={getVariant(index, item)}
+                  category={item.category}
+                  title={item.title}
+                  isPinned={item.isPinned}
+                  onTogglePin={() => onTogglePin?.(item.id)}
+                  onDelete={() => onDeleteItem?.(item.id)}
+                  entryType={item.entryType}
+                  conversation={item.conversation}
+                  durationSeconds={item.durationSeconds}
+                />
+              </motion.div>
+            ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

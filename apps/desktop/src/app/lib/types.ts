@@ -1,4 +1,15 @@
-export type WidgetState = "idle" | "listening" | "processing";
+export type WidgetState = "idle" | "listening" | "processing" | "conversation";
+
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+export interface ConversationData {
+  turns: ConversationTurn[];
+  keyPoints?: string[];
+}
 
 export interface HistoryItem {
   id: string;
@@ -8,6 +19,17 @@ export interface HistoryItem {
   category?: string;
   isPinned?: boolean;
   title?: string;
+  entryType?: "transcription" | "conversation";
+  conversation?: ConversationData;
+  durationSeconds?: number;
+}
+
+export interface ConversationSummary {
+  summary: string;
+  title: string;
+  keyPoints: string[];
+  turnCount: number;
+  durationSeconds: number;
 }
 
 export interface AppSettings {

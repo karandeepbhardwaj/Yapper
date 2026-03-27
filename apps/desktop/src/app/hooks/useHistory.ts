@@ -104,6 +104,15 @@ export function useHistory() {
       });
   }, []);
 
+  const refresh = useCallback(async () => {
+    try {
+      const items = await getHistory();
+      setHistoryItems(items.length === 0 ? SAMPLE_DATA : items);
+    } catch {
+      // keep current state
+    }
+  }, []);
+
   const addItem = useCallback((item: HistoryItem) => {
     setHistoryItems((prev) => [item, ...prev]);
   }, []);
@@ -133,5 +142,5 @@ export function useHistory() {
     );
   }, []);
 
-  return { historyItems, addItem, clearAll, deleteItem, togglePin };
+  return { historyItems, addItem, refresh, clearAll, deleteItem, togglePin };
 }

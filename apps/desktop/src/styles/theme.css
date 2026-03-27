@@ -1,51 +1,65 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f8f9fa;
+  --background: linear-gradient(165deg, #fdf8f3 0%, #f7ede4 40%, #faf5ef 70%, #f5ece3 100%);
   --foreground: #1a1816;
-  --border: rgba(0, 0, 0, 0.1);
+  --border: rgba(218, 119, 86, 0.08);
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
 
-  /* Yapper accent colors */
-  --yapper-accent: #c43d00;
-  --yapper-accent-light: #fff0eb;
-  --yapper-accent-dark: #852400;
-  --yapper-bg-light: #f2f1f0;
-  --yapper-bg-lighter: #f9f8f7;
+  /* Yapper accent — Anthropic/Claude terracotta */
+  --yapper-accent: #DA7756;
+  --yapper-accent-light: #f8ebe5;
+  --yapper-accent-dark: #DA7756;
+  --yapper-bg-light: #f2e9e2;
+  --yapper-bg-lighter: #f6efe9;
   --yapper-text-primary: #1a1816;
   --yapper-text-secondary: #6b6560;
-  --yapper-border: rgba(0, 0, 0, 0.08);
-  --yapper-surface: #f9f8f7;
-  --yapper-surface-low: #f2f1f0;
-  --yapper-surface-lowest: #ffffff;
-  --yapper-surface-high: #eae8e6;
-  --yapper-pinned-bg: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+  --yapper-border: rgba(218, 119, 86, 0.1);
+  --yapper-surface: #f6efe9;
+  --yapper-surface-low: #f2e9e2;
+  --yapper-surface-lowest: #fef9f5;
+  --yapper-surface-high: #ecdfd6;
+  --yapper-card-shadow: 0 2px 10px rgba(0,0,0,0.05), 0 1px 4px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7), inset 0 -1px 0 rgba(0,0,0,0.03);
+  --yapper-accent-bar-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.1), inset 0 1px 1px rgba(255,255,255,0.15), inset 0 -1px 1px rgba(0,0,0,0.1);
+  --yapper-accent-bar-border: 1px solid rgba(255,255,255,0.1);
+  --yapper-pinned-bg: linear-gradient(135deg, #2c2420 0%, #1a1614 100%);
   --font-headline: 'Manrope', sans-serif;
   --font-body: 'Inter', sans-serif;
 }
 
 .dark {
-  --background: #191c1d;
-  --foreground: #e8e4e0;
-  --border: rgba(255, 255, 255, 0.08);
+  --background: linear-gradient(165deg, #151210 0%, #131110 40%, #141210 70%, #161310 100%);
+  --foreground: #ece5df;
+  --border: rgba(218, 119, 86, 0.06);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
 
-  /* Yapper accent colors for dark mode */
-  --yapper-accent: #ff9b78;
-  --yapper-accent-light: #3d2318;
-  --yapper-accent-dark: #ff9b78;
-  --yapper-bg-light: #2a2725;
-  --yapper-bg-lighter: #1c1a18;
-  --yapper-text-primary: #e8e4e0;
-  --yapper-text-secondary: #9a9490;
-  --yapper-border: rgba(255, 255, 255, 0.08);
-  --yapper-surface: #1c1a18;
-  --yapper-surface-low: #252320;
-  --yapper-surface-lowest: #141210;
-  --yapper-surface-high: #332f2c;
-  --yapper-pinned-bg: linear-gradient(135deg, #2d1a0e 0%, #1a0e06 100%);
+  /* Yapper accent — same orange in dark */
+  --yapper-accent: #DA7756;
+  --yapper-accent-light: #2a1e17;
+  --yapper-accent-dark: #DA7756;
+  --yapper-bg-light: #221c17;
+  --yapper-bg-lighter: #1c1814;
+  --yapper-text-primary: #ece5df;
+  --yapper-text-secondary: #9a918a;
+  --yapper-border: rgba(255,255,255,0.06);
+  --yapper-surface: #1c1814;
+  --yapper-surface-low: #221c17;
+  --yapper-surface-lowest: #2a231d;
+  --yapper-surface-high: #332b23;
+  --yapper-card-shadow:
+    0 4px 16px rgba(0,0,0,0.4),
+    0 1px 4px rgba(0,0,0,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.3);
+  --yapper-accent-bar-shadow:
+    0 6px 24px rgba(0,0,0,0.5),
+    0 2px 8px rgba(0,0,0,0.35),
+    inset 0 1px 1px rgba(255,255,255,0.2),
+    inset 0 -2px 2px rgba(0,0,0,0.25);
+  --yapper-accent-bar-border: 1px solid rgba(255,255,255,0.15);
+  --yapper-pinned-bg: linear-gradient(135deg, #30241a 0%, #1c1610 100%);
 }
 
 @theme inline {
@@ -64,4 +78,5 @@
   body {
     @apply bg-background text-foreground;
   }
+
 }

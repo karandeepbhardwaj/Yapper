@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
-use crate::{autopaste, bridge, history, stt};
+use crate::{autopaste, bridge, conversation, history, stt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
@@ -49,6 +49,15 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
                     return;
                 }
             };
+
+            // If conversation mode is active, emit raw transcript for the conversation view
+            if conversation::is_active() {
+                stt::set_state(stt::State::Idle);
+                handle.emit("stt-state-changed", "idle").ok();
+                handle.emit("conversation-raw-transcript", raw_transcript).ok();
+                return;
+            }
+
             let bridge_result = bridge::refine_text(&raw_transcript).await;
             let (refined_text, category, title) = match bridge_result {
                 Ok(r) => (r.refined_text, r.category, r.title),
@@ -150,6 +159,28 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+/// Stop recording and return just the raw transcript (no refinement, no paste, no history).
+/// Used by conversation mode which handles its own AI pipeline.
+#[tauri::command]
+pub async fn stop_recording_raw(app: tauri::AppHandle) -> Result<String, String> {
+    if stt::get_state() != stt::State::Recording {
+        return Err("Not recording".to_string());
+    }
+    app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
+    app.emit("stop-speech-recognition", ()).ok();
+
+    let raw_transcript = stt::stop().await.map_err(|e| {
+        stt::set_state(stt::State::Idle);
+        app.emit("stt-state-changed", "idle").ok();
+        e.to_string()
+    })?;
+
+    stt::set_state(stt::State::Idle);
+    app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
+
+    Ok(raw_transcript)
 }
 
 #[tauri::command]

@@ -11,9 +11,9 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
       className="relative h-screen flex flex-col items-center justify-center overflow-hidden select-none"
       style={{
         background: `
-          radial-gradient(circle at 80% 20%, #ffdbd0 0%, transparent 40%),
-          radial-gradient(circle at 10% 80%, #f3f4f5 0%, transparent 50%),
-          #f8f9fa
+          radial-gradient(circle at 80% 20%, rgba(218, 119, 86, 0.12) 0%, transparent 40%),
+          radial-gradient(circle at 10% 80%, rgba(218, 119, 86, 0.05) 0%, transparent 50%),
+          var(--background, #faf6f1)
         `,
       }}
     >
@@ -26,7 +26,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
           fontSize: 28,
           letterSpacing: "-0.04em",
           opacity: 0.08,
-          color: "#000",
+          color: "var(--foreground, #000)",
         }}
       >
         Y.
@@ -41,10 +41,9 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
           width: 500,
           height: 500,
           borderRadius: "50%",
-          background: "#f3f4f5",
+          background: "rgba(218, 119, 86, 0.06)",
           filter: "blur(80px)",
           opacity: 0.4,
-          mixBlendMode: "multiply",
         }}
       />
       <div
@@ -55,7 +54,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
           width: 350,
           height: 350,
           borderRadius: "50%",
-          background: "rgba(174, 50, 0, 0.04)",
+          background: "rgba(218, 119, 86, 0.04)",
           filter: "blur(80px)",
         }}
       />
@@ -75,8 +74,8 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
             width: 88,
             height: 88,
             borderRadius: "50%",
-            background: "#ffffff",
-            boxShadow: "0 12px 40px rgba(25, 28, 29, 0.06)",
+            background: "var(--yapper-surface-lowest, #fffcf9)",
+            boxShadow: "0 12px 40px rgba(0, 0, 0, 0.06)",
           }}
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -86,7 +85,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
             style={{
               width: 36,
               height: 36,
-              color: "#ae3200",
+              color: "#DA7756",
             }}
           />
         </motion.div>
@@ -99,7 +98,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
             fontSize: 80,
             letterSpacing: "-0.04em",
             lineHeight: 1,
-            color: "#000000",
+            color: "var(--yapper-text-primary, #1a1816)",
           }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -115,7 +114,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
             fontSize: 18,
             fontWeight: 300,
             lineHeight: 1.7,
-            color: "#474747",
+            color: "var(--yapper-text-secondary, #6b6560)",
             maxWidth: 380,
           }}
           initial={{ opacity: 0 }}
@@ -123,7 +122,7 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
           transition={{ delay: 0.5, duration: 0.6 }}
         >
           Voice recordings treated as{" "}
-          <span style={{ fontStyle: "italic", fontWeight: 500, color: "#000" }}>
+          <span style={{ fontStyle: "italic", fontWeight: 500, color: "var(--yapper-text-primary, #1a1816)" }}>
             precious artifacts
           </span>
           . Curated. Focused. Silent.
@@ -144,19 +143,19 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
             fontSize: 15,
             letterSpacing: "0.02em",
             color: "#ffffff",
-            background: "linear-gradient(135deg, #ae3200, #852400)",
+            background: "#DA7756",
             borderRadius: 14,
             border: "none",
             cursor: "pointer",
             outline: "none",
-            boxShadow: "0 12px 40px rgba(174, 50, 0, 0.2)",
+            boxShadow: "0 12px 40px rgba(218, 119, 86, 0.25)",
           }}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7, duration: 0.5 }}
           whileHover={{
             scale: 1.02,
-            boxShadow: "0 16px 48px rgba(174, 50, 0, 0.3)",
+            boxShadow: "0 16px 48px rgba(218, 119, 86, 0.35)",
           }}
           whileTap={{ scale: 0.96 }}
         >
