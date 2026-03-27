@@ -25,9 +25,17 @@ tokio = { version = "1", features = ["time"] }
 libc = "0.2"
 regex = "1"
 ureq = { version = "3", features = ["json"] }
+whisper-rs = "0.13"
+cpal = "0.15"
+hound = "3.5"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+sha2 = "0.10"
+base64 = "0.22"
+dirs = "6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tempfile = "3"
+core-graphics = "0.24"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSLocale", "NSError", "NSArray"] }
