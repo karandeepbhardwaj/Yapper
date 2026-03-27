@@ -210,6 +210,14 @@ pub async fn end_conversation(app: tauri::AppHandle) -> Result<ConversationSumma
     Ok(result)
 }
 
+/// Discard the conversation without saving to history
+#[tauri::command]
+pub fn discard_conversation() -> Result<(), String> {
+    let mut session = SESSION.lock().map_err(|e| e.to_string())?;
+    *session = None;
+    Ok(())
+}
+
 pub fn is_active() -> bool {
     SESSION.lock().map(|s| s.is_some()).unwrap_or(false)
 }

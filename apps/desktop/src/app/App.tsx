@@ -2,6 +2,9 @@ import { useEffect, useState, useRef } from "react";
 import { MainWindow } from "./components/MainWindow";
 import { LandingPage } from "./components/LandingPage";
 import { ConversationView } from "./components/ConversationView";
+import { SettingsView } from "./components/SettingsView";
+import { DictionaryView } from "./components/DictionaryView";
+import { SnippetsView } from "./components/SnippetsView";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
@@ -48,7 +51,7 @@ export default function App() {
   const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, refresh, clearAll, deleteItem, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [activeView, setActiveView] = useState<"history" | "conversation">("history");
+  const [activeView, setActiveView] = useState<"history" | "conversation" | "settings" | "dictionary" | "snippets">("history");
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
   });
@@ -151,6 +154,31 @@ export default function App() {
     }
   }, [latestResult, addItem]);
 
+  // Refresh history after any recording cycle completes
+  useEffect(() => {
+    const unlisten = listen<string>("stt-state-changed", (e) => {
+      if (e.payload === "idle") {
+        setTimeout(() => refresh(), 300);
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [refresh]);
+
+  // Listen for navigate-to events from widget context menu
+  useEffect(() => {
+    const unlisten = listen<string>("navigate-to", (e) => {
+      const view = e.payload as "settings" | "history" | "conversation";
+      if (view === "history") {
+        setActiveView("history");
+      } else if (view === "settings") {
+        setActiveView("settings");
+      } else if (view === "conversation") {
+        setActiveView("conversation");
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
   useEffect(() => {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (prefersDark) {
@@ -161,22 +189,21 @@ export default function App() {
 
   const themeTransitionRef = useRef(false);
 
-  const handleToggleDarkMode = async (e?: React.MouseEvent) => {
+  const handleToggleDarkMode = (e?: React.MouseEvent) => {
     if (themeTransitionRef.current) return;
     themeTransitionRef.current = true;
 
     const nowDark = !isDarkMode;
-    const x = e?.clientX ?? window.innerWidth - 40;
-    const y = e?.clientY ?? 20;
+    // Get the center of the button that was clicked, not the mouse position
+    const button = e?.currentTarget as HTMLElement | null;
+    const rect = button?.getBoundingClientRect();
+    const x = rect ? Math.round(rect.left + rect.width / 2) : window.innerWidth - 40;
+    const y = rect ? Math.round(rect.top + rect.height / 2) : 20;
+    const maxRadius = Math.ceil(Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y),
+    ));
 
-    const maxRadius = Math.ceil(
-      Math.sqrt(
-        Math.max(x, window.innerWidth - x) ** 2 +
-        Math.max(y, window.innerHeight - y) ** 2
-      )
-    );
-
-    // Use View Transition API if available (Chromium-based WebViews)
     if (document.startViewTransition) {
       document.startViewTransition(() => {
         if (nowDark) {
@@ -188,10 +215,9 @@ export default function App() {
         emit("theme-changed", nowDark ? "dark" : "light");
       });
 
-      // Light→Dark: dark circle expands FROM toggle (darkness spreads out)
-      // Dark→Light: dark circle shrinks TO toggle (darkness recedes back)
       const style = document.createElement("style");
       if (nowDark) {
+        // Light→Dark: old light shrinks into toggle
         style.textContent = `
           ::view-transition-old(root) {
             z-index: 9999;
@@ -204,6 +230,7 @@ export default function App() {
           }
         `;
       } else {
+        // Dark→Light: new light expands from toggle
         style.textContent = `
           ::view-transition-old(root) { z-index: 999; animation: none; }
           ::view-transition-new(root) {
@@ -224,7 +251,7 @@ export default function App() {
       return;
     }
 
-    // Fallback: simple toggle with no overlay
+    // Fallback: instant toggle
     setIsDarkMode(nowDark);
     if (nowDark) {
       document.documentElement.classList.add("dark");
@@ -269,10 +296,45 @@ export default function App() {
             <ConversationView
               onBack={() => { setActiveView("history"); refresh(); }}
               onConversationEnded={() => { setActiveView("history"); refresh(); }}
-              isDarkMode={isDarkMode}
-              onToggleDarkMode={handleToggleDarkMode}
               hotkey={hotkey}
             />
+          </motion.div>
+        ) : activeView === "settings" ? (
+          <motion.div
+            key="settings"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.25 }}
+            className="h-screen"
+          >
+            <SettingsView
+              onBack={() => setActiveView("history")}
+              onNavigateDictionary={() => setActiveView("dictionary")}
+              onNavigateSnippets={() => setActiveView("snippets")}
+            />
+          </motion.div>
+        ) : activeView === "dictionary" ? (
+          <motion.div
+            key="dictionary"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.25 }}
+            className="h-screen"
+          >
+            <DictionaryView onBack={() => setActiveView("settings")} />
+          </motion.div>
+        ) : activeView === "snippets" ? (
+          <motion.div
+            key="snippets"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.25 }}
+            className="h-screen"
+          >
+            <SnippetsView onBack={() => setActiveView("settings")} />
           </motion.div>
         ) : (
           <motion.div
@@ -286,14 +348,11 @@ export default function App() {
               isDarkMode={isDarkMode}
               onToggleDarkMode={handleToggleDarkMode}
               historyItems={historyItems}
-              hotkey={hotkey}
-              onHotkeyChange={setHotkey}
-              sttEngine={sttEngine}
-              onSttEngineChange={setSttEngine}
               onClearHistory={clearAll}
               onDeleteItem={deleteItem}
               onTogglePin={togglePin}
               onStartConversation={() => setActiveView("conversation")}
+              onOpenSettings={() => setActiveView("settings")}
             />
           </motion.div>
         )}

@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://github.com/karandeepbhardwaj/Yapper/actions"><img src="https://github.com/karandeepbhardwaj/Yapper/actions/workflows/build.yml/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.0.9-blue" alt="Version" /></a>
+  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform" /></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
@@ -19,9 +19,16 @@
 - **On-device speech recognition** -- macOS `SFSpeechRecognizer` (offline) / Windows dual-engine: Classic (SAPI5 offline) or Modern (WinRT, higher accuracy)
 - **AI transcript refinement** -- multi-provider support (Groq, Gemini, Claude, GitHub Copilot) via VS Code extension bridge
 - **Auto-paste** refined text at your active cursor position
-- **Floating widget** -- follows you across macOS Spaces, positioned above taskbar on Windows
-- **History dashboard** with bento grid layout, fuzzy search (Fuse.js), pin/copy/expand
-- **Dark/light mode** with smooth transitions
+- **Conversation mode** -- back-and-forth AI chat with live transcription, session summaries saved to history
+- **Dictionary** -- user-defined text replacements applied before AI refinement (e.g., "btw" -> "by the way")
+- **Snippets** -- reusable text templates that bypass AI (e.g., "my email" -> expands to your email address)
+- **Style settings** -- per-category refinement tone (Professional, Casual, Technical, Creative) for Email, Messages, Work, Personal
+- **Code mode** -- auto-detects file/variable names from VS Code workspace, preserves code references in backtick formatting
+- **Metrics** -- usage tracking with streak days, word count, WPM, total recordings
+- **Floating widget** -- follows you across macOS Spaces, positioned above taskbar on Windows, click-through when not hovered
+- **History dashboard** with fuzzy search (Fuse.js), pin/copy/delete with animations, sort by newest/oldest
+- **Dark/light mode** with circle reveal transition animation
+- **Settings page** -- centralized configuration for hotkey, style, dictionary, snippets, metrics, code mode
 - **Customizable hotkey** -- `Cmd+Shift+.` (macOS) / `Ctrl+Shift+.` (Windows), or set your own
 - **Fn key recording** (macOS) -- use the Globe/Fn key as your trigger
 - **STT engine selection** (Windows) -- toggle between Classic (offline, no setup) and Modern (cloud-assisted, higher accuracy) with in-app permission guidance

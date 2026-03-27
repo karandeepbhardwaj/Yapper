@@ -166,7 +166,9 @@ async function handleRefine(
   const result = await refineWithCopilot(
     message.rawText,
     message.style || "Professional",
-    tokenSource.token
+    tokenSource.token,
+    message.styleOverrides,
+    message.codeMode,
   );
 
   const response: ResultResponse = {

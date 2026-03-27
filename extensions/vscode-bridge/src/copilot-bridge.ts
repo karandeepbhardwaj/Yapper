@@ -207,13 +207,41 @@ async function refineWithAnthropic(rawText: string, style: string, apiKey: strin
   return parseResult(text);
 }
 
+// --- Workspace file detection for code mode ---
+
+async function getWorkspaceFiles(): Promise<string[]> {
+  try {
+    const files = await vscode.workspace.findFiles("**/*.{ts,tsx,js,jsx,py,rs,go,java,cpp,c,h,css,html,json,md}", "**/node_modules/**", 50);
+    return files.map(f => f.path.split("/").pop() || "").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 // --- Main entry point ---
 
 export async function refineWithCopilot(
   rawText: string,
   style: string = "Professional",
-  token: vscode.CancellationToken
+  token: vscode.CancellationToken,
+  styleOverrides?: Record<string, string>,
+  codeMode?: boolean,
 ): Promise<RefinementResult> {
+  // Build extra context from style overrides and code mode
+  let extraContext = "";
+  if (styleOverrides && Object.keys(styleOverrides).length > 0) {
+    const overrideLines = Object.entries(styleOverrides)
+      .map(([cat, s]) => `- If the content is "${cat}", use ${s} tone`)
+      .join("\n");
+    extraContext += `\n\nStyle overrides by category:\n${overrideLines}`;
+  }
+  if (codeMode) {
+    const files = await getWorkspaceFiles();
+    if (files.length > 0) {
+      extraContext += `\n\nCode mode is ON. Known files in workspace: ${files.slice(0, 30).join(", ")}. Preserve code references (file names, variable names, function names) with backtick formatting.`;
+    }
+  }
+
   // 1. Try vscode.lm API first (Copilot, Claude for VS Code, etc.)
   try {
     let models = await vscode.lm.selectChatModels();
@@ -222,7 +250,7 @@ export async function refineWithCopilot(
       console.log(`[Yapper] Using vscode.lm: ${model.name} (${model.vendor}/${model.family})`);
       const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
       const messages = [
-        vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT),
+        vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT + extraContext),
         vscode.LanguageModelChatMessage.User(`Style: ${styleNote}\n\nRaw transcript:\n\n${rawText}`),
       ];
       const response = await model.sendRequest(messages, {}, token);

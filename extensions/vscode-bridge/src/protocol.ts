@@ -7,6 +7,8 @@ export interface RefineRequest {
   id: string;
   rawText: string;
   style?: "Professional" | "Casual" | "Technical" | "Creative";
+  styleOverrides?: Record<string, string>;
+  codeMode?: boolean;
 }
 
 export interface ChunkResponse {

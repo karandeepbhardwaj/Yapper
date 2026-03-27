@@ -12,6 +12,12 @@ struct RefineRequest {
     id: String,
     #[serde(rename = "rawText")]
     raw_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    style: Option<String>,
+    #[serde(rename = "styleOverrides", skip_serializing_if = "Option::is_none")]
+    style_overrides: Option<std::collections::HashMap<String, String>>,
+    #[serde(rename = "codeMode", skip_serializing_if = "Option::is_none")]
+    code_mode: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -62,12 +68,16 @@ pub struct RefinementResult {
     pub title: Option<String>,
 }
 
-pub async fn refine_text(raw_text: &str) -> Result<RefinementResult, String> {
+pub async fn refine_text(
+    raw_text: &str,
+    style: Option<String>,
+    style_overrides: Option<std::collections::HashMap<String, String>>,
+    code_mode: Option<bool>,
+) -> Result<RefinementResult, String> {
     let raw = raw_text.to_string();
 
-    // Run blocking WebSocket call on a dedicated thread to avoid starving tokio
     let result = tauri::async_runtime::spawn_blocking(move || {
-        refine_text_blocking(&raw)
+        refine_text_blocking(&raw, style, style_overrides, code_mode)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
@@ -75,13 +85,21 @@ pub async fn refine_text(raw_text: &str) -> Result<RefinementResult, String> {
     result
 }
 
-fn refine_text_blocking(raw_text: &str) -> Result<RefinementResult, String> {
+fn refine_text_blocking(
+    raw_text: &str,
+    style: Option<String>,
+    style_overrides: Option<std::collections::HashMap<String, String>>,
+    code_mode: Option<bool>,
+) -> Result<RefinementResult, String> {
     let mut socket = open_bridge_socket()?;
 
     let request = RefineRequest {
         msg_type: "refine".to_string(),
         id: uuid_simple(),
         raw_text: raw_text.to_string(),
+        style,
+        style_overrides,
+        code_mode,
     };
 
     let request_json = serde_json::to_string(&request).map_err(|e| e.to_string())?;

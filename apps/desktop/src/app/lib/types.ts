@@ -35,9 +35,43 @@ export interface ConversationSummary {
 export interface AppSettings {
   hotkey: string;
   stt_engine: "classic" | "modern";
+  default_style: string;
+  style_overrides: Record<string, string>;
+  metrics_enabled: boolean;
+  code_mode: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   hotkey: "Cmd+Shift+.",
   stt_engine: "classic",
+  default_style: "Professional",
+  style_overrides: {},
+  metrics_enabled: true,
+  code_mode: false,
 };
+
+export interface DictionaryEntry {
+  id: string;
+  shorthand: string;
+  expansion: string;
+  category: string;
+  isFavorite?: boolean;
+  createdAt: string;
+}
+
+export interface Snippet {
+  id: string;
+  trigger: string;
+  expansion: string;
+  category: string;
+  isFavorite?: boolean;
+  createdAt: string;
+}
+
+export interface Metrics {
+  streakDays: number;
+  totalWords: number;
+  avgWpm: number;
+  totalEntries: number;
+  totalDurationSeconds: number;
+}
