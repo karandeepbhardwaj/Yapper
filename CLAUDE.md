@@ -130,6 +130,7 @@ Idle → start_recording → Recording → stop_recording → Processing → (pa
 
 - Don't use `enigo` for keyboard simulation — crashes on macOS. Use `autopaste.rs`.
 - Don't use `git add -A` — repo has build artifacts in `target/` and `dist/`.
+- Use `YAPPER_SAMPLE_DATA=1 bun tauri dev` to start with sample history data for development/demos.
 - Don't add `Co-Authored-By` lines to commits.
 - Use `log` macros (`log::info!`, `log::error!`, etc.) instead of `println!` — all println! has been replaced with structured logging.
 - Don't resize the NSPanel dynamically — crashes. Widget is fixed at 220x80.

@@ -26,6 +26,14 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Seed sample data when YAPPER_SAMPLE_DATA env var is set
+            if std::env::var("YAPPER_SAMPLE_DATA").is_ok() {
+                log::info!("[Dev] Seeding sample history data");
+                if let Err(e) = history::seed_sample_data(app.handle()) {
+                    log::error!("[Dev] Failed to seed sample data: {}", e);
+                }
+            }
+
             hotkey::register(app)?;
             widget::setup(app);
 

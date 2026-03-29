@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://github.com/karandeepbhardwaj/Yapper/actions"><img src="https://github.com/karandeepbhardwaj/Yapper/actions/workflows/build.yml/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.2.1-blue" alt="Version" /></a>
+  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.2.2-blue" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform" /></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
@@ -14,6 +14,19 @@
 <p align="center">
   <img src="demo.gif" alt="Yapper Demo" width="400" />
 </p>
+
+### Onboarding Tutorial
+
+<table>
+<tr>
+<td align="center"><strong>macOS</strong></td>
+<td align="center"><strong>Windows</strong></td>
+</tr>
+<tr>
+<td><img src="tutorial-mac.gif" alt="macOS Tutorial" width="400" /></td>
+<td><img src="tutorial-windows.gif" alt="Windows Tutorial" width="400" /></td>
+</tr>
+</table>
 
 ---
 
@@ -25,7 +38,7 @@
 - **Auto-paste** refined text at your active cursor position
 - **Conversation mode** -- back-and-forth AI chat with a dedicated hotkey (`Cmd+Shift+Y` / `Ctrl+Shift+Y`), session summaries saved to history
 - **Recording modes** -- "Press" (toggle, default) or "Hold" (press-and-hold to record, release to stop; Fn key release supported on macOS)
-- **Onboarding tutorial** -- animated tutorial on empty state showing widget lifecycle, email paste workflow, and history dashboard
+- **Onboarding tutorial** -- platform-specific animated tutorial (macOS dock / Windows taskbar) showing widget lifecycle, email paste workflow, and history dashboard
 - **Dictionary** -- user-defined text replacements applied before AI refinement (e.g., "btw" -> "by the way"), handles trailing punctuation
 - **Snippets** -- reusable text templates that bypass AI using word boundary matching (e.g., "my email" -> expands to your email address)
 - **Style settings** -- per-category refinement tone (Professional, Casual, Technical, Creative) for Email, Messages, Work, Personal

@@ -181,6 +181,14 @@ Persisted to `{app_config_dir}/settings.json` using atomic file writes. The `stt
 
 On first launch (before onboarding is complete), a landing page is shown with the "Yapper" heading in DM Serif Display font with animated breathing dots and an isomorphic 3D "Get Started" button. Clicking "Get Started" sets `yapper-onboarded` in localStorage and transitions to the main history dashboard.
 
+## Onboarding Tutorial
+
+When history is empty, a platform-specific animated tutorial replaces the empty state. Uses real desktop screenshots (macOS dock or Windows 11 taskbar) with Framer Motion zoom animations. Six steps: desktop → zoom → recording → processing → pasted → history. The "pasted" step shows platform-appropriate window chrome (macOS traffic lights vs Windows minimize/maximize/close). Auto-advances with clickable navigation dots.
+
+## Scroll Performance
+
+History scroll uses GPU-composited layer (`will-change: scroll-position`, `transform: translateZ(0)`) and `contain: layout style paint` on cards for isolated rendering. HistoryCard root is a plain `div` (not `motion.div`) to avoid per-card Framer Motion overhead during scroll. WKWebView elastic overscroll is disabled via `overscroll-behavior: none` + `position: fixed` on html/body.
+
 ## App Icon
 
 3D isomorphic orange with DM Serif Display "Y" letter. DMG installer uses a custom background with centered vertical layout.

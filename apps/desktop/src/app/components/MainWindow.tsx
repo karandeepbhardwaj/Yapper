@@ -100,12 +100,19 @@ function useTypingPlaceholder(active: boolean) {
 }
 
 // --- Animated onboarding tutorial using real screenshots ---
-import desktopLight from "../../assets/desktop-light.png";
-import desktopDark from "../../assets/desktop-dark.png";
-import appHistoryLight from "../../assets/app-history-light.png";
-import appHistoryDark from "../../assets/app-history-dark.png";
+// macOS assets
+import desktopMacLight from "../../assets/desktop-light.png";
+import desktopMacDark from "../../assets/desktop-dark.png";
 import dockLight from "../../assets/dock-light.png";
 import dockDark from "../../assets/dock-dark.png";
+// Windows assets
+import desktopWinLight from "../../assets/desktop-win-light.png";
+import desktopWinDark from "../../assets/desktop-win-dark.png";
+import taskbarLight from "../../assets/taskbar-light.png";
+import taskbarDark from "../../assets/taskbar-dark.png";
+// Shared
+import appHistoryLight from "../../assets/app-history-light.png";
+import appHistoryDark from "../../assets/app-history-dark.png";
 
 type TutorialStep = "desktop" | "zoom" | "recording" | "processing" | "pasted" | "history";
 const TUTORIAL_STEPS: { step: TutorialStep; duration: number }[] = [
@@ -142,9 +149,13 @@ function OnboardingTutorial({ hotkey, conversationHotkey, formatHotkey, isDarkMo
   const step = current.step;
   const dk = isDarkMode;
 
-  // Pick the right image per step
-  const desktopImg = dk ? desktopDark : desktopLight;
-  const dockImg = dk ? dockDark : dockLight;
+  // Pick the right image per step — platform-specific desktop/dock
+  const desktopImg = isMac
+    ? (dk ? desktopMacDark : desktopMacLight)
+    : (dk ? desktopWinDark : desktopWinLight);
+  const dockImg = isMac
+    ? (dk ? dockDark : dockLight)
+    : (dk ? taskbarDark : taskbarLight);
   const historyImg = dk ? appHistoryDark : appHistoryLight;
 
   const isZoomed = step === "zoom" || step === "recording" || step === "processing";
@@ -321,12 +332,25 @@ function OnboardingTutorial({ hotkey, conversationHotkey, formatHotkey, isDarkMo
                   display: "flex", flexDirection: "column",
                 }}
               >
-                {/* Title bar */}
+                {/* Title bar — platform-specific window chrome */}
                 <div style={{ height: 16, display: "flex", alignItems: "center", padding: "0 6px", gap: 2, background: dk ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)", flexShrink: 0 }}>
-                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#ff5f57" }} />
-                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#febc2e" }} />
-                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#28c840" }} />
-                  <div style={{ flex: 1, textAlign: "center", fontSize: 6, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)", fontWeight: 500 }}>New Message</div>
+                  {isMac ? (
+                    <>
+                      <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#ff5f57" }} />
+                      <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#febc2e" }} />
+                      <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#28c840" }} />
+                      <div style={{ flex: 1, textAlign: "center", fontSize: 6, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)", fontWeight: 500 }}>New Message</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ flex: 1, fontSize: 6, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)", fontWeight: 500 }}>New Message</div>
+                      <div style={{ display: "flex", gap: 3 }}>
+                        <div style={{ width: 6, height: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 5, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.25)" }}>─</div>
+                        <div style={{ width: 6, height: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 5, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.25)" }}>□</div>
+                        <div style={{ width: 6, height: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 5, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.25)" }}>✕</div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 {/* Email header */}
                 <div style={{ padding: "6px 10px 4px", borderBottom: dk ? "1px solid rgba(255,255,255,0.04)" : "1px solid rgba(0,0,0,0.06)", flexShrink: 0 }}>
@@ -530,7 +554,7 @@ export function MainWindow({
   return (
     <div
       className="w-full h-screen flex flex-col"
-      style={{ background: "var(--background)", position: "relative" }}
+      style={{ background: "var(--background)", position: "relative", overflow: "hidden" }}
     >
       {/* Drag region */}
       <div
@@ -706,7 +730,7 @@ export function MainWindow({
       </div>
 
       {/* Scrollable card list */}
-      <div className="flex-1 overflow-y-auto yapper-scroll" style={{ padding: "12px 20px 20px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div className={`flex-1 yapper-scroll`} style={{ padding: "12px 20px 20px 20px", display: "flex", flexDirection: "column", alignItems: "center", overflowY: filteredItems.length > 0 ? "auto" : "hidden", overflowX: "hidden", willChange: filteredItems.length > 0 ? "scroll-position" : undefined, WebkitOverflowScrolling: filteredItems.length > 0 ? "touch" : undefined, transform: "translateZ(0)" }}>
         <div style={{ width: "100%", maxWidth: 720 }}>
         {filteredItems.length === 0 ? (
           searchQuery ? (
@@ -836,9 +860,6 @@ export function MainWindow({
           position: "absolute", bottom: 0, left: 0, right: 0,
           padding: "16px 0 20px",
           textAlign: "center",
-          background: isDarkMode
-            ? "linear-gradient(transparent, var(--yapper-bg-lighter) 40%)"
-            : "linear-gradient(transparent, var(--yapper-bg-lighter) 40%)",
         }}>
           <p style={{
             fontFamily: "'DM Serif Display', serif",

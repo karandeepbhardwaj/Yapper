@@ -382,7 +382,7 @@ export default function App() {
 
       <style>{`
         .yapper-scroll::-webkit-scrollbar { display: none; }
-        .yapper-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .yapper-scroll { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; will-change: scroll-position; transform: translateZ(0); }
         @keyframes blink { 0%, 100% { opacity: 0.6; } 50% { opacity: 0; } }
       `}</style>
     </div>
