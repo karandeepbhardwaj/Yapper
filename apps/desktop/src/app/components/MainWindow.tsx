@@ -161,7 +161,7 @@ function OnboardingTutorial({ hotkey, conversationHotkey, formatHotkey, isDarkMo
     }}>
       {/* Main viewer */}
       <div style={{
-        width: 340, height: 230, borderRadius: 10, position: "relative",
+        width: "min(85%, 420px)", aspectRatio: "16 / 10.5", borderRadius: 10, position: "relative",
         overflow: "hidden",
         boxShadow: "0 4px 24px rgba(0,0,0,0.15), 0 1px 6px rgba(0,0,0,0.08)",
         border: "1px solid rgba(0,0,0,0.1)",
@@ -530,7 +530,7 @@ export function MainWindow({
   return (
     <div
       className="w-full h-screen flex flex-col"
-      style={{ background: "var(--background)" }}
+      style={{ background: "var(--background)", position: "relative" }}
     >
       {/* Drag region */}
       <div
@@ -829,6 +829,28 @@ export function MainWindow({
         )}
         </div>
       </div>
+
+      {/* Fixed bottom message — only when no recordings */}
+      {filteredItems.length === 0 && !searchQuery && (
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          padding: "16px 0 20px",
+          textAlign: "center",
+          background: isDarkMode
+            ? "linear-gradient(transparent, var(--yapper-bg-lighter) 40%)"
+            : "linear-gradient(transparent, var(--yapper-bg-lighter) 40%)",
+        }}>
+          <p style={{
+            fontFamily: "'DM Serif Display', serif",
+            fontSize: 18,
+            color: isDarkMode ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.15)",
+            margin: 0,
+            userSelect: "none",
+          }}>
+            Press <span style={{ color: "#DA7756", opacity: 0.6 }}>{formatHotkey(hotkey)}</span> and start yapping
+          </p>
+        </div>
+      )}
     </div>
   );
 }

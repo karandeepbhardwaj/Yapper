@@ -431,14 +431,35 @@ export function SettingsView({
         }}
       />
 
-      {/* Centered title */}
-      <div style={{ textAlign: "center", marginBottom: 8, flexShrink: 0 }}>
+      {/* Header with back button + title */}
+      <div style={{ display: "flex", alignItems: "center", padding: "0 20px", marginBottom: 12, flexShrink: 0, position: "relative", minHeight: 36 }}>
+        {/* iOS 26 style back button */}
+        <motion.button
+          onClick={onBack}
+          aria-label="Back"
+          whileHover={{ x: -2 }}
+          whileTap={{ scale: 0.95 }}
+          style={{
+            display: "flex", alignItems: "center", gap: 4,
+            background: "none", border: "none", cursor: "pointer",
+            color: "#DA7756", fontSize: 15, fontWeight: 400,
+            padding: "4px 0",
+          }}
+        >
+          <svg width="9" height="16" viewBox="0 0 9 16" fill="none" stroke="#DA7756" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 1 L1 8 L8 15" />
+          </svg>
+          <span>Back</span>
+        </motion.button>
+        {/* Centered title */}
         <h2 style={{
           fontFamily: "'DM Serif Display', serif",
           fontWeight: 400,
-          fontSize: 30,
+          fontSize: 28,
           color: "var(--yapper-text-primary)",
           lineHeight: 1,
+          position: "absolute", left: "50%", transform: "translateX(-50%)",
+          margin: 0,
         }}>
           Settings
         </h2>
@@ -729,32 +750,6 @@ export function SettingsView({
         </div>
       </motion.div>
 
-      {/* Floating back button — bottom left */}
-      <motion.button
-        onClick={onBack}
-        aria-label="Go home"
-        whileHover={{ scale: 1.08, y: -2 }}
-        whileTap={{ scale: 0.9 }}
-        style={{
-          position: "absolute",
-          bottom: 20,
-          left: 20,
-          zIndex: 50,
-          width: 42,
-          height: 42,
-          borderRadius: "50%",
-          background: "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          boxShadow: "0 4px 16px rgba(218,119,86,0.3), 0 2px 6px rgba(0,0,0,0.12), inset 0 1px 1px rgba(255,255,255,0.15), inset 0 -1px 1px rgba(0,0,0,0.1)",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-        }}
-      >
-        <Home style={{ width: 16, height: 16, fill: "#fff" }} />
-      </motion.button>
     </div>
   );
 }

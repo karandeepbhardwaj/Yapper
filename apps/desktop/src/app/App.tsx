@@ -273,9 +273,10 @@ export default function App() {
       style={{
         fontFamily: "var(--font-body, 'Inter', sans-serif)",
         background: "var(--background)",
+        position: "relative",
       }}
     >
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         {!hasOnboarded ? (
           <motion.div
             key="landing"
@@ -287,11 +288,12 @@ export default function App() {
         ) : activeView === "conversation" ? (
           <motion.div
             key="conversation"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.25 }}
+            initial={{ x: "100%", opacity: 0.6 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0.6 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.8 }}
             className="h-screen"
+            style={{ position: "absolute", inset: 0, zIndex: 10 }}
           >
             <ConversationView
               onBack={() => { setActiveView("history"); refresh(); }}
@@ -302,11 +304,12 @@ export default function App() {
         ) : activeView === "settings" ? (
           <motion.div
             key="settings"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.25 }}
+            initial={{ x: "100%", opacity: 0.6 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0.6 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.8 }}
             className="h-screen"
+            style={{ position: "absolute", inset: 0, zIndex: 10 }}
           >
             <SettingsView
               onBack={() => setActiveView("history")}
@@ -317,22 +320,24 @@ export default function App() {
         ) : activeView === "dictionary" ? (
           <motion.div
             key="dictionary"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.25 }}
+            initial={{ x: "100%", opacity: 0.6 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0.6 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.8 }}
             className="h-screen"
+            style={{ position: "absolute", inset: 0, zIndex: 10 }}
           >
             <DictionaryView onBack={() => setActiveView("settings")} />
           </motion.div>
         ) : activeView === "snippets" ? (
           <motion.div
             key="snippets"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.25 }}
+            initial={{ x: "100%", opacity: 0.6 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0.6 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.8 }}
             className="h-screen"
+            style={{ position: "absolute", inset: 0, zIndex: 10 }}
           >
             <SnippetsView onBack={() => setActiveView("settings")} />
           </motion.div>
@@ -340,8 +345,9 @@ export default function App() {
           <motion.div
             key="main"
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ x: "-30%", scale: 0.95, opacity: 0.5 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.8 }}
             className="h-screen"
           >
             <MainWindow
