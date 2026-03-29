@@ -99,235 +99,33 @@ function useTypingPlaceholder(active: boolean) {
   return text;
 }
 
-// --- Animated onboarding tutorial ---
-type TutorialStep = "idle" | "hover" | "recording" | "processing" | "done" | "history";
+// --- Animated onboarding tutorial using real screenshots ---
+import desktopLight from "../../assets/desktop-light.png";
+import desktopDark from "../../assets/desktop-dark.png";
+import appHistoryLight from "../../assets/app-history-light.png";
+import appHistoryDark from "../../assets/app-history-dark.png";
+import dockLight from "../../assets/dock-light.png";
+import dockDark from "../../assets/dock-dark.png";
+
+type TutorialStep = "desktop" | "zoom" | "recording" | "processing" | "pasted" | "history";
 const TUTORIAL_STEPS: { step: TutorialStep; duration: number }[] = [
-  { step: "idle", duration: 1800 },
-  { step: "hover", duration: 1400 },
+  { step: "desktop", duration: 2200 },
+  { step: "zoom", duration: 1800 },
   { step: "recording", duration: 2500 },
   { step: "processing", duration: 2000 },
-  { step: "done", duration: 1600 },
-  { step: "history", duration: 2200 },
+  { step: "pasted", duration: 2800 },
+  { step: "history", duration: 2500 },
 ];
 const STEP_LABELS: Record<TutorialStep, string> = {
-  idle: "Widget sits quietly at the bottom of your screen",
-  hover: "Hover to reveal the microphone",
+  desktop: "Widget sits at the bottom of your screen",
+  zoom: "Hover or press your hotkey to activate",
   recording: "Speak — your voice is being captured",
-  processing: "AI refines your transcript...",
-  done: "Polished text is pasted at your cursor",
-  history: "Your recordings appear here in Yapper",
+  processing: "AI refines your transcript and pastes it",
+  pasted: "Refined text appears right where your cursor is",
+  history: "All your recordings are saved here",
 };
 
-// Mac desktop scene: menubar with notch, fake windows, dock, widget
-function MacDesktopScene({ step }: { step: TutorialStep }) {
-  const isDesktopScene = step !== "history";
-  const pillW = step === "idle" ? 44 : step === "hover" ? 48 : step === "done" ? 44 : 120;
-  const pillH = step === "idle" ? 6 : step === "hover" || step === "done" ? 20 : 26;
-
-  return (
-    <div style={{
-      width: 280, height: 190, borderRadius: 8, position: "relative",
-      overflow: "hidden",
-    }}>
-      <AnimatePresence mode="wait">
-        {isDesktopScene ? (
-          <motion.div key="desktop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.35 }}
-            style={{ width: "100%", height: "100%", position: "absolute", inset: 0, background: "#0d0b09" }}
-          >
-            {/* Menu bar */}
-            <div style={{ height: 12, background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", padding: "0 6px", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", gap: 3 }}>
-                <div style={{ width: 3, height: 3, borderRadius: 1, background: "rgba(255,255,255,0.15)" }} />
-                <div style={{ width: 12, height: 2, borderRadius: 1, background: "rgba(255,255,255,0.08)", marginTop: 0.5 }} />
-                <div style={{ width: 10, height: 2, borderRadius: 1, background: "rgba(255,255,255,0.06)", marginTop: 0.5 }} />
-              </div>
-              {/* Notch */}
-              <div style={{
-                width: 50, height: 12, borderRadius: "0 0 8px 8px",
-                background: "#000", position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-              }} />
-              <div style={{ display: "flex", gap: 3 }}>
-                <div style={{ width: 8, height: 2, borderRadius: 1, background: "rgba(255,255,255,0.06)" }} />
-                <div style={{ width: 3, height: 3, borderRadius: 1, background: "rgba(255,255,255,0.1)" }} />
-              </div>
-            </div>
-
-            {/* Desktop wallpaper area */}
-            <div style={{ flex: 1, position: "relative", height: "calc(100% - 12px - 20px)" }}>
-              {/* Fake window */}
-              <div style={{
-                position: "absolute", top: 12, left: 20, width: 150, height: 90,
-                borderRadius: 5, background: "#1c1713", border: "1px solid rgba(255,255,255,0.06)",
-                overflow: "hidden",
-              }}>
-                <div style={{ height: 10, background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", padding: "0 4px", gap: 2 }}>
-                  <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#ff5f57" }} />
-                  <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#febc2e" }} />
-                  <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#28c840" }} />
-                </div>
-                <div style={{ padding: "6px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div style={{ width: "80%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.05)" }} />
-                  <div style={{ width: "55%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.03)" }} />
-                  <div style={{ width: "70%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.04)" }} />
-                  <div style={{ width: "40%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.03)" }} />
-                </div>
-              </div>
-
-              {/* Second fake window */}
-              <div style={{
-                position: "absolute", top: 25, left: 100, width: 130, height: 70,
-                borderRadius: 5, background: "#1e1915", border: "1px solid rgba(255,255,255,0.05)",
-                overflow: "hidden",
-              }}>
-                <div style={{ height: 10, background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", padding: "0 4px", gap: 2 }}>
-                  <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#ff5f57" }} />
-                  <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#febc2e" }} />
-                  <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#28c840" }} />
-                </div>
-                <div style={{ padding: "5px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
-                  <div style={{ width: "60%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.04)" }} />
-                  <div style={{ width: "85%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.03)" }} />
-                </div>
-              </div>
-            </div>
-
-            {/* Dock */}
-            <div style={{
-              position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)",
-              display: "flex", gap: 3, padding: "3px 8px",
-              background: "rgba(255,255,255,0.04)", borderRadius: 6,
-              border: "1px solid rgba(255,255,255,0.04)",
-            }}>
-              {[0,1,2,3,4,5,6].map(i => (
-                <div key={i} style={{
-                  width: 10, height: 10, borderRadius: 2,
-                  background: i === 3 ? "rgba(218,119,86,0.3)" : `rgba(255,255,255,${0.04 + i * 0.01})`,
-                }} />
-              ))}
-            </div>
-
-            {/* Arrow pointing to widget */}
-            <AnimatePresence>
-              {step === "idle" && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}
-                  style={{ position: "absolute", bottom: 32, left: "50%", transform: "translateX(-50%)" }}
-                >
-                  <motion.svg width="10" height="16" viewBox="0 0 10 16" fill="none"
-                    animate={{ y: [0, 3, 0] }} transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                  >
-                    <line x1="5" y1="0" x2="5" y2="11" stroke="rgba(218,119,86,0.5)" strokeWidth="1.5" strokeDasharray="2 2" />
-                    <path d="M1.5 10 L5 15 L8.5 10" stroke="rgba(218,119,86,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                  </motion.svg>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Widget pill above dock */}
-            <motion.div
-              animate={{ width: pillW, height: pillH, borderRadius: pillH / 2, opacity: step === "idle" ? 0.5 : 1 }}
-              transition={{ duration: 0.35, ease: [0.34, 1.1, 0.64, 1] }}
-              style={{
-                position: "absolute", bottom: 22, left: "50%", x: "-50%",
-                background: "#1c1713", border: "1px solid rgba(218,119,86,0.35)",
-                display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-              }}
-            >
-              <AnimatePresence mode="wait">
-                {step === "hover" && (
-                  <motion.div key="mic" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#DA7756" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
-                    </svg>
-                  </motion.div>
-                )}
-                {step === "recording" && (
-                  <motion.div key="rec" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", padding: "0 4px" }}
-                  >
-                    <div style={{ width: 12, height: 12, borderRadius: 6, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 6, color: "rgba(255,255,255,0.35)", flexShrink: 0 }}>✕</div>
-                    <motion.div animate={{ backgroundPosition: ["0% 50%", "200% 50%"] }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                      style={{ flex: 1, height: "65%", margin: "0 2px", borderRadius: 4, background: "linear-gradient(90deg, transparent, rgba(218,119,86,0.3), rgba(245,201,168,0.2), rgba(218,119,86,0.3), transparent)", backgroundSize: "200% 100%" }}
-                    />
-                    <div style={{ width: 12, height: 12, borderRadius: 6, background: "#DA7756", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <div style={{ width: 4, height: 4, borderRadius: 1, background: "#fff" }} />
-                    </div>
-                  </motion.div>
-                )}
-                {step === "processing" && (
-                  <motion.div key="proc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    style={{ width: "100%", height: "100%", borderRadius: "inherit", overflow: "hidden" }}
-                  >
-                    <motion.div animate={{ backgroundPosition: ["0% 50%", "200% 50%"] }} transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                      style={{ width: "100%", height: "100%", borderRadius: "inherit", background: "linear-gradient(90deg, #1c1713, #DA7756, #e8a87c, #f5c9a8, #e8a87c, #DA7756, #1c1713)", backgroundSize: "200% 100%" }}
-                    />
-                  </motion.div>
-                )}
-                {step === "done" && (
-                  <motion.div key="done" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#DA7756" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 6 L9 17 L4 12" />
-                    </svg>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          </motion.div>
-        ) : (
-          /* History scene: Yapper app mockup showing a card */
-          <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.35 }}
-            style={{ width: "100%", height: "100%", position: "absolute", inset: 0, background: "#1c1713", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            {/* App title bar */}
-            <div style={{ height: 14, display: "flex", alignItems: "center", padding: "0 6px", gap: 2 }}>
-              <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#ff5f57" }} />
-              <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#febc2e" }} />
-              <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#28c840" }} />
-            </div>
-            {/* Yapper. title */}
-            <div style={{ textAlign: "center", padding: "2px 0 6px" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.8)", fontFamily: "'DM Serif Display', serif" }}>Yapper</span>
-              <span style={{ fontSize: 11, color: "#DA7756", fontFamily: "'DM Serif Display', serif" }}>.</span>
-            </div>
-            {/* Search bar mock */}
-            <div style={{ margin: "0 12px 6px", height: 14, borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }} />
-            {/* History card appearing */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.3 }}
-              style={{
-                margin: "0 12px", borderRadius: 8, padding: "8px 10px",
-                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)",
-              }}
-            >
-              <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                <div style={{ padding: "1px 6px", borderRadius: 4, background: "rgba(218,119,86,0.15)", fontSize: 6, color: "#DA7756", fontWeight: 600 }}>NOTE</div>
-              </div>
-              <div style={{ width: "85%", height: 3, borderRadius: 1, background: "rgba(255,255,255,0.12)", marginBottom: 4 }} />
-              <div style={{ width: "70%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.06)", marginBottom: 2 }} />
-              <div style={{ width: "90%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.05)", marginBottom: 2 }} />
-              <div style={{ width: "50%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.04)" }} />
-            </motion.div>
-            {/* Second card hint */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 0.5, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.6 }}
-              style={{
-                margin: "6px 12px 0", borderRadius: 8, padding: "6px 10px",
-                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.03)",
-              }}
-            >
-              <div style={{ width: "60%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.06)", marginBottom: 3 }} />
-              <div style={{ width: "80%", height: 2, borderRadius: 1, background: "rgba(255,255,255,0.03)" }} />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
+// Image-based slideshow using real screenshots
 function OnboardingTutorial({ hotkey, conversationHotkey, formatHotkey, isDarkMode }: {
   hotkey: string; conversationHotkey: string; formatHotkey: (hk: string) => string; isDarkMode: boolean;
 }) {
@@ -342,13 +140,291 @@ function OnboardingTutorial({ hotkey, conversationHotkey, formatHotkey, isDarkMo
   }, [stepIndex, current.duration]);
 
   const step = current.step;
+  const dk = isDarkMode;
+
+  // Pick the right image per step
+  const desktopImg = dk ? desktopDark : desktopLight;
+  const dockImg = dk ? dockDark : dockLight;
+  const historyImg = dk ? appHistoryDark : appHistoryLight;
+
+  const isZoomed = step === "zoom" || step === "recording" || step === "processing";
+  const showAppWindow = step === "history";
+  const showPasted = step === "pasted";
+
+  const pillW = step === "zoom" ? 52 : step === "recording" || step === "processing" ? 160 : 50;
+  const pillH = step === "zoom" ? 24 : step === "recording" || step === "processing" ? 32 : 7;
 
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      flex: 1, minHeight: "60vh", gap: 16, userSelect: "none",
+      flex: 1, minHeight: "60vh", gap: 12, userSelect: "none",
     }}>
-      <MacDesktopScene step={step} />
+      {/* Main viewer */}
+      <div style={{
+        width: 340, height: 230, borderRadius: 10, position: "relative",
+        overflow: "hidden",
+        boxShadow: "0 4px 24px rgba(0,0,0,0.15), 0 1px 6px rgba(0,0,0,0.08)",
+        border: "1px solid rgba(0,0,0,0.1)",
+      }}>
+        {/* Layer 1: Desktop image — always present, zooms smoothly */}
+        <motion.div
+          animate={{
+            scale: isZoomed ? 3.5 : showAppWindow ? 1 : 1,
+          }}
+          transition={{ duration: 0.7, ease: [0.4, 0, 0.2, 1] }}
+          style={{ position: "absolute", inset: 0, transformOrigin: "center 90%" }}
+        >
+          <img src={desktopImg} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} draggable={false} />
+          {/* Tiny widget pill on dock — only visible at 1x */}
+          <motion.div
+            animate={{ opacity: step === "desktop" ? 0.6 : 0 }}
+            style={{
+              position: "absolute", bottom: 18, left: "50%", transform: "translateX(-50%)",
+              width: 14, height: 3, borderRadius: 2, background: "#1c1713",
+              border: "0.5px solid rgba(218,119,86,0.3)",
+            }}
+          />
+          {/* Bouncing arrow — desktop step only */}
+          <motion.div
+            animate={{ opacity: step === "desktop" ? 1 : 0 }}
+            style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)" }}
+          >
+            <motion.div
+              animate={{ y: [0, 3, 0] }} transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+              style={{
+                width: 16, height: 16, borderRadius: "50%",
+                background: "rgba(0,0,0,0.6)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+              }}
+            >
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5 L12 19" />
+                <path d="M5 12 L12 19 L19 12" />
+              </svg>
+            </motion.div>
+          </motion.div>
+        </motion.div>
+
+        {/* Layer 2: Dock crop — fades in once zoom is underway for crisp widget */}
+        <motion.div
+          animate={{ opacity: isZoomed ? 1 : 0 }}
+          transition={{ duration: 0.7, delay: 0, ease: [0.4, 0, 0.2, 1] }}
+          style={{ position: "absolute", inset: 0, pointerEvents: isZoomed ? "auto" : "none" }}
+        >
+          <img src={dockImg} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center bottom" }} draggable={false} />
+          {/* Instruction text — just above the widget */}
+          <AnimatePresence mode="wait">
+            {step === "zoom" && (
+              <motion.div key="inst-zoom" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, delay: 0.3 }}
+                style={{
+                  position: "absolute", bottom: 104, left: 0, right: 0, textAlign: "center",
+                  fontSize: 9, fontWeight: 500, color: "rgba(255,255,255,0.85)",
+                  textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                }}
+              >
+                Press <span style={{ color: "#DA7756", fontWeight: 700 }}>{formatHotkey(hotkey)}</span> or click widget
+              </motion.div>
+            )}
+            {step === "recording" && (
+              <motion.div key="inst-rec" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                style={{
+                  position: "absolute", bottom: 104, left: 0, right: 0, textAlign: "center",
+                  fontSize: 9, fontWeight: 500, color: "rgba(255,255,255,0.85)",
+                  textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                }}
+              >
+                Speaking...
+              </motion.div>
+            )}
+            {step === "processing" && (
+              <motion.div key="inst-proc" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                style={{
+                  position: "absolute", bottom: 104, left: 0, right: 0, textAlign: "center",
+                  fontSize: 9, fontWeight: 500, color: "rgba(255,255,255,0.85)",
+                  textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                }}
+              >
+                Refining with AI...
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* Real-size widget pill */}
+          <motion.div
+            animate={{ width: pillW, height: pillH, borderRadius: pillH / 2 }}
+            transition={{ duration: 0.35, ease: [0.34, 1.1, 0.64, 1] }}
+            style={{
+              position: "absolute", bottom: 70, left: "50%", x: "-50%",
+              background: "#1c1713", border: "1.5px solid rgba(218,119,86,0.35)",
+              display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+            }}
+          >
+            <AnimatePresence mode="wait">
+              {step === "zoom" && (
+                <motion.div key="mic" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DA7756" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
+                  </svg>
+                </motion.div>
+              )}
+              {step === "recording" && (
+                <motion.div key="rec" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", padding: "0 6px" }}
+                >
+                  <div style={{ width: 22, height: 22, borderRadius: 11, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(255,255,255,0.5)", flexShrink: 0 }}>✕</div>
+                  <motion.div animate={{ backgroundPosition: ["0% 50%", "200% 50%"] }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    style={{ flex: 1, height: "70%", margin: "0 4px", borderRadius: 6, background: "linear-gradient(90deg, transparent, rgba(218,119,86,0.3), rgba(245,201,168,0.2), rgba(218,119,86,0.3), transparent)", backgroundSize: "200% 100%" }}
+                  />
+                  <div style={{ width: 22, height: 22, borderRadius: 11, background: "#DA7756", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <div style={{ width: 7, height: 7, borderRadius: 1.5, background: "#fff" }} />
+                  </div>
+                </motion.div>
+              )}
+              {step === "processing" && (
+                <motion.div key="proc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  style={{ width: "100%", height: "100%", borderRadius: "inherit", overflow: "hidden" }}
+                >
+                  <motion.div animate={{ backgroundPosition: ["0% 50%", "200% 50%"] }} transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                    style={{ width: "100%", height: "100%", borderRadius: "inherit", background: "linear-gradient(90deg, #1c1713, #DA7756, #e8a87c, #f5c9a8, #e8a87c, #DA7756, #1c1713)", backgroundSize: "200% 100%" }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </motion.div>
+
+        {/* Layer 3: "Pasted" scene — email app with text typing in */}
+        <AnimatePresence>
+          {showPasted && (
+            <motion.div
+              key="pasted"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              style={{ position: "absolute", inset: 0 }}
+            >
+              <img src={desktopImg} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }} draggable={false} />
+              {/* Fake email/notes app window */}
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.35, delay: 0.1 }}
+                style={{
+                  position: "absolute", top: 12, left: 20, right: 20, bottom: 20,
+                  borderRadius: 6, overflow: "hidden",
+                  background: dk ? "#1e1a16" : "#fff",
+                  border: dk ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.08)",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+                  display: "flex", flexDirection: "column",
+                }}
+              >
+                {/* Title bar */}
+                <div style={{ height: 16, display: "flex", alignItems: "center", padding: "0 6px", gap: 2, background: dk ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)", flexShrink: 0 }}>
+                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#ff5f57" }} />
+                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#febc2e" }} />
+                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#28c840" }} />
+                  <div style={{ flex: 1, textAlign: "center", fontSize: 6, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)", fontWeight: 500 }}>New Message</div>
+                </div>
+                {/* Email header */}
+                <div style={{ padding: "6px 10px 4px", borderBottom: dk ? "1px solid rgba(255,255,255,0.04)" : "1px solid rgba(0,0,0,0.06)", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
+                    <span style={{ fontSize: 6, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)" }}>To:</span>
+                    <div style={{ width: "50%", height: 3, borderRadius: 1, background: dk ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 6, color: dk ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)" }}>Subject:</span>
+                    <div style={{ width: "40%", height: 3, borderRadius: 1, background: dk ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }} />
+                  </div>
+                </div>
+                {/* Email body — text "types" in */}
+                <div style={{ padding: "8px 10px", flex: 1 }}>
+                  {/* Cursor blink before text appears */}
+                  <motion.div
+                    initial={{ opacity: 1 }}
+                    animate={{ opacity: 0 }}
+                    transition={{ delay: 0.4, duration: 0.1 }}
+                    style={{ width: 1, height: 8, background: "#DA7756", marginBottom: 4 }}
+                  />
+                  {/* Lines appearing one by one */}
+                  {[
+                    { w: "90%", delay: 0.5 },
+                    { w: "75%", delay: 0.7 },
+                    { w: "85%", delay: 0.9 },
+                    { w: "60%", delay: 1.1 },
+                    { w: "0%", delay: 1.3 },
+                    { w: "80%", delay: 1.5 },
+                    { w: "70%", delay: 1.7 },
+                    { w: "45%", delay: 1.9 },
+                  ].map((line, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: line.w, opacity: line.w === "0%" ? 0 : 1 }}
+                      transition={{ delay: line.delay, duration: 0.25, ease: "easeOut" }}
+                      style={{
+                        height: i === 0 ? 4 : 3,
+                        borderRadius: 1,
+                        background: i === 0
+                          ? (dk ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)")
+                          : (dk ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"),
+                        marginBottom: line.w === "0%" ? 6 : 4,
+                        fontWeight: i === 0 ? 600 : 400,
+                      }}
+                    />
+                  ))}
+                  {/* Signature area */}
+                  <motion.div
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    transition={{ delay: 2.1, duration: 0.3 }}
+                    style={{ marginTop: 4 }}
+                  >
+                    <div style={{ width: "30%", height: 3, borderRadius: 1, background: dk ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", marginBottom: 2 }} />
+                    <div style={{ width: "20%", height: 2, borderRadius: 1, background: dk ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" }} />
+                  </motion.div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Layer 4: History screenshot floating on desktop */}
+        <AnimatePresence>
+          {showAppWindow && (
+            <motion.div
+              key={step}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              style={{ position: "absolute", inset: 0 }}
+            >
+              {/* Desktop bg behind the app window */}
+              <img src={desktopImg} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }} draggable={false} />
+              {/* App screenshot centered */}
+              <motion.div
+                initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.4, delay: 0.15 }}
+                style={{ position: "absolute", top: 6, left: 0, right: 0, bottom: 14, display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2 }}
+              >
+                <img
+                  src={historyImg}
+                  alt=""
+                  style={{
+                    height: "88%",
+                    borderRadius: 6,
+                    objectFit: "contain",
+                    boxShadow: "0 6px 28px rgba(0,0,0,0.3)",
+                  }}
+                  draggable={false}
+                />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Step label */}
       <AnimatePresence mode="wait">
@@ -359,26 +435,18 @@ function OnboardingTutorial({ hotkey, conversationHotkey, formatHotkey, isDarkMo
         </motion.p>
       </AnimatePresence>
 
-      {/* Step dots */}
+      {/* Step dots — clickable */}
       <div style={{ display: "flex", gap: 6 }}>
         {TUTORIAL_STEPS.map((_, i) => (
-          <div key={i} style={{
-            width: 5, height: 5, borderRadius: "50%",
-            background: i === stepIndex ? "#DA7756" : (isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)"),
+          <div key={i} onClick={() => setStepIndex(i)} style={{
+            width: 6, height: 6, borderRadius: "50%",
+            background: i === stepIndex ? "#DA7756" : (dk ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)"),
             transition: "background 0.3s",
+            cursor: "pointer",
           }} />
         ))}
       </div>
 
-      {/* Hotkey hints */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, marginTop: 2 }}>
-        <p style={{ color: isDarkMode ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.2)", fontSize: 14, fontWeight: 400, margin: 0 }}>
-          press <span style={{ fontWeight: 600 }}>{formatHotkey(hotkey)}</span> to start Yapping...
-        </p>
-        <p style={{ color: isDarkMode ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.15)", fontSize: 12, fontWeight: 400, margin: 0 }}>
-          <span style={{ fontWeight: 600 }}>{formatHotkey(conversationHotkey)}</span> to start a conversation
-        </p>
-      </div>
     </div>
   );
 }
