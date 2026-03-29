@@ -173,14 +173,14 @@ async function refineWithGroq(rawText: string, style: string, apiKey: string): P
 async function refineWithGemini(rawText: string, style: string, apiKey: string): Promise<RefinementResult> {
   const styleNote = STYLE_MODIFIERS[style] || STYLE_MODIFIERS["Professional"];
   const prompt = `${SYSTEM_PROMPT}\n\nStyle: ${styleNote}\n\nRaw transcript:\n\n${rawText}`;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
   const body = JSON.stringify({
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.3 },
   });
 
   console.log("[Yapper] Using Gemini API (gemini-2.0-flash)");
-  const response = await httpPost(url, {}, body);
+  const response = await httpPost(url, { "x-goog-api-key": apiKey }, body);
   const parsed = JSON.parse(response);
   const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
   if (!text) { throw new Error("Gemini returned empty response"); }
@@ -365,9 +365,9 @@ export async function handleConversation(
       const prompt = CONVERSATION_SYSTEM_PROMPT + "\n\n" +
         h.map(t => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`).join("\n\n") +
         `\n\nUser: ${msg}`;
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+      const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
       console.log("[Yapper] Conversation using Gemini API");
-      const response = await httpPost(url, {}, JSON.stringify({
+      const response = await httpPost(url, { "x-goog-api-key": key }, JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.7 },
       }));
@@ -470,9 +470,9 @@ export async function handleSummarize(
     { name: "Gemini", settingKey: "geminiApiKey", envVar: "GEMINI_API_KEY", fn: async (text) => {
       const key = getApiKey("geminiApiKey", "GEMINI_API_KEY");
       if (!key) { throw new Error("No key"); }
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+      const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
       console.log("[Yapper] Summarize using Gemini API");
-      const response = await httpPost(url, {}, JSON.stringify({
+      const response = await httpPost(url, { "x-goog-api-key": key }, JSON.stringify({
         contents: [{ parts: [{ text: `${SUMMARIZE_SYSTEM_PROMPT}\n\nConversation:\n\n${text}` }] }],
         generationConfig: { temperature: 0.3 },
       }));

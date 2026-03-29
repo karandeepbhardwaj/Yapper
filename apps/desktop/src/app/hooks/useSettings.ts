@@ -5,14 +5,16 @@ import { getSettings, changeHotkey, changeSttEngine } from "../lib/tauri-bridge"
 export function useSettings() {
   const [hotkey, setHotkeyState] = useState(DEFAULT_SETTINGS.hotkey);
   const [sttEngine, setSttEngineState] = useState<"classic" | "modern">(DEFAULT_SETTINGS.stt_engine);
+  const [conversationHotkey, setConversationHotkeyState] = useState(DEFAULT_SETTINGS.conversation_hotkey);
 
   useEffect(() => {
     getSettings()
       .then((s) => {
         setHotkeyState(s.hotkey);
         if (s.stt_engine) setSttEngineState(s.stt_engine);
+        if (s.conversation_hotkey) setConversationHotkeyState(s.conversation_hotkey);
       })
-      .catch(() => {});
+      .catch((e) => console.error("Failed to load settings:", e));
   }, []);
 
   const setHotkey = useCallback(async (newHotkey: string) => {
@@ -30,10 +32,10 @@ export function useSettings() {
     try {
       await changeSttEngine(engine);
       setSttEngineState(engine);
-    } catch {
-      // If change fails, don't update the UI
+    } catch (e) {
+      console.error("Failed to change STT engine:", e);
     }
   }, []);
 
-  return { hotkey, setHotkey, sttEngine, setSttEngine };
+  return { hotkey, setHotkey, sttEngine, setSttEngine, conversationHotkey };
 }

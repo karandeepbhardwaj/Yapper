@@ -4,104 +4,19 @@ import { motion, AnimatePresence } from "motion/react";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Fuse from "fuse.js";
 import type { HistoryItem } from "../lib/types";
+import { FONT_SIZE, ANIMATION } from "../lib/tokens";
 
 const isMac = navigator.platform.toUpperCase().includes("MAC");
 
-function YappButton({ onClick }: { onClick?: () => void }) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <motion.button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      whileTap={{ scale: 0.9 }}
-      animate={{
-        scale: hovered ? 1.08 : 1,
-        y: hovered ? -3 : 0,
-      }}
-      transition={{ type: "spring", stiffness: 400, damping: 20 }}
-      style={{
-        pointerEvents: "auto",
-        position: "relative",
-        width: 52,
-        height: 48,
-        background: "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
-        border: "1px solid rgba(255,255,255,0.15)",
-        borderRadius: "24px 24px 24px 8px",
-        boxShadow: hovered
-          ? "0 8px 32px rgba(218,119,86,0.5), 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 1px rgba(255,255,255,0.25), inset 0 -1px 1px rgba(0,0,0,0.1)"
-          : "0 4px 16px rgba(218,119,86,0.3), 0 2px 6px rgba(0,0,0,0.12), inset 0 1px 1px rgba(255,255,255,0.15), inset 0 -1px 1px rgba(0,0,0,0.1)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-      }}
-    >
-      {/* Ambient glow on hover */}
-      <motion.div
-        animate={{
-          opacity: hovered ? 1 : 0,
-          scale: hovered ? 1.5 : 0.8,
-        }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        style={{
-          position: "absolute",
-          inset: -12,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(255,220,180,0.25) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }}
-      />
-      {/* Inner shimmer on hover */}
-      <motion.div
-        animate={{
-          opacity: hovered ? 0.6 : 0,
-        }}
-        transition={{ duration: 0.3 }}
-        style={{
-          position: "absolute",
-          inset: 0,
-          borderRadius: "inherit",
-          background: "radial-gradient(circle at 35% 35%, rgba(255,255,255,0.2) 0%, transparent 60%)",
-          pointerEvents: "none",
-        }}
-      />
-      {/* Y. text */}
-      <span
-        style={{
-          position: "relative",
-          fontFamily: "'DM Serif Display', serif",
-          fontSize: 22,
-          fontWeight: 400,
-          color: "#fff",
-          lineHeight: 1,
-        }}
-      >
-        Y
-        <span style={{ fontSize: 8, color: "rgba(255,255,255,0.7)", marginLeft: 0, verticalAlign: "baseline", position: "relative", top: 0 }}>
-          {[0, 1, 2].map((i) => (
-            <motion.span
-              key={i}
-              animate={{ opacity: [0, 1, 1, 0] }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                delay: i * 0.3,
-                times: [0, 0.2, 0.7, 1],
-                ease: "easeInOut",
-              }}
-            >
-              .
-            </motion.span>
-          ))}
-        </span>
-      </span>
-    </motion.button>
-  );
-}
-
+const formatHotkey = (hk: string): string => {
+  if (hk.toLowerCase() === "fn") return "fn";
+  return hk
+    .replace(/Cmd\+/gi, "\u2318")
+    .replace(/Shift\+/gi, "\u21e7")
+    .replace(/Alt\+/gi, "\u2325")
+    .replace(/Ctrl\+/gi, "\u2303")
+    .replace(/Meta\+/gi, "\u2318");
+};
 
 interface MainWindowProps {
   isDarkMode: boolean;
@@ -110,8 +25,9 @@ interface MainWindowProps {
   onClearHistory?: () => void;
   onDeleteItem?: (id: string) => void;
   onTogglePin?: (id: string) => void;
-  onStartConversation?: () => void;
   onOpenSettings?: () => void;
+  hotkey: string;
+  conversationHotkey: string;
 }
 
 const SEARCH_EXAMPLES = [
@@ -190,8 +106,9 @@ export function MainWindow({
   onClearHistory,
   onDeleteItem,
   onTogglePin,
-  onStartConversation,
   onOpenSettings,
+  hotkey,
+  conversationHotkey,
 }: MainWindowProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
@@ -277,13 +194,14 @@ export function MainWindow({
           <div style={{ position: "absolute", right: 0, display: "flex", alignItems: "center", gap: 2 }}>
             <button
               onClick={onToggleDarkMode}
+              aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
               className="flex items-center justify-center hover:opacity-70"
               style={{ width: 30, height: 30, borderRadius: 8, background: "none", border: "none", cursor: "pointer", outline: "none" }}
             >
               <motion.div
                 initial={false}
                 animate={{ rotate: isDarkMode ? 180 : 0 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: ANIMATION.normal }}
                 style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
               >
                 {isDarkMode ? (
@@ -295,6 +213,7 @@ export function MainWindow({
             </button>
             <button
               onClick={onOpenSettings}
+              aria-label="Open settings"
               className="flex items-center justify-center hover:opacity-70"
               style={{ width: 30, height: 30, borderRadius: 8, background: "none", border: "none", cursor: "pointer", outline: "none" }}
             >
@@ -304,7 +223,7 @@ export function MainWindow({
           <h2 style={{
             fontFamily: "'DM Serif Display', serif",
             fontWeight: 400,
-            fontSize: 38,
+            fontSize: 38, // brand title, intentionally not tokenized
             letterSpacing: "-0.01em",
             lineHeight: 1,
             color: "var(--yapper-text-primary)",
@@ -364,7 +283,7 @@ export function MainWindow({
                     border: "none",
                     outline: "none",
                     background: "transparent",
-                    fontSize: 13,
+                    fontSize: FONT_SIZE.base,
                     fontWeight: 400,
                     color: "var(--yapper-text-primary)",
                     fontFamily: "var(--font-body, 'Inter', sans-serif)",
@@ -381,7 +300,7 @@ export function MainWindow({
                       display: "flex",
                       alignItems: "center",
                       pointerEvents: "none",
-                      fontSize: 13,
+                      fontSize: FONT_SIZE.base,
                       fontWeight: 400,
                       color: "var(--yapper-text-secondary)",
                       opacity: 0.45,
@@ -406,6 +325,7 @@ export function MainWindow({
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
+                  aria-label="Clear search"
                   style={{
                     background: "none",
                     border: "none",
@@ -467,6 +387,7 @@ export function MainWindow({
             }}>
               <motion.button
                 onClick={() => setSortOrder(sortOrder === "newest" ? "oldest" : "newest")}
+                aria-label={`Sort by ${sortOrder === "newest" ? "oldest" : "newest"}`}
                 className="flex items-center gap-1.5 hover:opacity-70"
                 whileTap={{ scale: 0.95 }}
                 style={{
@@ -482,7 +403,7 @@ export function MainWindow({
               >
                 <motion.div
                   animate={{ rotate: sortOrder === "oldest" ? 180 : 0 }}
-                  transition={{ duration: 0.3 }}
+                  transition={{ duration: ANIMATION.normal }}
                   style={{ display: "flex" }}
                 >
                   <ArrowUpDown style={{ width: 11, height: 11 }} />
@@ -491,6 +412,7 @@ export function MainWindow({
               </motion.button>
               <button
                 onClick={onClearHistory}
+                aria-label="Clear all history"
                 className="flex items-center gap-1.5 transition-all duration-200 hover:opacity-70"
                 style={{
                   fontSize: 11,
@@ -541,12 +463,17 @@ export function MainWindow({
             </AnimatePresence>
           </div>
         )}
+        {/* Help text at bottom of history */}
+        <div style={{
+          textAlign: "center",
+          padding: "20px 0 40px",
+          fontSize: 12,
+          color: isDarkMode ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.25)",
+          userSelect: "none",
+        }}>
+          Press {formatHotkey(conversationHotkey)} to start a conversation
         </div>
-      </div>
-
-      {/* Floating Y button */}
-      <div style={{ position: "absolute", bottom: 20, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 50, pointerEvents: "none" }}>
-        <YappButton onClick={onStartConversation} />
+        </div>
       </div>
     </div>
   );

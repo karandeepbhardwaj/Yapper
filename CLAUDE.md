@@ -11,21 +11,21 @@ Yapper is a cross-platform voice-to-text desktop app built with Tauri v2 (Rust b
 ## Commands
 
 ```bash
-pnpm install                # Install all dependencies
-pnpm dev                    # Run desktop app in dev mode (Vite + Tauri)
-pnpm tauri dev              # Same as above
-pnpm tauri build            # Build .dmg / .app / .exe / .msi
+bun install                 # Install all dependencies
+bun dev                     # Run desktop app in dev mode (Vite + Tauri)
+bun tauri dev               # Same as above
+bun tauri build             # Build .dmg / .app / .exe / .msi
 
 # After Rust changes:
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 # After VS Code extension changes:
-cd extensions/vscode-bridge && npm run compile
+cd extensions/vscode-bridge && bun run compile
 ```
 
 ### Prerequisites
 
-Rust 1.75+, Node.js 20+, pnpm 9+. macOS requires Xcode CLI Tools (`xcode-select --install`).
+Rust 1.75+, Node.js 20+, Bun (latest). macOS requires Xcode CLI Tools (`xcode-select --install`).
 
 ## Architecture
 
@@ -140,7 +140,7 @@ App.tsx router: `history | conversation | settings | dictionary | snippets`
 ## Testing
 
 No automated test suite. Manual testing:
-1. `pnpm dev` to start the app
+1. `bun dev` to start the app
 2. Click widget or press hotkey → speak → stop → verify text pastes
 3. Conversation mode: click Y. button → record turns → End to save
 4. Settings: gear icon → configure style/hotkey/dictionary/snippets

@@ -89,3 +89,5 @@ export type OutgoingMessage =
 
 export const BRIDGE_PORT = 9147;
 export const BRIDGE_HOST = "127.0.0.1";
+export const BRIDGE_TOKEN_DIR = ".yapper";
+export const BRIDGE_TOKEN_FILE = "bridge-token";

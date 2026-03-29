@@ -11,7 +11,7 @@ function MetricsDisplay() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
 
   useEffect(() => {
-    invoke<Metrics>("get_metrics").then(setMetrics).catch(() => {});
+    invoke<Metrics>("get_metrics").then(setMetrics).catch((e) => console.error("Failed to load metrics:", e));
   }, []);
 
   if (!metrics) return null;
@@ -150,12 +150,17 @@ function SettingRow({
 function Toggle({
   checked,
   onChange,
+  label,
 }: {
   checked: boolean;
   onChange: (val: boolean) => void;
+  label?: string;
 }) {
   return (
     <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
       onClick={() => onChange(!checked)}
       style={{
         width: 40,
@@ -201,6 +206,7 @@ function PillButton({
 }) {
   return (
     <button
+      aria-pressed={selected}
       onClick={onClick}
       style={{
         padding: "6px 14px",
@@ -403,7 +409,7 @@ export function SettingsView({
       if (e.shiftKey) parts.push("Shift");
       parts.push(e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key);
       const newHotkey = parts.join("+");
-      invoke("change_hotkey", { hotkey: newHotkey }).catch(() => {});
+      invoke("change_hotkey", { hotkey: newHotkey }).catch((e) => console.error("Failed to change hotkey:", e));
       update({ hotkey: newHotkey });
       setIsRecordingHotkey(false);
     };
@@ -494,7 +500,7 @@ export function SettingsView({
                   {isMac && (
                     <button
                       onClick={() => {
-                        invoke("change_hotkey", { hotkey: "Fn" }).catch(() => {});
+                        invoke("change_hotkey", { hotkey: "Fn" }).catch((e) => console.error("Failed to change hotkey:", e));
                         update({ hotkey: "Fn" });
                         setIsRecordingHotkey(false);
                         setShowFnTooltip(true);
@@ -568,6 +574,27 @@ export function SettingsView({
               </motion.div>
             )}
           </AnimatePresence>
+
+          <SettingRow label="Recording mode" description="How the hotkey triggers recording">
+            <div style={{ display: "flex", gap: 4 }}>
+              <PillButton
+                label="Press"
+                selected={settings.recording_mode !== "hold"}
+                onClick={() => {
+                  invoke("change_recording_mode", { mode: "toggle" }).catch(e => console.error("Failed to change recording mode:", e));
+                  update({ recording_mode: "toggle" });
+                }}
+              />
+              <PillButton
+                label="Hold"
+                selected={settings.recording_mode === "hold"}
+                onClick={() => {
+                  invoke("change_recording_mode", { mode: "hold" }).catch(e => console.error("Failed to change recording mode:", e));
+                  update({ recording_mode: "hold" });
+                }}
+              />
+            </div>
+          </SettingRow>
 
           {!isMac && (
             <SettingRow
@@ -658,6 +685,7 @@ export function SettingsView({
               <Toggle
                 checked={settings.metrics_enabled}
                 onChange={(val) => update({ metrics_enabled: val })}
+                label="Track metrics"
               />
             </SettingRow>
           </div>
@@ -673,6 +701,7 @@ export function SettingsView({
             <Toggle
               checked={settings.code_mode}
               onChange={(val) => update({ code_mode: val })}
+              label="Code references"
             />
           </SettingRow>
         </SectionCard>
@@ -703,6 +732,7 @@ export function SettingsView({
       {/* Floating back button — bottom left */}
       <motion.button
         onClick={onBack}
+        aria-label="Go home"
         whileHover={{ scale: 1.08, y: -2 }}
         whileTap={{ scale: 0.9 }}
         style={{

@@ -47,7 +47,7 @@ type SpeechRecognitionEventLike = {
 };
 
 export default function App() {
-  const { hotkey, setHotkey, sttEngine, setSttEngine } = useSettings();
+  const { hotkey, setHotkey, sttEngine, setSttEngine, conversationHotkey } = useSettings();
   const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, refresh, clearAll, deleteItem, togglePin } = useHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -351,8 +351,9 @@ export default function App() {
               onClearHistory={clearAll}
               onDeleteItem={deleteItem}
               onTogglePin={togglePin}
-              onStartConversation={() => setActiveView("conversation")}
               onOpenSettings={() => setActiveView("settings")}
+              hotkey={hotkey}
+              conversationHotkey={conversationHotkey}
             />
           </motion.div>
         )}

@@ -5,7 +5,7 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot, Windsurf, etc.)
 ## Quick Context
 
 - **Stack**: Tauri v2 (Rust) + React 18 + TypeScript + Vite + Tailwind CSS v4
-- **Monorepo**: pnpm workspaces — `apps/desktop` (main app), `extensions/vscode-bridge` (VS Code extension)
+- **Monorepo**: bun workspaces — `apps/desktop` (main app), `extensions/vscode-bridge` (VS Code extension)
 - **Platform**: Cross-platform (macOS primary, Windows supported). Platform code is isolated in `widget/macos.rs` vs `widget/windows.rs` and `stt/macos.rs` vs `stt/windows.rs`.
 - **macOS interop**: `objc2` + `objc2-app-kit` + `block2` (NOT the deprecated `cocoa`/`objc` crates)
 - **LLM providers**: Groq, Gemini, Anthropic, GitHub Copilot (via VS Code extension)
@@ -15,7 +15,7 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot, Windsurf, etc.)
 - Read `CLAUDE.md` and `DESIGN.md` before making changes — they describe architecture and constraints
 - Run `cargo check` after Rust changes
 - Run `npm run compile` in `extensions/vscode-bridge/` after extension changes
-- Use `pnpm dev` to test the full app (starts both Vite and Tauri)
+- Use `bun dev` to test the full app (starts both Vite and Tauri)
 - Keep the widget (`widget.tsx`) self-contained — it runs in a separate webview with no shared React state
 - Use Tauri events for widget ↔ backend communication
 - Use `motion/react` for all animations (not raw CSS transitions)
@@ -86,7 +86,7 @@ No automated tests yet. Manual verification:
 
 ```bash
 # 1. Start dev server
-pnpm dev
+bun dev
 
 # 2. Test recording
 #    - Click widget or press Cmd+Shift+. (macOS) / Ctrl+Shift+. (Windows)

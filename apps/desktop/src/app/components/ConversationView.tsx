@@ -4,6 +4,7 @@ import { Loader2, Copy, Check, RotateCcw, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ConversationSummary } from "../lib/types";
+import { FONT_SIZE, BORDER_RADIUS, ANIMATION } from "../lib/tokens";
 
 const isMac = navigator.platform.toUpperCase().includes("MAC");
 
@@ -14,8 +15,10 @@ function AiCopyButton({ text }: { text: string }) {
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      navigator.clipboard?.writeText(text).catch(() => {});
-    } catch {}
+      navigator.clipboard?.writeText(text).catch((e) => console.error("Failed to copy to clipboard:", e));
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err);
+    }
     setCopied(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setCopied(false), 800);
@@ -24,7 +27,9 @@ function AiCopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
+      aria-label="Copy to clipboard"
       title="Copy"
+      className={copied ? "" : "copy-btn-hover"}
       style={{
         display: "flex",
         alignItems: "center",
@@ -34,11 +39,9 @@ function AiCopyButton({ text }: { text: string }) {
         cursor: "pointer",
         borderRadius: 4,
         color: "var(--yapper-text-secondary)",
-        opacity: copied ? 1 : 0.3,
+        opacity: copied ? 1 : undefined,
         transition: "opacity 0.15s",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.opacity = "0.3"; }}
     >
       {copied
         ? <Check style={{ width: 12, height: 12, color: "var(--yapper-accent)" }} />
@@ -68,6 +71,236 @@ function formatHotkeyDisplay(hotkey: string): string {
     .replace(/Alt\+/gi, "\u2325")
     .replace(/Ctrl\+/gi, "\u2303")
     .replace(/Meta\+/gi, "\u2318");
+}
+
+/* Extracted sub-components (Finding #14) */
+
+function RecordingIndicator() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{ display: "flex", justifyContent: "flex-end" }}
+    >
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: `${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px 4px ${BORDER_RADIUS.lg}px`,
+          background: "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15), inset 0 1px 1px rgba(255,255,255,0.12), inset 0 -1px 1px rgba(0,0,0,0.08)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          opacity: 0.85,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <motion.div
+              key={i}
+              style={{
+                width: 2,
+                borderRadius: 1,
+                background: "#fff",
+              }}
+              animate={{
+                height: [3, 8 + Math.sin(i * 0.8) * 5, 3],
+                opacity: [0.5, 1, 0.5],
+              }}
+              transition={{
+                duration: ANIMATION.slow + Math.random() * 0.3,
+                repeat: Infinity,
+                delay: i * 0.08,
+                ease: "easeInOut",
+              }}
+            />
+          ))}
+        </div>
+        <span style={{ fontSize: FONT_SIZE.sm, color: "#fff" }}>Listening...</span>
+      </div>
+    </motion.div>
+  );
+}
+
+function ProcessingIndicator({ streamingContent }: { streamingContent: string }) {
+  if (streamingContent) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ display: "flex", justifyContent: "flex-start" }}
+      >
+        <div
+          style={{
+            maxWidth: "80%",
+            padding: "10px 14px",
+            borderRadius: `${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px 4px`,
+            background: "var(--yapper-surface-lowest, #fff)",
+            boxShadow: "var(--yapper-card-shadow)",
+            border: "1px solid var(--yapper-border)",
+            color: "var(--foreground)",
+            fontSize: FONT_SIZE.base,
+            lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {streamingContent}
+          <span style={{ opacity: 0.4, animation: "blink 1s infinite" }}>|</span>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      style={{ display: "flex", justifyContent: "flex-start" }}
+    >
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: `${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px 4px`,
+          background: "var(--yapper-surface-lowest, #fff)",
+          boxShadow: "var(--yapper-card-shadow)",
+          border: "1px solid var(--yapper-border)",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <Loader2
+          style={{
+            width: 14,
+            height: 14,
+            color: "var(--yapper-accent)",
+            animation: "spin 1s linear infinite",
+          }}
+        />
+        <span style={{ fontSize: FONT_SIZE.sm, color: "var(--yapper-text-secondary)" }}>
+          Thinking...
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+
+function ConversationControls({
+  onCancel,
+  onRefresh,
+  onEnd,
+  isEnding,
+  hasTurns,
+  recordingSeconds,
+}: {
+  onCancel: () => void;
+  onRefresh: () => void;
+  onEnd: () => void;
+  isEnding: boolean;
+  hasTurns: boolean;
+  recordingSeconds: number;
+}) {
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div
+      style={{
+        margin: "8px 20px 16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexShrink: 0,
+      }}
+    >
+      {/* Left: Cancel */}
+      <button
+        onClick={onCancel}
+        aria-label="Cancel recording"
+        style={{
+          background: "var(--yapper-surface-lowest)",
+          boxShadow: "var(--yapper-card-shadow)",
+          border: "1px solid var(--yapper-border)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "7px 12px",
+          borderRadius: 10,
+          color: "var(--yapper-text-secondary)",
+          fontSize: FONT_SIZE.xs,
+          fontWeight: 500,
+        }}
+      >
+        <X style={{ width: 11, height: 11 }} />
+        Cancel
+      </button>
+
+      {/* Center: Timer + Refresh */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            fontSize: FONT_SIZE.xs,
+            fontWeight: 500,
+            color: "var(--yapper-text-secondary)",
+            fontVariantNumeric: "tabular-nums",
+            opacity: 0.6,
+          }}
+        >
+          {formatTime(recordingSeconds)}
+        </span>
+
+        <button
+          onClick={onRefresh}
+          disabled={isEnding || !hasTurns}
+          aria-label="New conversation"
+          title="New conversation"
+          style={{
+            background: "var(--yapper-surface-lowest)",
+            boxShadow: "var(--yapper-card-shadow)",
+            border: "1px solid var(--yapper-border)",
+            cursor: !hasTurns ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 6,
+            borderRadius: BORDER_RADIUS.sm,
+            color: "var(--yapper-text-secondary)",
+            opacity: !hasTurns ? 0.3 : 0.7,
+          }}
+        >
+          <RotateCcw style={{ width: 11, height: 11 }} />
+        </button>
+      </div>
+
+      {/* Right: End */}
+      <button
+        onClick={onEnd}
+        disabled={isEnding || !hasTurns}
+        aria-label="End conversation"
+        style={{
+          fontSize: FONT_SIZE.xs,
+          fontWeight: 600,
+          padding: "7px 14px",
+          borderRadius: 10,
+          color: !hasTurns ? "var(--yapper-text-secondary)" : "#fff",
+          background: !hasTurns ? "var(--yapper-surface-lowest)" : "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
+          boxShadow: hasTurns
+            ? "0 2px 8px rgba(218,119,86,0.3), inset 0 1px 1px rgba(255,255,255,0.15)"
+            : "var(--yapper-card-shadow)",
+          border: hasTurns ? "1px solid rgba(255,255,255,0.12)" : "1px solid var(--yapper-border)",
+          cursor: !hasTurns ? "default" : "pointer",
+          opacity: isEnding ? 0.5 : !hasTurns ? 0.4 : 1,
+        }}
+      >
+        {isEnding ? "Saving..." : "End"}
+      </button>
+    </div>
+  );
 }
 
 export function ConversationView({
@@ -159,7 +392,7 @@ export function ConversationView({
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
-  // Recording time — only ticks while recording
+  // Recording time -- only ticks while recording
   useEffect(() => {
     if (!isRecording) return;
     const interval = setInterval(() => {
@@ -175,29 +408,23 @@ export function ConversationView({
     }
   }, [turns, streamingContent]);
 
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
   const cancelConversation = useCallback(async () => {
     if (isRecording) {
-      try { await invoke("cancel_recording"); } catch {}
+      try { await invoke("cancel_recording"); } catch (e) { console.error("Failed to cancel recording:", e); }
       setIsRecording(false);
     }
     // Discard without saving
-    try { await invoke("discard_conversation"); } catch {}
+    try { await invoke("discard_conversation"); } catch (e) { console.error("Failed to discard conversation:", e); }
     onBack();
   }, [isRecording, onBack]);
 
   const refreshConversation = useCallback(async () => {
     if (isRecording) {
-      try { await invoke("cancel_recording"); } catch {}
+      try { await invoke("cancel_recording"); } catch (e) { console.error("Failed to cancel recording:", e); }
       setIsRecording(false);
     }
     // Discard current session without saving, start fresh
-    try { await invoke("discard_conversation"); } catch {}
+    try { await invoke("discard_conversation"); } catch (e) { console.error("Failed to discard conversation:", e); }
     setTurns([]);
     setStreamingContent("");
     setError(null);
@@ -214,7 +441,7 @@ export function ConversationView({
 
   const endConversation = useCallback(async () => {
     if (isRecording) {
-      try { await invoke("cancel_recording"); } catch {}
+      try { await invoke("cancel_recording"); } catch (e) { console.error("Failed to cancel recording:", e); }
       setIsRecording(false);
     }
 
@@ -305,7 +532,7 @@ export function ConversationView({
 
             <p
               style={{
-                fontSize: 13,
+                fontSize: FONT_SIZE.base,
                 color: "var(--yapper-text-secondary)",
                 lineHeight: 1.5,
                 textAlign: "center",
@@ -321,7 +548,7 @@ export function ConversationView({
                   borderRadius: 6,
                   background: "var(--yapper-surface-lowest, #fff)",
                   boxShadow: "var(--yapper-card-shadow)",
-                  fontSize: 12,
+                  fontSize: FONT_SIZE.sm,
                 }}
               >
                 {formatHotkeyDisplay(hotkey)}
@@ -349,7 +576,9 @@ export function ConversationView({
                 <div
                   style={{
                     padding: "10px 14px",
-                    borderRadius: turn.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                    borderRadius: turn.role === "user"
+                      ? `${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px 4px ${BORDER_RADIUS.lg}px`
+                      : `${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px 4px`,
                     background:
                       turn.role === "user"
                         ? "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)"
@@ -358,7 +587,7 @@ export function ConversationView({
                       turn.role === "user"
                         ? "#fff"
                         : "var(--foreground)",
-                    fontSize: 13,
+                    fontSize: FONT_SIZE.base,
                     lineHeight: 1.5,
                     whiteSpace: "pre-wrap",
                     boxShadow: turn.role === "user"
@@ -379,112 +608,10 @@ export function ConversationView({
         </AnimatePresence>
 
         {/* Recording indicator */}
-        {isRecording && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{ display: "flex", justifyContent: "flex-end" }}
-          >
-            <div
-              style={{
-                padding: "10px 14px",
-                borderRadius: "14px 14px 4px 14px",
-                background: "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.15), inset 0 1px 1px rgba(255,255,255,0.12), inset 0 -1px 1px rgba(0,0,0,0.08)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                opacity: 0.85,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <motion.div
-                    key={i}
-                    style={{
-                      width: 2,
-                      borderRadius: 1,
-                      background: "#fff",
-                    }}
-                    animate={{
-                      height: [3, 8 + Math.sin(i * 0.8) * 5, 3],
-                      opacity: [0.5, 1, 0.5],
-                    }}
-                    transition={{
-                      duration: 0.6 + Math.random() * 0.3,
-                      repeat: Infinity,
-                      delay: i * 0.08,
-                      ease: "easeInOut",
-                    }}
-                  />
-                ))}
-              </div>
-              <span style={{ fontSize: 12, color: "#fff" }}>Listening...</span>
-            </div>
-          </motion.div>
-        )}
+        {isRecording && <RecordingIndicator />}
 
-        {/* Streaming AI response */}
-        {isProcessing && streamingContent && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{ display: "flex", justifyContent: "flex-start" }}
-          >
-            <div
-              style={{
-                maxWidth: "80%",
-                padding: "10px 14px",
-                borderRadius: "14px 14px 14px 4px",
-                background: "var(--yapper-surface-lowest, #fff)",
-                boxShadow: "var(--yapper-card-shadow)",
-                border: "1px solid var(--yapper-border)",
-                color: "var(--foreground)",
-                fontSize: 13,
-                lineHeight: 1.5,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {streamingContent}
-              <span style={{ opacity: 0.4, animation: "blink 1s infinite" }}>|</span>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Processing indicator */}
-        {isProcessing && !streamingContent && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            style={{ display: "flex", justifyContent: "flex-start" }}
-          >
-            <div
-              style={{
-                padding: "10px 14px",
-                borderRadius: "14px 14px 14px 4px",
-                background: "var(--yapper-surface-lowest, #fff)",
-                boxShadow: "var(--yapper-card-shadow)",
-                border: "1px solid var(--yapper-border)",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Loader2
-                style={{
-                  width: 14,
-                  height: 14,
-                  color: "var(--yapper-accent)",
-                  animation: "spin 1s linear infinite",
-                }}
-              />
-              <span style={{ fontSize: 12, color: "var(--yapper-text-secondary)" }}>
-                Thinking...
-              </span>
-            </div>
-          </motion.div>
-        )}
+        {/* Processing / Streaming indicator */}
+        {isProcessing && <ProcessingIndicator streamingContent={streamingContent} />}
 
         {/* Error message */}
         {error && (
@@ -497,11 +624,11 @@ export function ConversationView({
               style={{
                 maxWidth: "85%",
                 padding: "10px 14px",
-                borderRadius: "14px 14px 14px 4px",
+                borderRadius: `${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px ${BORDER_RADIUS.lg}px 4px`,
                 background: "rgba(218, 119, 86, 0.1)",
                 border: "1px solid rgba(218, 119, 86, 0.3)",
                 color: "#DA7756",
-                fontSize: 12,
+                fontSize: FONT_SIZE.sm,
                 lineHeight: 1.5,
               }}
             >
@@ -512,95 +639,14 @@ export function ConversationView({
       </div>
 
       {/* Bottom controls */}
-      <div
-        style={{
-          margin: "8px 20px 16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexShrink: 0,
-        }}
-      >
-        {/* Left: Cancel */}
-        <button
-          onClick={cancelConversation}
-          style={{
-            background: "var(--yapper-surface-lowest)",
-            boxShadow: "var(--yapper-card-shadow)",
-            border: "1px solid var(--yapper-border)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "7px 12px",
-            borderRadius: 10,
-            color: "var(--yapper-text-secondary)",
-            fontSize: 11,
-            fontWeight: 500,
-          }}
-        >
-          <X style={{ width: 11, height: 11 }} />
-          Cancel
-        </button>
-
-        {/* Center: Timer + Refresh */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 500,
-              color: "var(--yapper-text-secondary)",
-              fontVariantNumeric: "tabular-nums",
-              opacity: 0.6,
-            }}
-          >
-            {formatTime(recordingSeconds)}
-          </span>
-
-          <button
-            onClick={refreshConversation}
-            disabled={isEnding || turns.length === 0}
-            title="New conversation"
-            style={{
-              background: "var(--yapper-surface-lowest)",
-              boxShadow: "var(--yapper-card-shadow)",
-              border: "1px solid var(--yapper-border)",
-              cursor: turns.length === 0 ? "default" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 6,
-              borderRadius: 8,
-              color: "var(--yapper-text-secondary)",
-              opacity: turns.length === 0 ? 0.3 : 0.7,
-            }}
-          >
-            <RotateCcw style={{ width: 11, height: 11 }} />
-          </button>
-        </div>
-
-        {/* Right: End */}
-        <button
-          onClick={endConversation}
-          disabled={isEnding || turns.length === 0}
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            padding: "7px 14px",
-            borderRadius: 10,
-            color: turns.length === 0 ? "var(--yapper-text-secondary)" : "#fff",
-            background: turns.length === 0 ? "var(--yapper-surface-lowest)" : "linear-gradient(145deg, #DA7756 0%, #c4684a 100%)",
-            boxShadow: turns.length > 0
-              ? "0 2px 8px rgba(218,119,86,0.3), inset 0 1px 1px rgba(255,255,255,0.15)"
-              : "var(--yapper-card-shadow)",
-            border: turns.length > 0 ? "1px solid rgba(255,255,255,0.12)" : "1px solid var(--yapper-border)",
-            cursor: turns.length === 0 ? "default" : "pointer",
-            opacity: isEnding ? 0.5 : turns.length === 0 ? 0.4 : 1,
-          }}
-        >
-          {isEnding ? "Saving..." : "End"}
-        </button>
-      </div>
+      <ConversationControls
+        onCancel={cancelConversation}
+        onRefresh={refreshConversation}
+        onEnd={endConversation}
+        isEnding={isEnding}
+        hasTurns={turns.length > 0}
+        recordingSeconds={recordingSeconds}
+      />
 
       <style>{`
         @keyframes spin {

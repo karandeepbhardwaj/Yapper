@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use crate::store;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DictionaryEntry {
     pub id: String,
     pub shorthand: String,
@@ -13,30 +14,9 @@ pub struct DictionaryEntry {
     pub created_at: String,
 }
 
-fn dictionary_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("dictionary.json"))
-}
-
-fn load_entries(app: &tauri::AppHandle) -> Result<Vec<DictionaryEntry>, String> {
-    let path = dictionary_path(app)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&data).map_err(|e| e.to_string())
-}
-
-fn save_entries(app: &tauri::AppHandle, entries: &[DictionaryEntry]) -> Result<(), String> {
-    let path = dictionary_path(app)?;
-    let data = serde_json::to_string_pretty(entries).map_err(|e| e.to_string())?;
-    std::fs::write(&path, data).map_err(|e| e.to_string())
-}
-
 #[tauri::command]
 pub fn get_all_entries(app: tauri::AppHandle) -> Result<Vec<DictionaryEntry>, String> {
-    load_entries(&app)
+    store::load::<DictionaryEntry>(&app, "dictionary.json")
 }
 
 #[tauri::command]
@@ -46,7 +26,7 @@ pub fn add_entry(
     expansion: String,
     category: String,
 ) -> Result<DictionaryEntry, String> {
-    let mut entries = load_entries(&app)?;
+    let mut entries = store::load::<DictionaryEntry>(&app, "dictionary.json")?;
     let now = chrono::Local::now();
     let entry = DictionaryEntry {
         id: now.timestamp_millis().to_string(),
@@ -57,7 +37,7 @@ pub fn add_entry(
         created_at: now.to_rfc3339(),
     };
     entries.insert(0, entry.clone());
-    save_entries(&app, &entries)?;
+    store::save(&app, "dictionary.json", &entries)?;
     Ok(entry)
 }
 
@@ -69,7 +49,7 @@ pub fn update_entry(
     expansion: String,
     category: String,
 ) -> Result<(), String> {
-    let mut entries = load_entries(&app)?;
+    let mut entries = store::load::<DictionaryEntry>(&app, "dictionary.json")?;
     if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
         entry.shorthand = shorthand;
         entry.expansion = expansion;
@@ -77,30 +57,29 @@ pub fn update_entry(
     } else {
         return Err(format!("Dictionary entry not found: {}", id));
     }
-    save_entries(&app, &entries)
+    store::save(&app, "dictionary.json", &entries)
 }
 
 #[tauri::command]
 pub fn delete_entry(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let mut entries = load_entries(&app)?;
+    let mut entries = store::load::<DictionaryEntry>(&app, "dictionary.json")?;
     entries.retain(|e| e.id != id);
-    save_entries(&app, &entries)
+    store::save(&app, "dictionary.json", &entries)
 }
 
 #[tauri::command]
 pub fn toggle_favorite(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let mut entries = load_entries(&app)?;
+    let mut entries = store::load::<DictionaryEntry>(&app, "dictionary.json")?;
     if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
         let currently_favorite = entry.is_favorite.unwrap_or(false);
         entry.is_favorite = Some(!currently_favorite);
     }
-    save_entries(&app, &entries)
+    store::save(&app, "dictionary.json", &entries)
 }
 
-/// Case-insensitive word replacement. Simple approach: split on whitespace,
-/// check each word against shorthands, replace matches.
+/// Case-insensitive word replacement with punctuation handling.
 pub fn apply_replacements(text: &str, app: &tauri::AppHandle) -> String {
-    let entries = match load_entries(app) {
+    let entries = match store::load::<DictionaryEntry>(app, "dictionary.json") {
         Ok(e) => e,
         Err(_) => return text.to_string(),
     };
@@ -110,10 +89,13 @@ pub fn apply_replacements(text: &str, app: &tauri::AppHandle) -> String {
 
     let words: Vec<&str> = text.split_whitespace().collect();
     let replaced: Vec<String> = words.iter().map(|word| {
-        let word_lower = word.to_lowercase();
+        // Strip trailing punctuation for matching
+        let trimmed = word.trim_end_matches(|c: char| c.is_ascii_punctuation());
+        let suffix = &word[trimmed.len()..];
+        let word_lower = trimmed.to_lowercase();
         for entry in &entries {
             if word_lower == entry.shorthand.to_lowercase() {
-                return entry.expansion.clone();
+                return format!("{}{}", entry.expansion, suffix);
             }
         }
         word.to_string()

@@ -7,6 +7,8 @@ use crate::{autopaste, bridge, conversation, dictionary, history, snippets, stt}
 
 static RECORDING_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
+pub static HOLD_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub hotkey: String,
@@ -20,6 +22,10 @@ pub struct AppSettings {
     pub metrics_enabled: bool,
     #[serde(default = "default_false")]
     pub code_mode: bool,
+    #[serde(default = "default_recording_mode")]
+    pub recording_mode: String,
+    #[serde(default = "default_conversation_hotkey")]
+    pub conversation_hotkey: String,
 }
 
 fn default_stt_engine() -> String {
@@ -28,6 +34,16 @@ fn default_stt_engine() -> String {
 
 fn default_style() -> String {
     "Professional".to_string()
+}
+
+fn default_recording_mode() -> String { "toggle".to_string() }
+
+fn default_conversation_hotkey() -> String {
+    if cfg!(target_os = "macos") {
+        "Cmd+Shift+Y".to_string()
+    } else {
+        "Ctrl+Shift+Y".to_string()
+    }
 }
 
 fn default_true() -> bool { true }
@@ -45,6 +61,8 @@ impl Default for AppSettings {
             style_overrides: HashMap::new(),
             metrics_enabled: true,
             code_mode: false,
+            recording_mode: default_recording_mode(),
+            conversation_hotkey: default_conversation_hotkey(),
         }
     }
 }
@@ -56,9 +74,90 @@ fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
     };
     if !path.exists() { return AppSettings::default(); }
     match std::fs::read_to_string(&path) {
-        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
-        Err(_) => AppSettings::default(),
+        Ok(data) => serde_json::from_str(&data).unwrap_or_else(|e| {
+            log::warn!("Settings corrupted, using defaults: {}", e);
+            AppSettings::default()
+        }),
+        Err(e) => {
+            log::warn!("Failed to read settings: {}", e);
+            AppSettings::default()
+        }
     }
+}
+
+#[derive(Clone, Serialize)]
+struct RecordingResult {
+    #[serde(rename = "rawTranscript")]
+    raw_transcript: String,
+    #[serde(rename = "refinedText")]
+    refined_text: String,
+    category: Option<String>,
+    title: Option<String>,
+}
+
+async fn process_recording_result(
+    app: &tauri::AppHandle,
+    raw_transcript: String,
+    duration_secs: u64,
+) -> Result<(), String> {
+    // Check snippets first -- if match, paste directly and skip AI
+    if let Some(expansion) = snippets::detect_and_expand(&raw_transcript, app) {
+        let text_for_paste = expansion.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = autopaste::paste_text(&text_for_paste) {
+                log::warn!("Auto-paste failed: {}", e);
+            }
+        });
+        let _ = history::add_entry(app, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs));
+        return Ok(());
+    }
+
+    // Apply dictionary replacements before sending to AI
+    let processed_transcript = dictionary::apply_replacements(&raw_transcript, app);
+
+    // Load style settings
+    let settings = get_settings_internal(app);
+    let bridge_result = bridge::refine_text(
+        &processed_transcript,
+        Some(settings.default_style.clone()),
+        if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+        if settings.code_mode { Some(true) } else { None },
+    ).await;
+
+    let (refined_text, category, title) = match bridge_result {
+        Ok(r) => (r.refined_text, r.category, r.title),
+        Err(e) => {
+            // Emit refinement-skipped event and fall back to raw transcript
+            #[derive(Clone, Serialize)]
+            struct RefinementSkipped {
+                reason: String,
+            }
+            app.emit("refinement-skipped", RefinementSkipped {
+                reason: "Bridge unavailable".to_string(),
+            }).ok();
+            log::warn!("Bridge refinement failed, using raw transcript: {}", e);
+            (raw_transcript.clone(), None, None)
+        }
+    };
+
+    // Auto-paste
+    let text_for_paste = refined_text.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = autopaste::paste_text(&text_for_paste) {
+            log::warn!("Auto-paste failed: {}", e);
+        }
+    });
+
+    let _ = history::add_entry(app, &raw_transcript, &refined_text, category.as_deref(), title.as_deref(), Some(duration_secs));
+
+    app.emit("refinement-complete", RecordingResult {
+        raw_transcript,
+        refined_text,
+        category,
+        title,
+    }).ok();
+
+    Ok(())
 }
 
 pub async fn toggle_recording(handle: &tauri::AppHandle) {
@@ -68,7 +167,7 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
             *RECORDING_START.lock().unwrap() = Some(Instant::now());
             handle.emit("stt-state-changed", "listening").ok();
             if let Err(e) = stt::start(handle).await {
-                println!("[Toggle] STT start failed: {}", e);
+                log::error!("STT start failed: {}", e);
                 *RECORDING_START.lock().unwrap() = None;
                 stt::set_state(stt::State::Idle);
                 handle.emit("stt-state-changed", "idle").ok();
@@ -99,60 +198,7 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
                 return;
             }
 
-            // Check snippets first — if match, paste directly and skip AI
-            if let Some(expansion) = snippets::detect_and_expand(&raw_transcript, handle) {
-                let text_for_paste = expansion.clone();
-                std::thread::spawn(move || {
-                    if let Err(e) = autopaste::paste_text(&text_for_paste) {
-                        log::warn!("Auto-paste failed: {}", e);
-                    }
-                });
-                let _ = history::add_entry(handle, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs));
-                stt::set_state(stt::State::Idle);
-                handle.emit("stt-state-changed", "idle").ok();
-                return;
-            }
-
-            // Apply dictionary replacements before sending to AI
-            let processed_transcript = dictionary::apply_replacements(&raw_transcript, handle);
-
-            // Load style settings
-            let settings = get_settings_internal(handle);
-            let bridge_result = bridge::refine_text(
-                &processed_transcript,
-                Some(settings.default_style.clone()),
-                if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-                if settings.code_mode { Some(true) } else { None },
-            ).await;
-            let (refined_text, category, title) = match bridge_result {
-                Ok(r) => (r.refined_text, r.category, r.title),
-                Err(_) => (raw_transcript.clone(), None, None),
-            };
-            // Auto-paste
-            let text_for_paste = refined_text.clone();
-            std::thread::spawn(move || {
-                if let Err(e) = autopaste::paste_text(&text_for_paste) {
-                    log::warn!("Auto-paste failed: {}", e);
-                }
-            });
-
-            let _ = history::add_entry(handle, &raw_transcript, &refined_text, category.as_deref(), title.as_deref(), Some(duration_secs));
-
-            #[derive(Clone, Serialize)]
-            struct ToggleResult {
-                #[serde(rename = "rawTranscript")]
-                raw_transcript: String,
-                #[serde(rename = "refinedText")]
-                refined_text: String,
-                category: Option<String>,
-                title: Option<String>,
-            }
-            handle.emit("refinement-complete", ToggleResult {
-                raw_transcript,
-                refined_text,
-                category,
-                title,
-            }).ok();
+            let _ = process_recording_result(handle, raw_transcript, duration_secs).await;
             stt::set_state(stt::State::Idle);
             handle.emit("stt-state-changed", "idle").ok();
         }
@@ -193,61 +239,7 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         e.to_string()
     })?;
 
-    // Check snippets first
-    if let Some(expansion) = snippets::detect_and_expand(&raw_transcript, &app) {
-        let text_for_paste = expansion.clone();
-        std::thread::spawn(move || {
-            if let Err(e) = autopaste::paste_text(&text_for_paste) {
-                log::warn!("Auto-paste failed: {}", e);
-            }
-        });
-        history::add_entry(&app, &raw_transcript, &expansion, Some("Note"), None, Some(duration_secs))?;
-        stt::set_state(stt::State::Idle);
-        app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-
-    // Apply dictionary replacements
-    let processed_transcript = dictionary::apply_replacements(&raw_transcript, &app);
-
-    let settings = get_settings_internal(&app);
-    let bridge_result = bridge::refine_text(
-        &processed_transcript,
-        Some(settings.default_style.clone()),
-        if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-        if settings.code_mode { Some(true) } else { None },
-    ).await;
-    let (refined_text, category, title) = match bridge_result {
-        Ok(r) => (r.refined_text, r.category, r.title),
-        Err(_) => (raw_transcript.clone(), None, None),
-    };
-
-    // Auto-paste
-    let text_for_paste = refined_text.clone();
-    std::thread::spawn(move || {
-        if let Err(e) = autopaste::paste_text(&text_for_paste) {
-            log::warn!("Auto-paste failed: {}", e);
-        }
-    });
-
-    history::add_entry(&app, &raw_transcript, &refined_text, category.as_deref(), title.as_deref(), Some(duration_secs))?;
-
-    #[derive(Clone, Serialize)]
-    struct CmdResult {
-        #[serde(rename = "rawTranscript")]
-        raw_transcript: String,
-        #[serde(rename = "refinedText")]
-        refined_text: String,
-        category: Option<String>,
-        title: Option<String>,
-    }
-
-    app.emit("refinement-complete", CmdResult {
-        raw_transcript,
-        refined_text,
-        category,
-        title,
-    }).map_err(|e| e.to_string())?;
+    process_recording_result(&app, raw_transcript, duration_secs).await?;
 
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
@@ -316,12 +308,12 @@ pub async fn toggle_pin_item(app: tauri::AppHandle, id: String) -> Result<(), St
 
 #[tauri::command]
 pub async fn change_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<(), String> {
-    println!("[Hotkey] change_hotkey called with: '{}'", hotkey);
+    log::info!("Changing hotkey to: '{}'", hotkey);
     if let Err(e) = crate::hotkey::update(&app, &hotkey) {
-        println!("[Hotkey] update FAILED: {}", e);
+        log::error!("Hotkey update failed: {}", e);
         return Err(e);
     }
-    println!("[Hotkey] update succeeded");
+    log::info!("Hotkey updated successfully");
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     let settings_path = path.join("settings.json");
@@ -331,14 +323,16 @@ pub async fn change_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<(), 
     } else {
         AppSettings::default()
     };
-    settings.hotkey = hotkey;
+    settings.hotkey = hotkey.clone();
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(&settings_path, data).map_err(|e| e.to_string())
+    std::fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    app.emit("hotkey-changed", hotkey).ok();
+    Ok(())
 }
 
 #[tauri::command]
 pub fn debug_log(msg: String) {
-    println!("[FE-DEBUG] {}", msg);
+    log::debug!("[FE] {}", msg);
 }
 
 #[tauri::command]
@@ -389,6 +383,7 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> 
 
 #[tauri::command]
 pub async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
+    HOLD_MODE.store(settings.recording_mode == "hold", std::sync::atomic::Ordering::Relaxed);
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     let settings_path = path.join("settings.json");
@@ -472,4 +467,42 @@ pub async fn change_stt_engine(app: tauri::AppHandle, engine: String) -> Result<
     settings.stt_engine = engine;
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn change_recording_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+    HOLD_MODE.store(mode == "hold", std::sync::atomic::Ordering::Relaxed);
+    // Persist to settings
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    let settings_path = path.join("settings.json");
+    let mut settings = if settings_path.exists() {
+        let data = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<AppSettings>(&data).unwrap_or_default()
+    } else {
+        AppSettings::default()
+    };
+    settings.recording_mode = mode;
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&settings_path, data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn change_conversation_hotkey(app: tauri::AppHandle, hotkey: String) -> Result<(), String> {
+    log::info!("Changing conversation hotkey to: '{}'", hotkey);
+    crate::hotkey::update_conversation(&app, &hotkey)?;
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    let settings_path = path.join("settings.json");
+    let mut settings = if settings_path.exists() {
+        let data = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<AppSettings>(&data).unwrap_or_default()
+    } else {
+        AppSettings::default()
+    };
+    settings.conversation_hotkey = hotkey.clone();
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    app.emit("hotkey-changed", settings.hotkey).ok();
+    Ok(())
 }
