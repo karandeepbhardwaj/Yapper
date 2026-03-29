@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-29
+
+### Changed
+
+- **Landing page** — replaced mic icon + tagline with DM Serif Display "Yapper" heading + breathing dots and isomorphic 3D "Get Started" button
+- **Widget tooltip** — simplified from "fn to dictate · ⌘⇧Y to yapp" to "press fn to yapp"
+- **Widget positioning** — full-screen detection via `currentSystemPresentationOptions`; widget drops to screen bottom when dock is hidden in full-screen mode
+- **Widget repositioning** — position calculation moved to main thread via `run_on_main_thread` for accurate `visibleFrame()` values on space/dock changes
+
+### Fixed
+
+- **Empty-state hotkey** — main window "Press {hotkey} and start yapping" message now updates when hotkey is changed in settings (added `hotkey-changed` event listener to `useSettings` hook)
+
+## [0.2.0] - 2026-03-28
+
+### Added
+
+- **Conversation hotkey** — dedicated `Cmd+Shift+Y` (macOS) / `Ctrl+Shift+Y` (Windows) hotkey for starting conversation mode, configurable in settings
+- **Recording mode setting** — "Press" (toggle, default) vs "Hold" (press-and-hold to record, release to stop)
+- **Fn key hold mode** — Fn key release stops recording when using Hold recording mode (macOS)
+- **Onboarding tutorial** — animated tutorial on empty state showing widget lifecycle, email paste workflow, and history screenshots (replaces sample data)
+- **New app icon** — 3D isomorphic orange with DM Serif Display "Y"
+- **DMG installer** — custom background with centered vertical layout
+- **Bridge authentication** — random token written to `~/.yapper/bridge-token`, included in all WebSocket messages
+- **Circuit breaker** — bridge connection fails 3 times then enters 30s cooldown, falling back to raw transcript immediately
+- **Atomic file writes** — all persistence (history, dictionary, snippets, settings) uses write-to-tmp-then-rename pattern
+- **Shared `store.rs` module** — generic JSON persistence with `load()`, `save()`, `data_path()`, and `uuid_simple()`
+- **iOS-style transitions** — spring-based push/pop view transitions between app views
+- **Settings back button** — iOS 26 style "< Back" in header instead of floating home button
+- **Responsive tutorial viewer** — tutorial scales with window size
+- **Widget tooltip** — shows both hotkeys: "fn to dictate . Cmd+Shift+Y to yapp"
+- **New settings fields**: `recording_mode`, `conversation_hotkey` in `AppSettings`
+- **New Tauri commands**: `change_recording_mode`, `change_conversation_hotkey`
+- **`refinement-skipped` event** — emitted when bridge is unavailable, frontend can notify user
+
+### Changed
+
+- **Gemini API key** moved from URL query parameter to `x-goog-api-key` HTTP header (security fix)
+- **All `println!` replaced** with `log` macros (`log::info!`, `log::error!`, etc.) for structured logging
+- **Snippet matching** changed from naive substring to word boundary matching (prevents false positives)
+- **Dictionary** now handles trailing punctuation (e.g., "hello." matches "hello" shorthand)
+- **Conversation mode** triggered by dedicated hotkey instead of Y. button in the UI
+
+### Removed
+
+- **Y. conversation button** from the main window — replaced by conversation hotkey
+- **Sample data** from empty state — replaced by onboarding tutorial
+
+### Fixed
+
+- All 22 findings from the multi-persona code review (REVIEW.md) addressed:
+  - Predictable temp file paths for Swift STT scripts
+  - Unauthenticated WebSocket bridge (now uses token auth)
+  - Gemini API key exposed in URL (moved to header)
+  - Unsafe `static mut` for Fn key AppHandle
+  - Recording pipeline code duplication (extracted shared helper)
+  - Silent refinement fallback (now emits event)
+  - Snippet detection false positives (word boundary matching)
+  - Non-atomic file writes (atomic via store.rs)
+  - Version mismatch across monorepo (all 0.2.0)
+  - Dictionary punctuation handling
+  - Persistence module code duplication (shared store.rs)
+  - Blocking bridge I/O with no circuit breaker (added circuit breaker)
+  - All `println!` replaced with log macros
+
 ## [0.0.5] - 2026-03-25
 
 ### Added

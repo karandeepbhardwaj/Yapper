@@ -3,7 +3,7 @@ use tauri::Manager;
 
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, Sel};
+use objc2::runtime::{AnyClass, AnyObject, Sel};
 use objc2_app_kit::{
     NSBackingStoreType, NSColor, NSEvent, NSEventMask, NSPanel, NSWindowCollectionBehavior,
     NSWindowStyleMask,
@@ -77,6 +77,16 @@ fn get_widget_position(w: f64, h: f64) -> Option<(f64, f64)> {
     let screens = objc2_app_kit::NSScreen::screens(mtm);
     let primary_height = get_primary_screen_height();
 
+    // Detect full-screen mode via presentation options.
+    // In full-screen, dock is hidden even if pinned — position widget at screen bottom.
+    // NSApplicationPresentationAutoHideDock = 1, NSApplicationPresentationHideDock = 2
+    let dock_overridden = unsafe {
+        let ns_app = AnyClass::get(c"NSApplication").unwrap();
+        let app: *mut AnyObject = objc2::msg_send![ns_app, sharedApplication];
+        let options: usize = objc2::msg_send![&*app, currentSystemPresentationOptions];
+        (options & 0b11) != 0
+    };
+
     for i in 0..screens.count() {
         let screen = screens.objectAtIndex(i);
         let frame = screen.frame();
@@ -88,7 +98,13 @@ fn get_widget_position(w: f64, h: f64) -> Option<(f64, f64)> {
             && mouse_loc.y < frame.origin.y + frame.size.height
         {
             let x_bl = visible.origin.x + (visible.size.width - w) / 2.0;
-            let y_bl = frame.origin.y + 4.0;
+            let y_bl = if dock_overridden {
+                // Full-screen or app-driven auto-hide: dock not visible, go to bottom
+                frame.origin.y + 4.0
+            } else {
+                // Normal mode: visibleFrame excludes pinned dock, equals frame for auto-hide
+                visible.origin.y + 4.0
+            };
 
             let x_tl = x_bl;
             let y_tl = primary_height - y_bl - h;
@@ -239,8 +255,6 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
 
         std::thread::sleep(std::time::Duration::from_secs(3));
 
-        let mut last_x = 0.0f64;
-        let mut last_y = 0.0f64;
         let mut tick = 0u32;
 
         loop {
@@ -248,25 +262,19 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
             tick = tick.wrapping_add(1);
 
             if tick % 6 == 0 {
-                let panel_w = 220.0;
-                let panel_h = 300.0;
-                if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
-                    if (x - last_x).abs() > 2.0 || (y - last_y).abs() > 2.0 {
-                        if load_panel_ptr().is_some() {
-                            let _ = hover_handle.run_on_main_thread(move || {
-                                if let Some(panel_ptr) = load_panel_ptr() {
-                                    let panel: &NSPanel = unsafe { &*panel_ptr };
-                                    let primary_h = get_primary_screen_height();
-                                    let origin = NSPoint::new(x, primary_h - y - panel_h);
-                                    panel.setFrameOrigin(origin);
-                                }
-                            });
+                let _ = hover_handle.run_on_main_thread(move || {
+                    let panel_w = 220.0;
+                    let panel_h = 300.0;
+                    if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
+                        if let Some(panel_ptr) = load_panel_ptr() {
+                            let panel: &NSPanel = unsafe { &*panel_ptr };
+                            let primary_h = get_primary_screen_height();
+                            let origin = NSPoint::new(x, primary_h - y - panel_h);
+                            panel.setFrameOrigin(origin);
                         }
-                        last_x = x;
-                        last_y = y;
                         WIDGET_CENTER.store_pos(x + panel_w / 2.0, y + panel_h - 17.0);
                     }
-                }
+                });
             }
 
             let (cx, cy) = WIDGET_CENTER.load_pos();
