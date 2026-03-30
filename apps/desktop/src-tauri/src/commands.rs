@@ -586,3 +586,33 @@ pub async fn change_conversation_hotkey(app: tauri::AppHandle, hotkey: String) -
     app.emit("hotkey-changed", settings.hotkey).ok();
     Ok(())
 }
+
+#[tauri::command]
+pub fn check_bridge_status() -> bool {
+    use std::net::TcpStream;
+    use std::time::Duration;
+    TcpStream::connect_timeout(
+        &"127.0.0.1:9147".parse().unwrap(),
+        Duration::from_millis(300),
+    )
+    .is_ok()
+}
+
+#[tauri::command]
+pub fn open_vscode() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", "Visual Studio Code"])
+            .spawn()
+            .map_err(|e| format!("Failed to open VS Code: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "code"])
+            .spawn()
+            .map_err(|e| format!("Failed to open VS Code: {}", e))?;
+    }
+    Ok(())
+}

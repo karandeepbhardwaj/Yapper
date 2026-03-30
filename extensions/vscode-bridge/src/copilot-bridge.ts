@@ -201,7 +201,7 @@ export async function classifyIntent(
 ): Promise<ClassifiedIntent> {
   const selected = await selectProviderByTier("fast", token);
   if (!selected) {
-    // No provider available — fall back to dictation
+    console.warn("[Yapper] No AI provider available for intent classification — falling back to dictation. Configure at least one API key (yapper.groqApiKey, yapper.geminiApiKey, or yapper.anthropicApiKey) or install GitHub Copilot.");
     return { intent: "dictation" };
   }
 
