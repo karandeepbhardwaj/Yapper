@@ -350,7 +350,8 @@ function SegmentedControl({
                 position: "absolute",
                 inset: 0,
                 borderRadius: 8,
-                background: "#DA7756",
+                background: "linear-gradient(145deg, #e08660 0%, #DA7756 50%, #c4684a 100%)",
+                boxShadow: "0 1px 0 0 rgba(255,255,255,0.15) inset, 0 -1px 0 0 rgba(0,0,0,0.1) inset, 0 2px 6px rgba(180,90,60,0.25)",
                 zIndex: -1,
               }}
             />
