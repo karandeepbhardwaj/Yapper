@@ -1,4 +1,4 @@
-import { Moon, Sun, Search, Trash2, X, Settings, ArrowUpDown, HelpCircle } from "lucide-react";
+import { Search, Trash2, X, Settings, ArrowUpDown, HelpCircle } from "lucide-react";
 import { HistoryCard } from "./HistoryCard";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -20,7 +20,6 @@ const formatHotkey = (hk: string): string => {
 
 interface MainWindowProps {
   isDarkMode: boolean;
-  onToggleDarkMode: (e?: React.MouseEvent) => void;
   historyItems: HistoryItem[];
   onClearHistory?: () => void;
   onDeleteItem?: (id: string) => void;
@@ -478,7 +477,6 @@ function OnboardingTutorial({ hotkey, conversationHotkey, formatHotkey, isDarkMo
 
 export function MainWindow({
   isDarkMode,
-  onToggleDarkMode,
   historyItems,
   onClearHistory,
   onDeleteItem,
@@ -632,25 +630,6 @@ export function MainWindow({
             </span>
           </h2>
           <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <button
-              onClick={onToggleDarkMode}
-              aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-              className="flex items-center justify-center hover:opacity-70"
-              style={{ width: 30, height: 30, borderRadius: 8, background: "none", border: "none", cursor: "pointer", outline: "none" }}
-            >
-              <motion.div
-                initial={false}
-                animate={{ rotate: isDarkMode ? 180 : 0 }}
-                transition={{ duration: ANIMATION.normal }}
-                style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
-              >
-                {isDarkMode ? (
-                  <Sun style={{ width: 15, height: 15, color: "var(--yapper-accent)" }} />
-                ) : (
-                  <Moon style={{ width: 15, height: 15, color: "var(--yapper-accent)" }} />
-                )}
-              </motion.div>
-            </button>
             <button
               onClick={onOpenHelp}
               aria-label="How to use Yapper"

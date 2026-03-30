@@ -9,8 +9,9 @@ import { HelpView } from "./components/HelpView";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
-import { emit, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import type { AppSettings } from "./lib/types";
 import { motion, AnimatePresence } from "motion/react";
 
 // Web Speech API — webkitSpeechRecognition for Tauri WebView
@@ -51,7 +52,8 @@ export default function App() {
   const { hotkey, setHotkey, sttEngine, setSttEngine, conversationHotkey } = useSettings();
   const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, refresh, clearAll, deleteItem, togglePin } = useHistory();
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
+  const isDarkMode = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const [activeView, setActiveView] = useState<"history" | "conversation" | "settings" | "dictionary" | "snippets" | "help">("history");
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
@@ -180,88 +182,38 @@ export default function App() {
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
+  // Load theme from settings on mount
   useEffect(() => {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    if (prefersDark) {
-      document.documentElement.classList.add("dark");
-      setIsDarkMode(true);
-    }
+    invoke<AppSettings>("get_settings").then((s) => {
+      if (s?.theme) setTheme(s.theme as "light" | "dark" | "system");
+    }).catch(console.error);
   }, []);
 
-  const themeTransitionRef = useRef(false);
-
-  const handleToggleDarkMode = (e?: React.MouseEvent) => {
-    if (themeTransitionRef.current) return;
-    themeTransitionRef.current = true;
-
-    const nowDark = !isDarkMode;
-    // Get the center of the button that was clicked, not the mouse position
-    const button = e?.currentTarget as HTMLElement | null;
-    const rect = button?.getBoundingClientRect();
-    const x = rect ? Math.round(rect.left + rect.width / 2) : window.innerWidth - 40;
-    const y = rect ? Math.round(rect.top + rect.height / 2) : 20;
-    const maxRadius = Math.ceil(Math.hypot(
-      Math.max(x, window.innerWidth - x),
-      Math.max(y, window.innerHeight - y),
-    ));
-
-    if (document.startViewTransition) {
-      document.startViewTransition(() => {
-        if (nowDark) {
-          document.documentElement.classList.add("dark");
-        } else {
-          document.documentElement.classList.remove("dark");
-        }
-        setIsDarkMode(nowDark);
-        emit("theme-changed", nowDark ? "dark" : "light");
-      });
-
-      const style = document.createElement("style");
-      if (nowDark) {
-        // Light→Dark: old light shrinks into toggle
-        style.textContent = `
-          ::view-transition-old(root) {
-            z-index: 9999;
-            animation: lightRecede 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-          ::view-transition-new(root) { z-index: 999; animation: none; }
-          @keyframes lightRecede {
-            from { clip-path: circle(${maxRadius}px at ${x}px ${y}px); }
-            to { clip-path: circle(0px at ${x}px ${y}px); }
-          }
-        `;
-      } else {
-        // Dark→Light: new light expands from toggle
-        style.textContent = `
-          ::view-transition-old(root) { z-index: 999; animation: none; }
-          ::view-transition-new(root) {
-            z-index: 9999;
-            animation: lightExpand 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-          @keyframes lightExpand {
-            from { clip-path: circle(0px at ${x}px ${y}px); }
-            to { clip-path: circle(${maxRadius}px at ${x}px ${y}px); }
-          }
-        `;
-      }
-      document.head.appendChild(style);
-      setTimeout(() => {
-        style.remove();
-        themeTransitionRef.current = false;
-      }, 700);
-      return;
-    }
-
-    // Fallback: instant toggle
-    setIsDarkMode(nowDark);
-    if (nowDark) {
+  // Apply dark class whenever isDarkMode changes
+  useEffect(() => {
+    if (isDarkMode) {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
-    emit("theme-changed", nowDark ? "dark" : "light");
-    themeTransitionRef.current = false;
-  };
+  }, [isDarkMode]);
+
+  // Listen for system theme changes when in "system" mode (force re-evaluation)
+  useEffect(() => {
+    if (theme !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => setTheme("system");
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [theme]);
+
+  // Listen for theme changes from Settings page
+  useEffect(() => {
+    const unsub = listen<string>("theme-setting-changed", (e) => {
+      setTheme(e.payload as "light" | "dark" | "system");
+    });
+    return () => { unsub.then((fn) => fn()); };
+  }, []);
 
   const handleGetStarted = () => {
     localStorage.setItem("yapper-onboarded", "true");
@@ -365,7 +317,6 @@ export default function App() {
           >
             <MainWindow
               isDarkMode={isDarkMode}
-              onToggleDarkMode={handleToggleDarkMode}
               historyItems={historyItems}
               onClearHistory={clearAll}
               onDeleteItem={deleteItem}

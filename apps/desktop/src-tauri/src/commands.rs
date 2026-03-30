@@ -31,7 +31,9 @@ pub struct AppSettings {
     #[serde(default)]
     pub ai_provider: String,          // "groq" | "anthropic"
     #[serde(default)]
-    pub ai_api_key: String,           // the actual key
+    pub ai_api_key: String,           // the actual key (decrypted in memory)
+    #[serde(default = "default_theme")]
+    pub theme: String,                // "light" | "dark" | "system"
 }
 
 fn read_clipboard() -> Option<String> {
@@ -96,9 +98,74 @@ fn default_conversation_hotkey() -> String {
 }
 
 fn default_ai_provider_mode() -> String { "vscode".to_string() }
+fn default_theme() -> String { "system".to_string() }
 
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
+
+// --- API key encryption helpers (XOR cipher with username-derived key) ---
+
+fn xor_mask() -> [u8; 8] {
+    let machine_id = format!("yapper-{}", std::env::var("USER").unwrap_or_else(|_| "user".to_string()));
+    let mut hash: u64 = 5381;
+    for b in machine_id.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(b as u64);
+    }
+    hash.to_le_bytes()
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::new();
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[((n >> 18) & 63) as usize] as char);
+        result.push(CHARS[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 { result.push(CHARS[((n >> 6) & 63) as usize] as char); } else { result.push('='); }
+        if chunk.len() > 2 { result.push(CHARS[(n & 63) as usize] as char); } else { result.push('='); }
+    }
+    result
+}
+
+fn base64_decode(s: &str) -> Vec<u8> {
+    const DECODE: [u8; 128] = {
+        let mut t = [255u8; 128];
+        let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut i = 0;
+        while i < 64 { t[chars[i] as usize] = i as u8; i += 1; }
+        t
+    };
+    let bytes: Vec<u8> = s.bytes().filter(|&b| b != b'=').collect();
+    let mut result = Vec::new();
+    for chunk in bytes.chunks(4) {
+        if chunk.len() < 2 { break; }
+        let b0 = if chunk[0] < 128 { DECODE[chunk[0] as usize] as u32 } else { 0 };
+        let b1 = if chunk[1] < 128 { DECODE[chunk[1] as usize] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 && chunk[2] < 128 { DECODE[chunk[2] as usize] as u32 } else { 0 };
+        let b3 = if chunk.len() > 3 && chunk[3] < 128 { DECODE[chunk[3] as usize] as u32 } else { 0 };
+        let n = (b0 << 18) | (b1 << 12) | (b2 << 6) | b3;
+        result.push((n >> 16) as u8);
+        if chunk.len() > 2 { result.push((n >> 8) as u8); }
+        if chunk.len() > 3 { result.push(n as u8); }
+    }
+    result
+}
+
+fn encrypt_key(key: &str) -> String {
+    let mask = xor_mask();
+    let encrypted: Vec<u8> = key.bytes().enumerate().map(|(i, b)| b ^ mask[i % 8]).collect();
+    format!("enc:{}", base64_encode(&encrypted))
+}
+
+fn decrypt_key(encrypted: &str) -> String {
+    let mask = xor_mask();
+    let bytes = base64_decode(encrypted);
+    let decrypted: Vec<u8> = bytes.iter().enumerate().map(|(i, &b)| b ^ mask[i % 8]).collect();
+    String::from_utf8_lossy(&decrypted).to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -117,6 +184,7 @@ impl Default for AppSettings {
             ai_provider_mode: "vscode".to_string(),
             ai_provider: String::new(),
             ai_api_key: String::new(),
+            theme: "system".to_string(),
         }
     }
 }
@@ -128,10 +196,17 @@ pub fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
     };
     if !path.exists() { return AppSettings::default(); }
     match std::fs::read_to_string(&path) {
-        Ok(data) => serde_json::from_str(&data).unwrap_or_else(|e| {
-            log::warn!("Settings corrupted, using defaults: {}", e);
-            AppSettings::default()
-        }),
+        Ok(data) => {
+            let mut settings: AppSettings = serde_json::from_str(&data).unwrap_or_else(|e| {
+                log::warn!("Settings corrupted, using defaults: {}", e);
+                AppSettings::default()
+            });
+            // Decrypt API key if it's encrypted
+            if settings.ai_api_key.starts_with("enc:") {
+                settings.ai_api_key = decrypt_key(&settings.ai_api_key[4..]);
+            }
+            settings
+        }
         Err(e) => {
             log::warn!("Failed to read settings: {}", e);
             AppSettings::default()
@@ -510,14 +585,7 @@ pub async fn paste_last_transcript(app: tauri::AppHandle) -> Result<(), String> 
 
 #[tauri::command]
 pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
-    let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    let settings_path = path.join("settings.json");
-    if settings_path.exists() {
-        let data = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&data).map_err(|e| e.to_string())
-    } else {
-        Ok(AppSettings::default())
-    }
+    Ok(get_settings_internal(&app))
 }
 
 #[tauri::command]
@@ -526,7 +594,12 @@ pub async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Resu
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     let settings_path = path.join("settings.json");
-    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    // Encrypt API key before writing to disk
+    let mut settings_to_save = settings;
+    if !settings_to_save.ai_api_key.is_empty() && !settings_to_save.ai_api_key.starts_with("enc:") {
+        settings_to_save.ai_api_key = encrypt_key(&settings_to_save.ai_api_key);
+    }
+    let data = serde_json::to_string_pretty(&settings_to_save).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
 }
 
