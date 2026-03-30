@@ -987,7 +987,7 @@ export function MainWindow({
       {/* Fixed bottom message — only when no recordings */}
       {filteredItems.length === 0 && !searchQuery && (
         <div style={{
-          position: "absolute", bottom: 40, left: 0, right: 0,
+          position: "absolute", bottom: 36, left: 0, right: 0,
           padding: "16px 0 20px",
           textAlign: "center",
         }}>
@@ -1003,68 +1003,60 @@ export function MainWindow({
         </div>
       )}
 
-      {/* Bridge status indicator */}
+      {/* Bridge status cloud */}
       {bridgeConnected !== null && (
         <div
           style={{
             position: "absolute",
-            bottom: 12,
+            bottom: 0,
             left: 0,
             right: 0,
+            height: 32,
             display: "flex",
+            alignItems: "center",
             justifyContent: "center",
-            pointerEvents: "none",
+            gap: 8,
+            background: bridgeConnected
+              ? (isDarkMode ? "rgba(52,199,89,0.06)" : "rgba(52,199,89,0.05)")
+              : (isDarkMode ? "rgba(255,59,48,0.06)" : "rgba(255,59,48,0.05)"),
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
             userSelect: "none",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 14px",
-              borderRadius: 20,
-              background: bridgeConnected
-                ? (isDarkMode ? "rgba(52,199,89,0.1)" : "rgba(52,199,89,0.08)")
-                : (isDarkMode ? "rgba(255,59,48,0.1)" : "rgba(255,59,48,0.08)"),
-              border: `1px solid ${bridgeConnected
-                ? "rgba(52,199,89,0.2)"
-                : "rgba(255,59,48,0.2)"}`,
-              pointerEvents: "auto",
-            }}
-          >
-            <div style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: bridgeConnected ? "#34c759" : "#ff3b30",
-              flexShrink: 0,
-            }} />
-            <span style={{
-              fontSize: 11,
-              fontWeight: 500,
-              color: bridgeConnected ? "#34c759" : "#ff3b30",
-            }}>
-              {bridgeConnected ? "VS Code Connected" : "VS Code Disconnected"}
-            </span>
-            {!bridgeConnected && (
-              <button
-                onClick={() => invoke("open_vscode").catch(console.error)}
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: "rgba(255,59,48,0.15)",
-                  color: "#ff3b30",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Open
-              </button>
-            )}
-          </div>
+          <div style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: bridgeConnected ? "#34c759" : "#ff3b30",
+            flexShrink: 0,
+          }} />
+          <span style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: bridgeConnected
+              ? (isDarkMode ? "rgba(52,199,89,0.7)" : "rgba(40,160,70,0.6)")
+              : (isDarkMode ? "rgba(255,59,48,0.7)" : "rgba(220,50,40,0.6)"),
+          }}>
+            {bridgeConnected ? "VS Code Connected" : "VS Code Disconnected"}
+          </span>
+          {!bridgeConnected && (
+            <button
+              onClick={() => invoke("open_vscode").catch(console.error)}
+              style={{
+                padding: "2px 10px",
+                borderRadius: 8,
+                border: "none",
+                background: isDarkMode ? "rgba(255,59,48,0.12)" : "rgba(255,59,48,0.1)",
+                color: isDarkMode ? "rgba(255,59,48,0.8)" : "rgba(220,50,40,0.7)",
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Open VS Code
+            </button>
+          )}
         </div>
       )}
     </div>
