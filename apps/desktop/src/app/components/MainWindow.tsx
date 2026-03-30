@@ -1011,16 +1011,19 @@ export function MainWindow({
             bottom: 0,
             left: 0,
             right: 0,
-            height: 32,
+            height: 48,
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-end",
             justifyContent: "center",
+            paddingBottom: 8,
             gap: 8,
             background: bridgeConnected
-              ? (isDarkMode ? "rgba(52,199,89,0.06)" : "rgba(52,199,89,0.05)")
-              : (isDarkMode ? "rgba(255,59,48,0.06)" : "rgba(255,59,48,0.05)"),
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
+              ? (isDarkMode
+                ? "linear-gradient(to bottom, transparent, rgba(52,199,89,0.06))"
+                : "linear-gradient(to bottom, transparent, rgba(52,199,89,0.05))")
+              : (isDarkMode
+                ? "linear-gradient(to bottom, transparent, rgba(255,59,48,0.06))"
+                : "linear-gradient(to bottom, transparent, rgba(255,59,48,0.05))"),
             userSelect: "none",
           }}
         >
