@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
-import { Home, BookOpen, FileText, ChevronRight, X, ExternalLink, Info } from "lucide-react";
+import { Home, BookOpen, FileText, ChevronRight, X, ExternalLink, Info, RefreshCw } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";
 import { invoke } from "@tauri-apps/api/core";
@@ -538,6 +538,7 @@ export function SettingsView({
   // AI Provider: bridge models
   const [bridgeModels, setBridgeModels] = useState<{id: string; name: string; vendor: string; family: string}[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [refreshSpin, setRefreshSpin] = useState(false);
 
   const fetchBridgeModels = useCallback(() => {
     setModelsLoading(true);
@@ -866,21 +867,29 @@ export function SettingsView({
 
           {settings.ai_provider_mode === "vscode" && (
             <SettingRow label="Model" description={!bridgeConnected ? "Connect VS Code to see available models" : undefined}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <select
                   value={settings.vscode_model}
                   onChange={(e) => update({ vscode_model: e.target.value })}
                   disabled={!bridgeConnected || modelsLoading}
                   style={{
-                    flex: 1,
-                    padding: "7px 10px",
+                    padding: "8px 14px",
+                    paddingRight: 30,
                     borderRadius: 10,
                     border: "1px solid var(--yapper-border, #ddd)",
                     background: "var(--yapper-surface-low, #f5f5f5)",
                     color: "var(--yapper-text-primary)",
                     fontSize: 13,
+                    fontWeight: 500,
                     cursor: bridgeConnected ? "pointer" : "not-allowed",
                     opacity: bridgeConnected ? 1 : 0.5,
+                    outline: "none",
+                    minWidth: 140,
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "right 12px center",
                   }}
                 >
                   <option value="">Auto (first available)</option>
@@ -889,21 +898,33 @@ export function SettingsView({
                   ))}
                 </select>
                 {bridgeConnected && (
-                  <button
-                    onClick={fetchBridgeModels}
+                  <motion.button
+                    onClick={() => {
+                      fetchBridgeModels();
+                      setRefreshSpin(true);
+                      setTimeout(() => setRefreshSpin(false), 800);
+                    }}
                     disabled={modelsLoading}
+                    animate={{ rotate: refreshSpin ? 360 : 0 }}
+                    transition={{ duration: refreshSpin ? 0.8 : 0, ease: "easeInOut" }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                     style={{
-                      padding: "7px 10px",
-                      borderRadius: 10,
-                      border: "1px solid var(--yapper-border, #ddd)",
-                      background: "var(--yapper-surface-low, #f5f5f5)",
-                      color: "var(--yapper-text-secondary)",
-                      fontSize: 12,
+                      width: 30,
+                      height: 30,
+                      borderRadius: 8,
+                      border: "none",
+                      background: "transparent",
                       cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--yapper-text-secondary)",
+                      flexShrink: 0,
                     }}
                   >
-                    {modelsLoading ? "..." : "Refresh"}
-                  </button>
+                    <RefreshCw style={{ width: 14, height: 14 }} />
+                  </motion.button>
                 )}
               </div>
             </SettingRow>
@@ -924,13 +945,22 @@ export function SettingsView({
                   value={settings.ai_model}
                   onChange={(e) => update({ ai_model: e.target.value })}
                   style={{
-                    padding: "7px 10px",
+                    padding: "8px 14px",
+                    paddingRight: 30,
                     borderRadius: 10,
                     border: "1px solid var(--yapper-border, #ddd)",
                     background: "var(--yapper-surface-low, #f5f5f5)",
                     color: "var(--yapper-text-primary)",
                     fontSize: 13,
+                    fontWeight: 500,
                     cursor: "pointer",
+                    outline: "none",
+                    minWidth: 140,
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "right 12px center",
                   }}
                 >
                   {(settings.ai_provider || "groq") === "anthropic" ? (

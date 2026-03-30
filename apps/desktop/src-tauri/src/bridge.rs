@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use std::time::Duration;
 use tungstenite::{connect, Message, WebSocket, stream::MaybeTlsStream};
 
-const VSCODE_BRIDGE_BASE: &str = "ws://127.0.0.1:9147";
+const VSCODE_BRIDGE_BASE: &str = "ws://127.0.0.1:9147/";
 
 fn bridge_url() -> String {
     let home = if cfg!(target_os = "windows") {
