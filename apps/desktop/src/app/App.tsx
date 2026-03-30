@@ -9,7 +9,7 @@ import { HelpView } from "./components/HelpView";
 import { useTauriEvents } from "./hooks/useTauriEvents";
 import { useHistory } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings } from "./lib/types";
 import { motion, AnimatePresence } from "motion/react";
@@ -189,12 +189,75 @@ export default function App() {
     }).catch(console.error);
   }, []);
 
-  // Apply dark class whenever isDarkMode changes
+  // Apply dark class with circle-reveal animation
+  const prevDarkRef = useRef(isDarkMode);
+  const transitioningRef = useRef(false);
+
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add("dark");
+    const wasDark = prevDarkRef.current;
+    prevDarkRef.current = isDarkMode;
+
+    if (wasDark === isDarkMode) return;
+
+    emit("theme-changed", isDarkMode ? "dark" : "light");
+
+    // Circle reveal from center-top (where settings would be)
+    const x = Math.round(window.innerWidth / 2);
+    const y = 40;
+    const maxRadius = Math.ceil(Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y),
+    ));
+
+    if (document.startViewTransition && !transitioningRef.current) {
+      transitioningRef.current = true;
+
+      document.startViewTransition(() => {
+        if (isDarkMode) {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
+      });
+
+      const style = document.createElement("style");
+      if (isDarkMode) {
+        style.textContent = `
+          ::view-transition-old(root) {
+            z-index: 9999;
+            animation: lightRecede 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          ::view-transition-new(root) { z-index: 999; animation: none; }
+          @keyframes lightRecede {
+            from { clip-path: circle(${maxRadius}px at ${x}px ${y}px); }
+            to { clip-path: circle(0px at ${x}px ${y}px); }
+          }
+        `;
+      } else {
+        style.textContent = `
+          ::view-transition-old(root) { z-index: 999; animation: none; }
+          ::view-transition-new(root) {
+            z-index: 9999;
+            animation: lightExpand 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          @keyframes lightExpand {
+            from { clip-path: circle(0px at ${x}px ${y}px); }
+            to { clip-path: circle(${maxRadius}px at ${x}px ${y}px); }
+          }
+        `;
+      }
+      document.head.appendChild(style);
+      setTimeout(() => {
+        style.remove();
+        transitioningRef.current = false;
+      }, 700);
     } else {
-      document.documentElement.classList.remove("dark");
+      // Fallback: instant
+      if (isDarkMode) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
     }
   }, [isDarkMode]);
 
