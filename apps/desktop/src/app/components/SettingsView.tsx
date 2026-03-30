@@ -698,39 +698,44 @@ export function SettingsView({
           </SettingRow>
 
           {settings.ai_provider_mode === "vscode" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: bridgeConnected === null ? "#aaa" : bridgeConnected ? "#34c759" : "#ff3b30",
-                flexShrink: 0,
-              }} />
-              <span style={{
-                fontSize: 13,
-                color: bridgeConnected === null ? "var(--yapper-text-secondary)" : bridgeConnected ? "#34c759" : "#ff3b30",
-                fontWeight: 500,
-              }}>
-                {bridgeConnected === null ? "Checking…" : bridgeConnected ? "Connected" : "Disconnected"}
-              </span>
-              {bridgeConnected === false && (
-                <button
-                  onClick={() => invoke("open_vscode").catch(console.error)}
-                  style={{
-                    padding: "4px 12px",
-                    borderRadius: 8,
-                    border: "none",
-                    background: "rgba(255,59,48,0.1)",
-                    color: "#ff3b30",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Open VS Code
-                </button>
-              )}
-            </div>
+            <SettingRow
+              label="Status"
+              description={bridgeConnected === false ? "VS Code extension not detected" : undefined}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: bridgeConnected === null ? "#aaa" : bridgeConnected ? "#34c759" : "#ff3b30",
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--yapper-text-primary)",
+                }}>
+                  {bridgeConnected === null ? "Checking" : bridgeConnected ? "Connected" : "Disconnected"}
+                </span>
+                {bridgeConnected === false && (
+                  <button
+                    onClick={() => invoke("open_vscode").catch(console.error)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 10,
+                      border: "1px solid var(--yapper-border, #e5e5e5)",
+                      background: "var(--yapper-surface-low, #f5f5f5)",
+                      color: "var(--yapper-accent)",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Open
+                  </button>
+                )}
+              </div>
+            </SettingRow>
           )}
 
           {settings.ai_provider_mode === "apikey" && (
