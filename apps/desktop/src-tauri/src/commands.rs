@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
-use crate::{autopaste, bridge, conversation, dictionary, history, snippets, stt};
+use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, snippets, stt};
 
 static RECORDING_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
@@ -26,6 +26,12 @@ pub struct AppSettings {
     pub recording_mode: String,
     #[serde(default = "default_conversation_hotkey")]
     pub conversation_hotkey: String,
+    #[serde(default = "default_ai_provider_mode")]
+    pub ai_provider_mode: String,     // "vscode" | "apikey"
+    #[serde(default)]
+    pub ai_provider: String,          // "groq" | "anthropic"
+    #[serde(default)]
+    pub ai_api_key: String,           // the actual key
 }
 
 fn read_clipboard() -> Option<String> {
@@ -89,6 +95,8 @@ fn default_conversation_hotkey() -> String {
     }
 }
 
+fn default_ai_provider_mode() -> String { "vscode".to_string() }
+
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
 
@@ -106,11 +114,14 @@ impl Default for AppSettings {
             code_mode: false,
             recording_mode: default_recording_mode(),
             conversation_hotkey: default_conversation_hotkey(),
+            ai_provider_mode: "vscode".to_string(),
+            ai_provider: String::new(),
+            ai_api_key: String::new(),
         }
     }
 }
 
-fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
+pub fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
     let path = match app.path().app_config_dir() {
         Ok(p) => p.join("settings.json"),
         Err(_) => return AppSettings::default(),
@@ -126,6 +137,11 @@ fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
             AppSettings::default()
         }
     }
+}
+
+#[derive(Clone, Serialize)]
+struct RefinementSkipped {
+    reason: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -165,52 +181,82 @@ async fn process_recording_result(
     let settings = get_settings_internal(app);
     let clipboard = read_clipboard();
 
-    // Try command flow first, fall back to refine_text
-    let (refined_text, category, title, action, action_params) = match bridge::send_command(
-        processed_transcript.clone(),
-        clipboard,
-        Some(settings.default_style.clone()),
-        if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-        if settings.code_mode { Some(true) } else { None },
-    ).await {
-        Ok(cmd) => {
-            let (cat, ttl) = if cmd.action == "dictation" {
-                let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
-                let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
-                (cat, ttl)
-            } else {
-                (Some(capitalize_first(&cmd.action)), None)
-            };
-            log::info!("Command flow succeeded: action={}", cmd.action);
-            (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
+    // Dispatch to direct API or VS Code bridge based on settings
+    let (refined_text, category, title, action, action_params) = if settings.ai_provider_mode == "apikey"
+        && !settings.ai_api_key.is_empty()
+        && !settings.ai_provider.is_empty()
+    {
+        // Direct API path
+        match ai_provider::send_command(
+            processed_transcript.clone(),
+            clipboard,
+            Some(settings.default_style.clone()),
+            if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+            if settings.code_mode { Some(true) } else { None },
+            &settings.ai_provider,
+            &settings.ai_api_key,
+        ).await {
+            Ok(cmd) => {
+                let (cat, ttl) = if cmd.action == "dictation" {
+                    let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
+                    let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
+                    (cat, ttl)
+                } else {
+                    (Some(capitalize_first(&cmd.action)), None)
+                };
+                log::info!("Direct API command succeeded: action={}", cmd.action);
+                (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
+            }
+            Err(e) => {
+                let reason = format!("API call failed: {}", e);
+                app.emit("refinement-skipped", RefinementSkipped { reason: reason.clone() }).ok();
+                log::warn!("{}", reason);
+                (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
+            }
         }
-        Err(cmd_err) => {
-            log::warn!("Command flow failed ({}), falling back to refine_text", cmd_err);
-            match bridge::refine_text(
-                &processed_transcript,
-                Some(settings.default_style.clone()),
-                if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-                if settings.code_mode { Some(true) } else { None },
-            ).await {
-                Ok(r) => (r.refined_text, r.category, r.title, None, None),
-                Err(e) => {
-                    // Emit refinement-skipped event and fall back to raw transcript
-                    #[derive(Clone, Serialize)]
-                    struct RefinementSkipped {
-                        reason: String,
+    } else {
+        // VS Code bridge path (existing)
+        match bridge::send_command(
+            processed_transcript.clone(),
+            clipboard,
+            Some(settings.default_style.clone()),
+            if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+            if settings.code_mode { Some(true) } else { None },
+        ).await {
+            Ok(cmd) => {
+                let (cat, ttl) = if cmd.action == "dictation" {
+                    let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
+                    let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
+                    (cat, ttl)
+                } else {
+                    (Some(capitalize_first(&cmd.action)), None)
+                };
+                log::info!("Command flow succeeded: action={}", cmd.action);
+                (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
+            }
+            Err(cmd_err) => {
+                log::warn!("Command flow failed ({}), falling back to refine_text", cmd_err);
+                match bridge::refine_text(
+                    &processed_transcript,
+                    Some(settings.default_style.clone()),
+                    if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+                    if settings.code_mode { Some(true) } else { None },
+                ).await {
+                    Ok(r) => (r.refined_text, r.category, r.title, None, None),
+                    Err(e) => {
+                        let reason = if e.contains("cooldown") {
+                            "AI temporarily unavailable, try again shortly"
+                        } else if e.contains("not available") || e.contains("Connection refused") {
+                            "VS Code not connected. Open VS Code to enable AI"
+                        } else {
+                            "No AI provider available. Check VS Code extension"
+                        };
+                        app.emit("refinement-skipped", RefinementSkipped {
+                            reason: reason.to_string(),
+                        }).ok();
+                        log::warn!("Bridge refinement failed: {}", e);
+                        (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
                     }
-                    let reason = if e.contains("cooldown") {
-                        "AI temporarily unavailable, try again shortly"
-                    } else if e.contains("not available") || e.contains("Connection refused") {
-                        "VS Code not connected. Open VS Code to enable AI"
-                    } else {
-                        "No AI provider available. Check VS Code extension"
-                    };
-                    app.emit("refinement-skipped", RefinementSkipped {
-                        reason: reason.to_string(),
-                    }).ok();
-                    log::warn!("Bridge refinement failed, using raw transcript: {}", e);
-                    (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
                 }
             }
         }
@@ -622,4 +668,15 @@ pub fn open_vscode() -> Result<(), String> {
             .map_err(|e| format!("Failed to open VS Code: {}", e))?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn test_api_key(provider: String, api_key: String) -> Result<bool, String> {
+    let p = provider.clone();
+    let k = api_key.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::ai_provider::test_key(&p, &k)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {e}"))?
 }

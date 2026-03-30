@@ -43,6 +43,9 @@ export interface AppSettings {
   code_mode: boolean;
   recording_mode: string;
   conversation_hotkey: string;
+  ai_provider_mode: string;    // "vscode" | "apikey"
+  ai_provider: string;         // "groq" | "anthropic"
+  ai_api_key: string;          // the actual key
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -54,6 +57,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   code_mode: false,
   recording_mode: "toggle",
   conversation_hotkey: "Cmd+Shift+Y",
+  ai_provider_mode: "vscode",
+  ai_provider: "",
+  ai_api_key: "",
 };
 
 export interface DictionaryEntry {
