@@ -1,4 +1,4 @@
-import { Moon, Sun, Search, Trash2, X, Settings, ArrowUpDown } from "lucide-react";
+import { Moon, Sun, Search, Trash2, X, Settings, ArrowUpDown, HelpCircle } from "lucide-react";
 import { HistoryCard } from "./HistoryCard";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -26,6 +26,7 @@ interface MainWindowProps {
   onDeleteItem?: (id: string) => void;
   onTogglePin?: (id: string) => void;
   onOpenSettings?: () => void;
+  onOpenHelp?: () => void;
   hotkey: string;
   conversationHotkey: string;
 }
@@ -483,6 +484,7 @@ export function MainWindow({
   onDeleteItem,
   onTogglePin,
   onOpenSettings,
+  onOpenHelp,
   hotkey,
   conversationHotkey,
 }: MainWindowProps) {
@@ -647,6 +649,14 @@ export function MainWindow({
                   <Moon style={{ width: 15, height: 15, color: "var(--yapper-accent)" }} />
                 )}
               </motion.div>
+            </button>
+            <button
+              onClick={onOpenHelp}
+              aria-label="How to use Yapper"
+              className="flex items-center justify-center hover:opacity-70"
+              style={{ width: 30, height: 30, borderRadius: 8, background: "none", border: "none", cursor: "pointer", outline: "none" }}
+            >
+              <HelpCircle style={{ width: 15, height: 15, color: "var(--yapper-accent)" }} />
             </button>
             <button
               onClick={onOpenSettings}
