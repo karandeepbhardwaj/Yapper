@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
-import { Home, BookOpen, FileText, ChevronRight, X } from "lucide-react";
+import { Home, BookOpen, FileText, ChevronRight, X, ExternalLink, HelpCircle } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";
 import { invoke } from "@tauri-apps/api/core";
@@ -113,13 +113,73 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
+function HintBubble({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        onBlur={() => setOpen(false)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 16,
+          height: 16,
+          borderRadius: "50%",
+          border: "none",
+          background: "none",
+          cursor: "pointer",
+          padding: 0,
+          color: "var(--yapper-text-secondary)",
+          opacity: 0.5,
+        }}
+      >
+        <HelpCircle style={{ width: 12, height: 12 }} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: "absolute",
+              bottom: "calc(100% + 6px)",
+              left: "50%",
+              transform: "translateX(-50%)",
+              padding: "8px 12px",
+              borderRadius: 10,
+              background: "var(--yapper-surface-lowest)",
+              border: "1px solid var(--yapper-border, #e5e5e5)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              fontSize: 11,
+              lineHeight: 1.4,
+              color: "var(--yapper-text-secondary)",
+              whiteSpace: "normal",
+              width: 200,
+              zIndex: 20,
+              textAlign: "left",
+            }}
+          >
+            {text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </span>
+  );
+}
+
 function SettingRow({
   label,
   description,
+  hint,
   children,
 }: {
   label: string;
   description?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -135,12 +195,16 @@ function SettingRow({
       <div style={{ flex: 1 }}>
         <span
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
             fontSize: 13,
             fontWeight: 500,
             color: "var(--yapper-text-primary)",
           }}
         >
           {label}
+          {hint && <HintBubble text={hint} />}
         </span>
         {description && (
           <p
@@ -635,7 +699,7 @@ export function SettingsView({
 
           <div style={{ height: 1, background: "var(--yapper-border, #eee)", margin: "2px 0" }} />
 
-          <SettingRow label="Recording mode" description="How the hotkey triggers recording">
+          <SettingRow label="Recording mode" description="How the hotkey triggers recording" hint="Press: tap once to start, tap again to stop. Hold: recording stops when you release the key.">
             <div style={{ display: "flex", gap: 4 }}>
               <PillButton
                 label="Press"
@@ -682,7 +746,7 @@ export function SettingsView({
         <SectionCard>
           <SectionHeader>AI Provider</SectionHeader>
 
-          <SettingRow label="Mode" description="How Yapper calls the AI">
+          <SettingRow label="Mode" description="How Yapper calls the AI" hint="VS Code: uses GitHub Copilot through the VS Code extension. API Key: calls Groq or Anthropic directly, no VS Code needed.">
             <div style={{ display: "flex", gap: 4 }}>
               <PillButton
                 label="VS Code"
@@ -721,6 +785,9 @@ export function SettingsView({
                   <button
                     onClick={() => invoke("open_vscode").catch(console.error)}
                     style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
                       padding: "5px 12px",
                       borderRadius: 10,
                       border: "1px solid var(--yapper-border, #e5e5e5)",
@@ -731,7 +798,7 @@ export function SettingsView({
                       cursor: "pointer",
                     }}
                   >
-                    Open
+                    Open <ExternalLink style={{ width: 10, height: 10 }} />
                   </button>
                 )}
               </div>
@@ -834,12 +901,16 @@ export function SettingsView({
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <span
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 fontSize: 13,
                 fontWeight: 500,
                 color: "var(--yapper-text-primary)",
               }}
             >
               Default Style
+              <HintBubble text="Sets the tone for AI-refined text. Professional for work, Casual for messages, Technical for code discussions, Creative for expressive writing." />
             </span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {STYLES.map((s) => (
@@ -864,12 +935,16 @@ export function SettingsView({
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <span
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 fontSize: 13,
                 fontWeight: 500,
                 color: "var(--yapper-text-primary)",
               }}
             >
               Category Overrides
+              <HintBubble text="Override the default style for specific categories. For example, set emails to always use Professional tone even if your default is Casual." />
             </span>
             {CATEGORIES.map((cat) => (
               <SettingRow key={cat} label={cat}>
@@ -901,6 +976,7 @@ export function SettingsView({
           <SettingRow
             label="Code References"
             description="Include code context in AI refinement"
+            hint="When enabled, Yapper sends your workspace file names to the AI so it can preserve code references like function names, variables, and file paths in backtick formatting."
           >
             <Toggle
               checked={settings.code_mode}

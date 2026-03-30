@@ -208,7 +208,13 @@ async fn process_recording_result(
                 (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
             }
             Err(e) => {
-                let reason = format!("API call failed: {}", e);
+                let reason = if e.contains("401") || e.contains("403") || e.contains("Unauthorized") {
+                    "Invalid API key. Check your key in Settings.".to_string()
+                } else if e.contains("429") || e.contains("rate") {
+                    "API rate limit reached. Wait a moment and try again.".to_string()
+                } else {
+                    format!("AI request failed. Check your API key and connection.")
+                };
                 app.emit("refinement-skipped", RefinementSkipped { reason: reason.clone() }).ok();
                 log::warn!("{}", reason);
                 (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
