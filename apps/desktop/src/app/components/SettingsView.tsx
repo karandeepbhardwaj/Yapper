@@ -644,27 +644,6 @@ export function SettingsView({
         }}
       >
         <div style={{ width: "100%", maxWidth: 480, display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* Appearance */}
-        <SectionCard>
-          <SectionHeader>Appearance</SectionHeader>
-          <SettingRow label="Theme">
-            <SegmentedControl
-              options={[
-                { label: "Light", value: "light" },
-                { label: "Dark", value: "dark" },
-                { label: "Auto", value: "system" },
-              ]}
-              value={settings.theme || "system"}
-              onChange={(v, e) => {
-                update({ theme: v });
-                const rect = (e?.currentTarget as HTMLElement)?.getBoundingClientRect();
-                const x = rect ? Math.round(rect.left + rect.width / 2) : window.innerWidth / 2;
-                const y = rect ? Math.round(rect.top + rect.height / 2) : 40;
-                emit("theme-setting-changed", { theme: v, x, y }).catch(console.error);
-              }}
-            />
-          </SettingRow>
-        </SectionCard>
         {/* General */}
         <SectionCard>
           <SectionHeader>General</SectionHeader>
@@ -1030,17 +1009,26 @@ export function SettingsView({
           </div>
         </SectionCard>
 
-        {/* Metrics */}
+        {/* Appearance */}
         <SectionCard>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <SectionHeader>Metrics</SectionHeader>
-            <Toggle
-              checked={settings.metrics_enabled}
-              onChange={(val) => update({ metrics_enabled: val })}
-              label="Track metrics"
+          <SectionHeader>Appearance</SectionHeader>
+          <SettingRow label="Theme">
+            <SegmentedControl
+              options={[
+                { label: "Light", value: "light" },
+                { label: "Dark", value: "dark" },
+                { label: "Auto", value: "system" },
+              ]}
+              value={settings.theme || "system"}
+              onChange={(v, e) => {
+                update({ theme: v });
+                const rect = (e?.currentTarget as HTMLElement)?.getBoundingClientRect();
+                const x = rect ? Math.round(rect.left + rect.width / 2) : window.innerWidth / 2;
+                const y = rect ? Math.round(rect.top + rect.height / 2) : 40;
+                emit("theme-setting-changed", { theme: v, x, y }).catch(console.error);
+              }}
             />
-          </div>
-          {settings.metrics_enabled && <MetricsDisplay />}
+          </SettingRow>
         </SectionCard>
 
         {/* Code Mode */}
@@ -1057,6 +1045,19 @@ export function SettingsView({
               label="Code references"
             />
           </SettingRow>
+        </SectionCard>
+
+        {/* Metrics */}
+        <SectionCard>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <SectionHeader>Metrics</SectionHeader>
+            <Toggle
+              checked={settings.metrics_enabled}
+              onChange={(val) => update({ metrics_enabled: val })}
+              label="Track metrics"
+            />
+          </div>
+          {settings.metrics_enabled && <MetricsDisplay />}
         </SectionCard>
 
         {/* Navigation: Dictionary & Snippets */}
