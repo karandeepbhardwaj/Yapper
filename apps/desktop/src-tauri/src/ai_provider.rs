@@ -156,16 +156,28 @@ fn strip_markdown_fences(text: &str) -> String {
     text.to_string()
 }
 
+fn resolve_model<'a>(provider: &str, model: &'a str) -> &'a str {
+    if !model.is_empty() {
+        return model;
+    }
+    match provider {
+        "anthropic" => "claude-haiku-4-5-20251001",
+        "groq" => "llama-3.3-70b-versatile",
+        _ => "llama-3.3-70b-versatile",
+    }
+}
+
 fn call_provider_blocking(
     provider: &str,
     api_key: &str,
     system_prompt: &str,
     user_prompt: &str,
     temperature: f64,
+    model: &str,
 ) -> Result<String, String> {
     match provider {
-        "groq" => call_groq(api_key, system_prompt, user_prompt, temperature),
-        "anthropic" => call_anthropic(api_key, system_prompt, user_prompt, temperature),
+        "groq" => call_groq(api_key, system_prompt, user_prompt, temperature, model),
+        "anthropic" => call_anthropic(api_key, system_prompt, user_prompt, temperature, model),
         other => Err(format!("Unknown provider: {}", other)),
     }
 }
@@ -175,9 +187,10 @@ fn call_groq(
     system_prompt: &str,
     user_prompt: &str,
     temperature: f64,
+    model: &str,
 ) -> Result<String, String> {
     let body = serde_json::json!({
-        "model": "llama-3.3-70b-versatile",
+        "model": model,
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -212,9 +225,10 @@ fn call_anthropic(
     system_prompt: &str,
     user_prompt: &str,
     temperature: f64,
+    model: &str,
 ) -> Result<String, String> {
     let body = serde_json::json!({
-        "model": "claude-sonnet-4-20250514",
+        "model": model,
         "max_tokens": 1024,
         "temperature": temperature,
         "system": system_prompt,
@@ -252,6 +266,7 @@ fn call_provider_with_messages_blocking(
     system_prompt: &str,
     messages: &[ConversationTurnMsg],
     temperature: f64,
+    model: &str,
 ) -> Result<String, String> {
     match provider {
         "groq" => {
@@ -266,7 +281,7 @@ fn call_provider_with_messages_blocking(
                 }));
             }
             let body = serde_json::json!({
-                "model": "llama-3.3-70b-versatile",
+                "model": model,
                 "temperature": temperature,
                 "messages": msgs
             });
@@ -298,7 +313,7 @@ fn call_provider_with_messages_blocking(
                 })
                 .collect();
             let body = serde_json::json!({
-                "model": "claude-sonnet-4-20250514",
+                "model": model,
                 "max_tokens": 1024,
                 "temperature": temperature,
                 "system": system_prompt,
@@ -331,7 +346,8 @@ fn call_provider_with_messages_blocking(
 // ---------------------------------------------------------------------------
 
 pub fn test_key(provider: &str, api_key: &str) -> Result<bool, String> {
-    let result = call_provider_blocking(provider, api_key, "Reply with just the word 'ok'.", "Test", 0.0);
+    let model = resolve_model(provider, "");
+    let result = call_provider_blocking(provider, api_key, "Reply with just the word 'ok'.", "Test", 0.0, model);
     match result {
         Ok(_) => Ok(true),
         Err(e) => Err(e),
@@ -345,13 +361,15 @@ pub async fn refine_text(
     code_mode: Option<bool>,
     provider: &str,
     api_key: &str,
+    model: &str,
 ) -> Result<RefinementResult, String> {
     let raw = raw_text.to_string();
     let provider = provider.to_string();
     let api_key = api_key.to_string();
+    let model = model.to_string();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        refine_text_blocking(&raw, style, style_overrides, code_mode, &provider, &api_key)
+        refine_text_blocking(&raw, style, style_overrides, code_mode, &provider, &api_key, &model)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
@@ -366,6 +384,7 @@ fn refine_text_blocking(
     code_mode: Option<bool>,
     provider: &str,
     api_key: &str,
+    model: &str,
 ) -> Result<RefinementResult, String> {
     // Build system prompt
     let mut system = SYSTEM_PROMPT.to_string();
@@ -400,7 +419,8 @@ fn refine_text_blocking(
 
     log::info!("[ai_provider] refine_text via provider={}", provider);
 
-    let content = call_provider_blocking(provider, api_key, &system, raw_text, 0.3)?;
+    let resolved = resolve_model(provider, model);
+    let content = call_provider_blocking(provider, api_key, &system, raw_text, 0.3, resolved)?;
     let cleaned = strip_markdown_fences(&content);
 
     match serde_json::from_str::<serde_json::Value>(&cleaned) {
@@ -436,9 +456,11 @@ pub async fn send_command(
     code_mode: Option<bool>,
     provider: &str,
     api_key: &str,
+    model: &str,
 ) -> Result<CommandResult, String> {
     let provider = provider.to_string();
     let api_key = api_key.to_string();
+    let model = model.to_string();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         send_command_blocking(
@@ -449,6 +471,7 @@ pub async fn send_command(
             code_mode,
             &provider,
             &api_key,
+            &model,
         )
     })
     .await
@@ -465,12 +488,15 @@ fn send_command_blocking(
     code_mode: Option<bool>,
     provider: &str,
     api_key: &str,
+    model: &str,
 ) -> Result<CommandResult, String> {
     log::info!("[ai_provider] send_command: classifying intent via provider={}", provider);
 
+    let resolved_model = resolve_model(provider, model);
+
     // Step 1: Classify intent
     let classify_response =
-        call_provider_blocking(provider, api_key, CLASSIFY_SYSTEM_PROMPT, raw_text, 0.1)?;
+        call_provider_blocking(provider, api_key, CLASSIFY_SYSTEM_PROMPT, raw_text, 0.1, resolved_model)?;
     let classify_cleaned = strip_markdown_fences(&classify_response);
 
     let classified: ClassifiedIntent = serde_json::from_str(&classify_cleaned)
@@ -488,6 +514,7 @@ fn send_command_blocking(
                 code_mode,
                 provider,
                 api_key,
+                model,
             )?;
             let mut params = HashMap::new();
             if let Some(cat) = &refined.category {
@@ -518,7 +545,7 @@ fn send_command_blocking(
                 let user_prompt = build_action_user_prompt(&action.intent, &input_text, &action.params);
 
                 current_text =
-                    call_provider_blocking(provider, api_key, sys_prompt, &user_prompt, 0.5)?;
+                    call_provider_blocking(provider, api_key, sys_prompt, &user_prompt, 0.5, resolved_model)?;
             }
 
             let last_action = actions.last().map(|a| a.intent.as_str()).unwrap_or("chain");
@@ -541,7 +568,7 @@ fn send_command_blocking(
             let sys_prompt = action_prompt(intent);
             let user_prompt = build_action_user_prompt(intent, &input_text, &classified.params);
 
-            let result = call_provider_blocking(provider, api_key, sys_prompt, &user_prompt, 0.5)?;
+            let result = call_provider_blocking(provider, api_key, sys_prompt, &user_prompt, 0.5, resolved_model)?;
 
             let params: Option<HashMap<String, String>> = classified.params.clone();
 
@@ -590,13 +617,15 @@ pub async fn send_conversation_turn(
     user_message: String,
     provider: &str,
     api_key: &str,
+    model: &str,
     on_chunk: impl Fn(String) + Send + 'static,
 ) -> Result<ConversationResponse, String> {
     let provider = provider.to_string();
     let api_key = api_key.to_string();
+    let model = model.to_string();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        send_conversation_turn_blocking(&history, &user_message, &provider, &api_key, on_chunk)
+        send_conversation_turn_blocking(&history, &user_message, &provider, &api_key, &model, on_chunk)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
@@ -609,6 +638,7 @@ fn send_conversation_turn_blocking(
     user_message: &str,
     provider: &str,
     api_key: &str,
+    model: &str,
     on_chunk: impl Fn(String),
 ) -> Result<ConversationResponse, String> {
     log::info!("[ai_provider] send_conversation_turn via provider={}", provider);
@@ -620,12 +650,14 @@ fn send_conversation_turn_blocking(
         content: user_message.to_string(),
     });
 
+    let resolved = resolve_model(provider, model);
     let content = call_provider_with_messages_blocking(
         provider,
         api_key,
         CONVERSATION_SYSTEM_PROMPT,
         &messages,
         0.7,
+        resolved,
     )?;
 
     // No streaming — call on_chunk once with full content
@@ -638,12 +670,14 @@ pub async fn summarize_conversation(
     history: Vec<ConversationTurnMsg>,
     provider: &str,
     api_key: &str,
+    model: &str,
 ) -> Result<SummarizeResponse, String> {
     let provider = provider.to_string();
     let api_key = api_key.to_string();
+    let model = model.to_string();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        summarize_conversation_blocking(&history, &provider, &api_key)
+        summarize_conversation_blocking(&history, &provider, &api_key, &model)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
@@ -655,6 +689,7 @@ fn summarize_conversation_blocking(
     history: &[ConversationTurnMsg],
     provider: &str,
     api_key: &str,
+    model: &str,
 ) -> Result<SummarizeResponse, String> {
     log::info!("[ai_provider] summarize_conversation via provider={}", provider);
 
@@ -668,12 +703,14 @@ fn summarize_conversation_blocking(
         .collect::<Vec<_>>()
         .join("\n");
 
+    let resolved = resolve_model(provider, model);
     let content = call_provider_blocking(
         provider,
         api_key,
         SUMMARIZE_SYSTEM_PROMPT,
         &conversation_text,
         0.3,
+        resolved,
     )?;
 
     let cleaned = strip_markdown_fences(&content);
