@@ -1,4 +1,4 @@
-import { Search, Trash2, X, Settings, ArrowUpDown, HelpCircle } from "lucide-react";
+import { Search, Trash2, X, Settings, ArrowUpDown, HelpCircle, Filter, Check } from "lucide-react";
 import { HistoryCard } from "./HistoryCard";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -489,7 +489,8 @@ export function MainWindow({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [actionFilter, setActionFilter] = useState<string | null>(null);
+  const [actionFilters, setActionFilters] = useState<Set<string>>(new Set());
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const hoveredRef = useRef<string | null>(null);
@@ -538,46 +539,49 @@ export function MainWindow({
   const availableActions = useMemo(() => {
     const actions = new Set<string>();
     historyItems.forEach(item => {
-      if (item.action && item.action !== "dictation") {
-        actions.add(item.action);
-      }
+      actions.add(item.action || "dictation");
     });
     return Array.from(actions).sort();
   }, [historyItems]);
 
   const filteredItems = useMemo(() => {
+    // Pre-filter by action type if filters are active
+    const source = actionFilters.size > 0
+      ? historyItems.filter(item => actionFilters.has(item.action || "dictation"))
+      : historyItems;
+
     let items: HistoryItem[];
     const query = searchQuery.trim();
     if (query && query.length >= 2) {
       try {
-        items = fuse.search(query).map((r) => r.item);
+        // Build a temporary Fuse instance on filtered source
+        const filteredFuse = actionFilters.size > 0
+          ? new Fuse(source, { keys: [{ name: "title", weight: 0.4 }, { name: "refinedText", weight: 0.3 }, { name: "rawTranscript", weight: 0.15 }, { name: "category", weight: 0.15 }], threshold: 0.4, ignoreLocation: true, includeScore: true, minMatchCharLength: 2 })
+          : fuse;
+        items = filteredFuse.search(query).map((r) => r.item);
       } catch {
         const q = query.toLowerCase();
-        items = historyItems.filter((item) =>
+        items = source.filter((item) =>
           (item.title || "").toLowerCase().includes(q) ||
           (item.refinedText || "").toLowerCase().includes(q) ||
           (item.category || "").toLowerCase().includes(q)
         );
       }
     } else if (query && query.length === 1) {
-      // Single char — simple filter, skip Fuse.js
       const q = query.toLowerCase();
-      items = historyItems.filter((item) =>
+      items = source.filter((item) =>
         (item.title || "").toLowerCase().includes(q) ||
         (item.refinedText || "").toLowerCase().includes(q) ||
         (item.category || "").toLowerCase().includes(q)
       );
     } else {
-      items = [...historyItems];
+      items = [...source];
     }
     if (sortOrder === "oldest") {
       items = [...items].reverse();
     }
-    if (actionFilter) {
-      items = items.filter(item => item.action === actionFilter);
-    }
     return items;
-  }, [searchQuery, fuse, historyItems, sortOrder, actionFilter]);
+  }, [searchQuery, fuse, historyItems, sortOrder, actionFilters]);
 
   const getVariant = (index: number, item: HistoryItem): "featured" | "compact" | "pinned" => {
     if (item.isPinned) return "pinned";
@@ -781,104 +785,160 @@ export function MainWindow({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {/* Action filter chips */}
-            {availableActions.length > 0 && (
-              <div style={{
-                position: "relative",
-                marginBottom: 2,
-              }}>
-              <div style={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-                bottom: 0,
-                width: 32,
-                background: "linear-gradient(to right, transparent, var(--yapper-bg-lighter, #f6efe9))",
-                pointerEvents: "none",
-                zIndex: 1,
-              }} />
-              <div style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "nowrap",
-                overflowX: "auto",
-                paddingRight: 24,
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-              }}>
-                <button
-                  onClick={() => setActionFilter(null)}
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: 8,
-                    border: !actionFilter ? "1px solid transparent" : "1px solid var(--yapper-border, #e5e5e5)",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                    whiteSpace: "nowrap",
-                    background: !actionFilter ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
-                    color: !actionFilter ? "#fff" : "var(--yapper-text-primary)",
-                    transition: "background 0.2s, color 0.2s, border-color 0.2s",
-                  }}
-                >
-                  All
-                </button>
-                {availableActions.map(action => (
-                  <button
-                    key={action}
-                    onClick={() => setActionFilter(actionFilter === action ? null : action)}
-                    style={{
-                      padding: "5px 12px",
-                      borderRadius: 8,
-                      border: actionFilter === action ? "1px solid transparent" : "1px solid var(--yapper-border, #e5e5e5)",
-                      fontSize: 12,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      flexShrink: 0,
-                      whiteSpace: "nowrap",
-                      background: actionFilter === action ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
-                      color: actionFilter === action ? "#fff" : "var(--yapper-text-primary)",
-                      transition: "background 0.2s, color 0.2s, border-color 0.2s",
-                    }}
-                  >
-                    {action.charAt(0).toUpperCase() + action.slice(1)}
-                  </button>
-                ))}
-              </div>
-              </div>
-            )}
-            {/* Toolbar: sort + metrics + clear */}
+            {/* Toolbar: sort + filter + clear */}
             <div style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
             }}>
-              <motion.button
-                onClick={() => setSortOrder(sortOrder === "newest" ? "oldest" : "newest")}
-                aria-label={`Sort by ${sortOrder === "newest" ? "oldest" : "newest"}`}
-                className="flex items-center gap-1.5 hover:opacity-70"
-                whileTap={{ scale: 0.95 }}
-                style={{
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "var(--yapper-text-secondary)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px 8px",
-                  borderRadius: 6,
-                  lineHeight: 1,
-                }}
-              >
-                <motion.div
-                  animate={{ rotate: sortOrder === "oldest" ? 180 : 0 }}
-                  transition={{ duration: ANIMATION.normal }}
-                  style={{ display: "flex", alignItems: "center" }}
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <motion.button
+                  onClick={() => setSortOrder(sortOrder === "newest" ? "oldest" : "newest")}
+                  aria-label={`Sort by ${sortOrder === "newest" ? "oldest" : "newest"}`}
+                  className="flex items-center gap-1.5 hover:opacity-70"
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "var(--yapper-text-secondary)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    lineHeight: 1,
+                  }}
                 >
-                  <ArrowUpDown style={{ width: 13, height: 13 }} />
-                </motion.div>
-                <span>{sortOrder === "newest" ? "Newest" : "Oldest"}</span>
-              </motion.button>
+                  <motion.div
+                    animate={{ rotate: sortOrder === "oldest" ? 180 : 0 }}
+                    transition={{ duration: ANIMATION.normal }}
+                    style={{ display: "flex", alignItems: "center" }}
+                  >
+                    <ArrowUpDown style={{ width: 13, height: 13 }} />
+                  </motion.div>
+                  <span>{sortOrder === "newest" ? "Newest" : "Oldest"}</span>
+                </motion.button>
+
+                {availableActions.length > 1 && (
+                  <div style={{ position: "relative" }}>
+                    <button
+                      onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                      onBlur={() => setTimeout(() => setShowFilterDropdown(false), 150)}
+                      className="flex items-center gap-1.5 hover:opacity-70"
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: actionFilters.size > 0 ? "var(--yapper-accent)" : "var(--yapper-text-secondary)",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        lineHeight: 1,
+                      }}
+                    >
+                      <Filter style={{ width: 13, height: 13 }} />
+                      <span>Filter{actionFilters.size > 0 ? ` (${actionFilters.size})` : ""}</span>
+                    </button>
+                    {showFilterDropdown && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "calc(100% + 4px)",
+                          left: 0,
+                          minWidth: 160,
+                          maxHeight: 200,
+                          overflowY: "auto",
+                          background: "var(--yapper-surface-lowest)",
+                          border: "1px solid var(--yapper-border, #e5e5e5)",
+                          borderRadius: 10,
+                          boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                          padding: 4,
+                          zIndex: 20,
+                          scrollbarWidth: "none",
+                        }}
+                      >
+                        {actionFilters.size > 0 && (
+                          <button
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setActionFilters(new Set());
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              width: "100%",
+                              padding: "7px 10px",
+                              border: "none",
+                              borderRadius: 6,
+                              background: "transparent",
+                              cursor: "pointer",
+                              fontSize: 12,
+                              fontWeight: 500,
+                              color: "var(--yapper-accent)",
+                              textAlign: "left",
+                            }}
+                          >
+                            Clear filters
+                          </button>
+                        )}
+                        {availableActions.map(action => {
+                          const selected = actionFilters.has(action);
+                          return (
+                            <button
+                              key={action}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setActionFilters(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(action)) {
+                                    next.delete(action);
+                                  } else {
+                                    next.add(action);
+                                  }
+                                  return next;
+                                });
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                width: "100%",
+                                padding: "7px 10px",
+                                border: "none",
+                                borderRadius: 6,
+                                background: selected ? "rgba(218,119,86,0.08)" : "transparent",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 500,
+                                color: "var(--yapper-text-primary)",
+                                textAlign: "left",
+                              }}
+                            >
+                              <div style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: 4,
+                                border: selected ? "none" : "1px solid var(--yapper-border, #ddd)",
+                                background: selected ? "#DA7756" : "transparent",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}>
+                                {selected && <Check style={{ width: 10, height: 10, color: "#fff" }} />}
+                              </div>
+                              {action.charAt(0).toUpperCase() + action.slice(1)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={onClearHistory}
                 aria-label="Clear all history"
