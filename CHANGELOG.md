@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-03-29
+
+### Added
+
+- **Platform-specific onboarding tutorial** — Windows 11 desktop/taskbar screenshots for the tutorial (macOS dock screenshots already existed); tutorial auto-selects based on platform
+- **Windows title bar in tutorial** — "pasted" step shows Windows-style minimize/maximize/close buttons on Windows, macOS traffic lights on macOS
+- **Sample data dev flag** — `YAPPER_SAMPLE_DATA=1 bun tauri dev` seeds 8 realistic history entries for development and demos
+- **Tutorial GIFs** — `tutorial-mac.gif` and `tutorial-windows.gif` added to README
+
+### Changed
+
+- **Scroll performance** — GPU-composited scroll container (`will-change: scroll-position`, `transform: translateZ(0)`), `contain: layout style paint` on history cards, removed unnecessary Framer Motion wrapper from HistoryCard root element
+- **Elastic overscroll disabled** — `overscroll-behavior: none` + `position: fixed` on html/body prevents WKWebView rubber-banding
+- **Empty state locked** — scroll disabled when history is empty (no rubber-band revealing white background)
+
 ## [0.2.1] - 2026-03-29
 
 ### Changed

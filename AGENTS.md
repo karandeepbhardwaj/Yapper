@@ -154,3 +154,5 @@ Add a `refineWith<Provider>` function in `copilot-bridge.ts`, add the API key se
 - **Bridge authentication** — random token in `~/.yapper/bridge-token`. The desktop app reads this token and includes it in WebSocket messages. The VS Code extension validates it.
 - **Atomic file writes** — all persistence uses `store.rs` which writes to a `.json.tmp` file then renames to the final path.
 - **Logging** — use `log` macros (`log::info!`, `log::error!`, etc.), never `println!`.
+- **Sample data** — `YAPPER_SAMPLE_DATA=1 bun tauri dev` seeds 8 history entries for dev/demos. Controlled via env var check in `lib.rs` setup, calls `history::seed_sample_data()`.
+- **Scroll performance** — HistoryCard root is a plain `div` (not `motion.div`). Use `contain: layout style paint` on cards. Don't wrap scroll items with unnecessary Framer Motion components.

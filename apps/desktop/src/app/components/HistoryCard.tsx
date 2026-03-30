@@ -250,8 +250,7 @@ export function HistoryCard({
   const isFeatured = variant === "featured";
 
   return (
-    <motion.div
-      animate={{ opacity: 1 }}
+    <div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
       style={{
@@ -270,6 +269,7 @@ export function HistoryCard({
         flexDirection: "column",
         position: "relative",
         overflow: "hidden",
+        contain: "layout style paint",
         transition: "background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease",
       }}
     >
@@ -662,6 +662,6 @@ export function HistoryCard({
           )}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </div>
   );
 }

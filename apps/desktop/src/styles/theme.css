@@ -85,8 +85,13 @@
     user-select: none;
   }
 
-  body {
+  html, body {
     @apply bg-background text-foreground;
+    overflow: hidden;
+    overscroll-behavior: none;
+    height: 100%;
+    position: fixed;
+    width: 100%;
   }
 
   input, textarea {

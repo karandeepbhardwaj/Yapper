@@ -31,6 +31,11 @@
 - [x] Landing page with DM Serif Display heading + breathing dots
 - [x] Widget dock-aware positioning (full-screen detection, main thread execution)
 - [x] Empty-state hotkey message updates dynamically via `hotkey-changed` event
+- [x] Platform-specific onboarding tutorial (macOS dock / Windows 11 taskbar screenshots)
+- [x] Sample data dev flag (`YAPPER_SAMPLE_DATA=1`)
+- [x] GPU-composited scroll performance (will-change, contain, plain div cards)
+- [x] Elastic overscroll disabled (WKWebView rubber-banding fix)
+- [x] Tutorial GIFs in README (macOS + Windows)
 - [x] Refinement-skipped event for user feedback
 - [x] Full code review — all 22 REVIEW.md findings addressed
 
