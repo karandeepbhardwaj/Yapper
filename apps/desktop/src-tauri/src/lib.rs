@@ -6,6 +6,7 @@ pub mod store;
 mod hotkey;
 mod stt;
 mod bridge;
+mod ai_provider;
 mod autopaste;
 mod history;
 mod widget;
