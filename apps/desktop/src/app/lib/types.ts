@@ -22,6 +22,8 @@ export interface HistoryItem {
   entryType?: "transcription" | "conversation";
   conversation?: ConversationData;
   durationSeconds?: number;
+  action?: string;
+  actionParams?: Record<string, string>;
 }
 
 export interface ConversationSummary {

@@ -8,12 +8,12 @@ import { invoke } from "@tauri-apps/api/core";
 type WidgetState = "idle" | "listening" | "processing" | "conversation";
 
 // Pill sizes for each state
-const COLLAPSED_W = 50;
-const COLLAPSED_H = 7;
-const HOVER_W = 52;
-const HOVER_H = 24;
-const RECORDING_W = 160;
-const RECORDING_H = 32;
+const COLLAPSED_W = 60;
+const COLLAPSED_H = 8;
+const HOVER_W = 64;
+const HOVER_H = 48;
+const RECORDING_W = 200;
+const RECORDING_H = 42;
 
 const PILL_EASE = [0.34, 1.1, 0.64, 1] as const;
 
@@ -22,6 +22,7 @@ function WidgetApp() {
   const [isHovered, setIsHovered] = useState(false);
   const [hotkey, setHotkey] = useState("fn");
   const [convoHotkey, setConvoHotkey] = useState("Cmd+Shift+Y");
+  const [actionLabel, setActionLabel] = useState<string | null>(null);
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
@@ -41,7 +42,25 @@ function WidgetApp() {
     const unsub = listen<string>("stt-state-changed", (event) => {
       setState(event.payload as WidgetState);
     });
-    return () => { unsub.then((fn) => fn()); };
+    const unsubAction = listen<{action?: string}>("refinement-complete", (event) => {
+      const action = event.payload?.action;
+      if (action && action !== "dictation") {
+        const labels: Record<string, string> = {
+          translate: "Translating",
+          summarize: "Summarizing",
+          draft: "Drafting",
+          explain: "Explaining",
+          chain: "Processing",
+          unknown: "Processing",
+        };
+        setActionLabel(labels[action] || "Processing");
+        setTimeout(() => setActionLabel(null), 2000);
+      }
+    });
+    return () => {
+      unsub.then((fn) => fn());
+      unsubAction.then((fn) => fn());
+    };
   }, []);
 
   const handlePillClick = async (e: React.MouseEvent) => {
@@ -116,19 +135,21 @@ function WidgetApp() {
             exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.15 }}
             style={{
-              marginBottom: 6,
-              padding: "6px 12px",
-              borderRadius: 10,
+              marginBottom: 8,
+              padding: "10px 20px",
+              borderRadius: 24,
               background: "#2a231d",
               border: "1px solid rgba(255,255,255,0.06)",
               boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-              fontSize: 11,
-              color: "rgba(255,255,255,0.75)",
+              fontSize: 15,
+              fontWeight: 400,
+              letterSpacing: "0.01em",
+              color: "rgba(255,255,255,0.7)",
               whiteSpace: "nowrap",
               pointerEvents: "auto",
             }}
           >
-            press <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(hotkey)}</span> to yapp
+            press <span style={{ color: "#DA7756", fontWeight: 700 }}>{formatHotkey(hotkey)}</span> to yapp
           </motion.div>
         )}
       </AnimatePresence>
@@ -171,7 +192,7 @@ function WidgetApp() {
               transition={{ duration: 0.15 }}
               style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
             >
-              <Mic style={{ width: 14, height: 14, color: "#DA7756" }} />
+              <Mic style={{ width: 22, height: 22, color: "#DA7756" }} />
             </motion.div>
           )}
           {isListening && (
@@ -184,87 +205,33 @@ function WidgetApp() {
               style={{
                 width: "100%",
                 height: "100%",
-                display: "flex",
-                alignItems: "center",
-                padding: "0 6px",
+                position: "relative",
               }}
             >
-              {/* Discard (X) button */}
-              <motion.button
-                onClick={handleDiscard}
-                aria-label="Cancel recording"
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.85 }}
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  background: "rgba(255,255,255,0.08)",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  color: "rgba(255,255,255,0.5)",
-                  fontSize: 12,
-                  fontWeight: 400,
-                  lineHeight: 1,
-                  zIndex: 2,
-                }}
-              >
-                ✕
-              </motion.button>
-
-              {/* Aurora waveform center */}
-              <div style={{
-                flex: 1,
-                height: "100%",
-                position: "relative",
-                overflow: "hidden",
-                margin: "0 4px",
-              }}>
-                {/* Ambient glow pulse */}
-                <motion.div
-                  animate={{ opacity: [0.3, 0.6, 0.3] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    background: "radial-gradient(ellipse at center, rgba(218,119,86,0.15) 0%, transparent 70%)",
-                  }}
-                />
-
-                {/* Flowing aurora ribbons using CSS animation for smoothness */}
-                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <div
-                      key={`ribbon-${i}`}
-                      style={{
-                        position: "absolute",
-                        width: "120%",
-                        height: [14, 10, 18, 8, 12][i],
-                        left: "-10%",
-                        top: `${28 + [0, 8, -4, 12, 4][i]}%`,
-                        background: `linear-gradient(90deg,
-                          transparent 0%,
-                          rgba(218,119,86,${[0.4, 0.2, 0.35, 0.15, 0.25][i]}) 20%,
-                          rgba(245,201,168,${[0.5, 0.3, 0.4, 0.2, 0.35][i]}) 40%,
-                          rgba(218,119,86,${[0.45, 0.25, 0.5, 0.2, 0.3][i]}) 60%,
-                          rgba(232,168,124,${[0.3, 0.15, 0.25, 0.1, 0.2][i]}) 80%,
-                          transparent 100%
-                        )`,
-                        borderRadius: "50%",
-                        filter: `blur(${[3, 5, 2, 6, 4][i]}px)`,
-                        animation: `auroraRibbon${i} ${[3, 4.5, 2.5, 5, 3.5][i]}s ease-in-out infinite`,
-                      }}
-                    />
-                  ))}
-                </div>
-
-                {/* Sparkle particles */}
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <motion.div
+              {/* Wave background — full pill width, behind buttons */}
+              <div style={{ position: "absolute", inset: 0 }}>
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={`wave-${i}`}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: `linear-gradient(90deg,
+                        transparent 0%,
+                        rgba(218,119,86,${[0.35, 0.2, 0.15][i]}) 25%,
+                        rgba(245,201,168,${[0.25, 0.15, 0.1][i]}) 50%,
+                        rgba(218,119,86,${[0.35, 0.2, 0.15][i]}) 75%,
+                        transparent 100%
+                      )`,
+                      backgroundSize: "200% 100%",
+                      animation: `waveFlow ${[2.5, 3.5, 4.5][i]}s ease-in-out infinite`,
+                      animationDelay: `${[0, -1.2, -2.4][i]}s`,
+                    }}
+                  />
+                ))}
+                {/* Sparkle particles riding the waves */}
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div
                     key={`sp-${i}`}
                     style={{
                       position: "absolute",
@@ -272,46 +239,56 @@ function WidgetApp() {
                       height: i % 2 === 0 ? 2.5 : 1.5,
                       borderRadius: "50%",
                       background: "#fff",
-                      top: `${20 + Math.sin(i * 1.1) * 30}%`,
-                      left: `${8 + i * 16}%`,
+                      top: `${25 + Math.sin(i * 1.3) * 25}%`,
                       pointerEvents: "none",
-                    }}
-                    animate={{
-                      opacity: [0, 0.8, 0],
-                      scale: [0.2, 1, 0.2],
-                    }}
-                    transition={{
-                      duration: 1.5 + (i % 3) * 0.5,
-                      repeat: Infinity,
-                      delay: i * 0.4,
-                      ease: "easeInOut",
+                      animation: `sparkleFlow ${1.8 + i * 0.3}s ease-in-out infinite`,
+                      animationDelay: `${i * 0.35}s`,
+                      opacity: 0,
                     }}
                   />
                 ))}
               </div>
 
-              {/* Stop button */}
-              <motion.button
-                onClick={handleStop}
-                aria-label="Stop recording"
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.85 }}
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  background: "#DA7756",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  zIndex: 2,
-                }}
-              >
-                <div style={{ width: 7, height: 7, borderRadius: 1.5, background: "#fff" }} />
-              </motion.button>
+              {/* Buttons — floating on top of aurora */}
+              <div style={{
+                position: "relative", zIndex: 2,
+                width: "100%", height: "100%",
+                display: "flex", alignItems: "center", padding: "0 6px",
+              }}>
+                {/* Discard (X) button */}
+                <motion.button
+                  onClick={handleDiscard}
+                  aria-label="Cancel recording"
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.85 }}
+                  style={{
+                    width: 28, height: 28, borderRadius: 14,
+                    background: "rgba(0,0,0,0.35)",
+                    border: "none", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0, color: "rgba(255,255,255,0.45)",
+                    fontSize: 14, fontWeight: 400, lineHeight: 1,
+                  }}
+                >
+                  ✕
+                </motion.button>
+                <div style={{ flex: 1 }} />
+                {/* Stop button */}
+                <motion.button
+                  onClick={handleStop}
+                  aria-label="Stop recording"
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.85 }}
+                  style={{
+                    width: 28, height: 28, borderRadius: 14,
+                    background: "#DA7756", border: "none", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <div style={{ width: 9, height: 9, borderRadius: 2, background: "#fff" }} />
+                </motion.button>
+              </div>
             </motion.div>
           )}
           {isProcessing && (
@@ -373,6 +350,32 @@ function WidgetApp() {
                   }}
                 />
               ))}
+              {/* Action label overlay */}
+              {actionLabel && (
+                <div style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 2,
+                }}>
+                  <span
+                    style={{
+                      color: "white",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase" as const,
+                      textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                      position: "relative",
+                      zIndex: 3,
+                    }}
+                  >
+                    {actionLabel}...
+                  </span>
+                </div>
+              )}
             </motion.div>
           )}
           {isConversation && (
@@ -411,32 +414,15 @@ function WidgetApp() {
         </AnimatePresence>
       </motion.div>
       <style>{`
-        @keyframes auroraRibbon0 {
-          0%, 100% { transform: translateX(0%) scaleY(1); opacity: 0.7; }
-          25% { transform: translateX(8%) scaleY(1.3); opacity: 1; }
-          50% { transform: translateX(-5%) scaleY(0.8); opacity: 0.6; }
-          75% { transform: translateX(10%) scaleY(1.1); opacity: 0.9; }
+        @keyframes waveFlow {
+          0% { background-position: 200% 50%; }
+          100% { background-position: -200% 50%; }
         }
-        @keyframes auroraRibbon1 {
-          0%, 100% { transform: translateX(5%) scaleY(1); opacity: 0.5; }
-          30% { transform: translateX(-8%) scaleY(1.4); opacity: 0.8; }
-          60% { transform: translateX(12%) scaleY(0.7); opacity: 0.4; }
-        }
-        @keyframes auroraRibbon2 {
-          0%, 100% { transform: translateX(-3%) scaleY(1.1); opacity: 0.8; }
-          35% { transform: translateX(10%) scaleY(0.6); opacity: 0.5; }
-          65% { transform: translateX(-7%) scaleY(1.5); opacity: 1; }
-        }
-        @keyframes auroraRibbon3 {
-          0%, 100% { transform: translateX(6%) scaleY(0.9); opacity: 0.4; }
-          40% { transform: translateX(-10%) scaleY(1.3); opacity: 0.7; }
-          70% { transform: translateX(4%) scaleY(0.8); opacity: 0.3; }
-        }
-        @keyframes auroraRibbon4 {
-          0%, 100% { transform: translateX(-4%) scaleY(1); opacity: 0.6; }
-          30% { transform: translateX(7%) scaleY(1.2); opacity: 0.9; }
-          55% { transform: translateX(-6%) scaleY(0.7); opacity: 0.4; }
-          80% { transform: translateX(9%) scaleY(1.4); opacity: 0.8; }
+        @keyframes sparkleFlow {
+          0% { left: 5%; opacity: 0; transform: scale(0.3); }
+          20% { opacity: 0.8; transform: scale(1); }
+          80% { opacity: 0.6; transform: scale(0.8); }
+          100% { left: 90%; opacity: 0; transform: scale(0.2); }
         }
       `}</style>
     </div>
