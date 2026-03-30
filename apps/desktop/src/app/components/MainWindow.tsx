@@ -1016,7 +1016,6 @@ export function MainWindow({
             alignItems: "flex-end",
             justifyContent: "center",
             paddingBottom: 8,
-            gap: 8,
             background: bridgeConnected
               ? (isDarkMode
                 ? "linear-gradient(to bottom, transparent, rgba(52,199,89,0.06))"
@@ -1027,6 +1026,7 @@ export function MainWindow({
             userSelect: "none",
           }}
         >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{
             width: 6,
             height: 6,
@@ -1060,6 +1060,7 @@ export function MainWindow({
               Open VS Code
             </button>
           )}
+          </div>
         </div>
       )}
     </div>
