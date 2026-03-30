@@ -200,11 +200,11 @@ async fn process_recording_result(
                         reason: String,
                     }
                     let reason = if e.contains("cooldown") {
-                        "AI temporarily unavailable — try again shortly"
+                        "AI temporarily unavailable, try again shortly"
                     } else if e.contains("not available") || e.contains("Connection refused") {
-                        "VS Code not connected — open VS Code to enable AI"
+                        "VS Code not connected. Open VS Code to enable AI"
                     } else {
-                        "No AI provider available — check VS Code extension"
+                        "No AI provider available. Check VS Code extension"
                     };
                     app.emit("refinement-skipped", RefinementSkipped {
                         reason: reason.to_string(),
