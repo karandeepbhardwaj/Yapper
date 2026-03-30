@@ -301,6 +301,67 @@ function PillButton({
   );
 }
 
+function SegmentedControl({
+  options,
+  value,
+  onChange,
+}: {
+  options: { label: string; value: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const selectedIndex = options.findIndex((o) => o.value === value);
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        position: "relative",
+        borderRadius: 10,
+        background: "var(--yapper-surface-low, #f0f0f0)",
+        border: "1px solid var(--yapper-border, #e5e5e5)",
+        padding: 2,
+      }}
+    >
+      <motion.div
+        layout
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        style={{
+          position: "absolute",
+          top: 2,
+          bottom: 2,
+          left: `calc(${(selectedIndex / options.length) * 100}% + 2px)`,
+          width: `calc(${100 / options.length}% - 4px)`,
+          borderRadius: 8,
+          background: "#DA7756",
+          zIndex: 0,
+        }}
+      />
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          style={{
+            position: "relative",
+            zIndex: 1,
+            padding: "6px 16px",
+            borderRadius: 8,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+            color: opt.value === value ? "#fff" : "var(--yapper-text-primary)",
+            transition: "color 0.2s",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function StyleDropdown({
   value,
   onChange,
@@ -699,24 +760,14 @@ export function SettingsView({
           <div style={{ height: 1, background: "var(--yapper-border, #eee)", margin: "2px 0" }} />
 
           <SettingRow label="Recording mode" description="How the hotkey triggers recording" hint="Press: tap once to start, tap again to stop. Hold: recording stops when you release the key.">
-            <div style={{ display: "flex", gap: 4 }}>
-              <PillButton
-                label="Press"
-                selected={settings.recording_mode !== "hold"}
-                onClick={() => {
-                  invoke("change_recording_mode", { mode: "toggle" }).catch(e => console.error("Failed to change recording mode:", e));
-                  update({ recording_mode: "toggle" });
-                }}
-              />
-              <PillButton
-                label="Hold"
-                selected={settings.recording_mode === "hold"}
-                onClick={() => {
-                  invoke("change_recording_mode", { mode: "hold" }).catch(e => console.error("Failed to change recording mode:", e));
-                  update({ recording_mode: "hold" });
-                }}
-              />
-            </div>
+            <SegmentedControl
+              options={[{ label: "Press", value: "toggle" }, { label: "Hold", value: "hold" }]}
+              value={settings.recording_mode === "hold" ? "hold" : "toggle"}
+              onChange={(v) => {
+                invoke("change_recording_mode", { mode: v }).catch(e => console.error("Failed to change recording mode:", e));
+                update({ recording_mode: v });
+              }}
+            />
           </SettingRow>
 
           {!isMac && (
@@ -724,18 +775,11 @@ export function SettingsView({
               label="STT Engine"
               description="Classic uses system speech; Modern uses enhanced recognition"
             >
-              <div style={{ display: "flex", gap: 6 }}>
-                <PillButton
-                  label="Classic"
-                  selected={settings.stt_engine === "classic"}
-                  onClick={() => update({ stt_engine: "classic" })}
-                />
-                <PillButton
-                  label="Modern"
-                  selected={settings.stt_engine === "modern"}
-                  onClick={() => update({ stt_engine: "modern" })}
-                />
-              </div>
+              <SegmentedControl
+                options={[{ label: "Classic", value: "classic" }, { label: "Modern", value: "modern" }]}
+                value={settings.stt_engine}
+                onChange={(v) => update({ stt_engine: v })}
+              />
             </SettingRow>
           )}
 
@@ -746,18 +790,11 @@ export function SettingsView({
           <SectionHeader>AI Provider</SectionHeader>
 
           <SettingRow label="Mode" description="How Yapper calls the AI" hint="VS Code: uses GitHub Copilot through the VS Code extension. API Key: calls Groq or Anthropic directly, no VS Code needed.">
-            <div style={{ display: "flex", gap: 4 }}>
-              <PillButton
-                label="VS Code"
-                selected={settings.ai_provider_mode === "vscode"}
-                onClick={() => update({ ai_provider_mode: "vscode" })}
-              />
-              <PillButton
-                label="API Key"
-                selected={settings.ai_provider_mode === "apikey"}
-                onClick={() => update({ ai_provider_mode: "apikey" })}
-              />
-            </div>
+            <SegmentedControl
+              options={[{ label: "VS Code", value: "vscode" }, { label: "API Key", value: "apikey" }]}
+              value={settings.ai_provider_mode}
+              onChange={(v) => update({ ai_provider_mode: v })}
+            />
           </SettingRow>
 
           {settings.ai_provider_mode === "vscode" && (
@@ -807,18 +844,11 @@ export function SettingsView({
           {settings.ai_provider_mode === "apikey" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <SettingRow label="Provider">
-                <div style={{ display: "flex", gap: 4 }}>
-                  <PillButton
-                    label="Groq"
-                    selected={settings.ai_provider === "groq"}
-                    onClick={() => update({ ai_provider: "groq" })}
-                  />
-                  <PillButton
-                    label="Anthropic"
-                    selected={settings.ai_provider === "anthropic"}
-                    onClick={() => update({ ai_provider: "anthropic" })}
-                  />
-                </div>
+                <SegmentedControl
+                  options={[{ label: "Groq", value: "groq" }, { label: "Anthropic", value: "anthropic" }]}
+                  value={settings.ai_provider || "groq"}
+                  onChange={(v) => update({ ai_provider: v })}
+                />
               </SettingRow>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
