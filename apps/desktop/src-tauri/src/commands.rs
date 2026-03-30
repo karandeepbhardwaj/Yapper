@@ -32,6 +32,10 @@ pub struct AppSettings {
     pub ai_provider: String,          // "groq" | "anthropic"
     #[serde(default)]
     pub ai_api_key: String,           // the actual key (decrypted in memory)
+    #[serde(default)]
+    pub vscode_model: String,
+    #[serde(default)]
+    pub ai_model: String,
     #[serde(default = "default_theme")]
     pub theme: String,                // "light" | "dark" | "system"
 }
@@ -184,6 +188,8 @@ impl Default for AppSettings {
             ai_provider_mode: "vscode".to_string(),
             ai_provider: String::new(),
             ai_api_key: String::new(),
+            vscode_model: String::new(),
+            ai_model: String::new(),
             theme: "system".to_string(),
         }
     }
@@ -303,6 +309,7 @@ async fn process_recording_result(
             Some(settings.default_style.clone()),
             if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
             if settings.code_mode { Some(true) } else { None },
+            if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
         ).await {
             Ok(cmd) => {
                 let (cat, ttl) = if cmd.action == "dictation" {
@@ -322,6 +329,7 @@ async fn process_recording_result(
                     Some(settings.default_style.clone()),
                     if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
                     if settings.code_mode { Some(true) } else { None },
+                    if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
                 ).await {
                     Ok(r) => (r.refined_text, r.category, r.title, None, None),
                     Err(e) => {
@@ -717,6 +725,11 @@ pub async fn change_conversation_hotkey(app: tauri::AppHandle, hotkey: String) -
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())?;
     app.emit("hotkey-changed", settings.hotkey).ok();
     Ok(())
+}
+
+#[tauri::command]
+pub async fn list_bridge_models() -> Result<Vec<bridge::BridgeModelInfo>, String> {
+    bridge::list_models().await
 }
 
 #[tauri::command]

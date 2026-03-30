@@ -126,6 +126,7 @@ pub async fn send_conversation_turn(
                     content: chunk,
                 }).ok();
             },
+            if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
         ).await?
     };
 
@@ -192,7 +193,10 @@ pub async fn end_conversation(app: tauri::AppHandle) -> Result<ConversationSumma
             &settings.ai_api_key,
         ).await
     } else {
-        bridge::summarize_conversation(history).await
+        bridge::summarize_conversation(
+            history,
+            if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
+        ).await
     };
 
     let (summary_text, title, key_points) = match summary_result {

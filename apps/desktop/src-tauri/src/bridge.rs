@@ -44,6 +44,8 @@ struct RefineRequest {
     style_overrides: Option<std::collections::HashMap<String, String>>,
     #[serde(rename = "codeMode", skip_serializing_if = "Option::is_none")]
     code_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +58,8 @@ pub struct ConversationRequest {
     history: Vec<ConversationTurnMsg>,
     #[serde(rename = "userMessage")]
     user_message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -64,6 +68,8 @@ pub struct SummarizeRequest {
     msg_type: String,
     id: String,
     history: Vec<ConversationTurnMsg>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -79,6 +85,8 @@ struct CommandRequest {
     style_overrides: Option<HashMap<String, String>>,
     #[serde(rename = "codeMode", skip_serializing_if = "Option::is_none")]
     code_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -120,11 +128,12 @@ pub async fn refine_text(
     style: Option<String>,
     style_overrides: Option<std::collections::HashMap<String, String>>,
     code_mode: Option<bool>,
+    model: Option<String>,
 ) -> Result<RefinementResult, String> {
     let raw = raw_text.to_string();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        refine_text_blocking(&raw, style, style_overrides, code_mode)
+        refine_text_blocking(&raw, style, style_overrides, code_mode, model)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
@@ -137,6 +146,7 @@ fn refine_text_blocking(
     style: Option<String>,
     style_overrides: Option<std::collections::HashMap<String, String>>,
     code_mode: Option<bool>,
+    model: Option<String>,
 ) -> Result<RefinementResult, String> {
     let mut socket = open_bridge_socket()?;
 
@@ -147,6 +157,7 @@ fn refine_text_blocking(
         style,
         style_overrides,
         code_mode,
+        model,
     };
 
     let request_json = serde_json::to_string(&request).map_err(|e| e.to_string())?;
@@ -187,7 +198,9 @@ fn refine_text_blocking(
                     _ => {}
                 }
             }
-            Message::Close(_) => break,
+            Message::Close(_) => {
+                return Err("Bridge closed connection before completing refinement".to_string());
+            }
             _ => {}
         }
     }
@@ -228,9 +241,10 @@ pub async fn send_conversation_turn(
     history: Vec<ConversationTurnMsg>,
     user_message: String,
     on_chunk: impl Fn(String) + Send + 'static,
+    model: Option<String>,
 ) -> Result<ConversationResponse, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
-        send_conversation_turn_blocking(&history, &user_message, on_chunk)
+        send_conversation_turn_blocking(&history, &user_message, on_chunk, model)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
@@ -242,6 +256,7 @@ fn send_conversation_turn_blocking(
     history: &[ConversationTurnMsg],
     user_message: &str,
     on_chunk: impl Fn(String),
+    model: Option<String>,
 ) -> Result<ConversationResponse, String> {
     let mut socket = open_bridge_socket()?;
 
@@ -251,6 +266,7 @@ fn send_conversation_turn_blocking(
         turn_id: crate::store::uuid_simple(),
         history: history.to_vec(),
         user_message: user_message.to_string(),
+        model,
     };
 
     let request_json = serde_json::to_string(&request).map_err(|e| e.to_string())?;
@@ -306,9 +322,10 @@ fn send_conversation_turn_blocking(
 /// Send a summarize request to the bridge.
 pub async fn summarize_conversation(
     history: Vec<ConversationTurnMsg>,
+    model: Option<String>,
 ) -> Result<SummarizeResponse, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
-        summarize_conversation_blocking(&history)
+        summarize_conversation_blocking(&history, model)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
@@ -318,6 +335,7 @@ pub async fn summarize_conversation(
 
 fn summarize_conversation_blocking(
     history: &[ConversationTurnMsg],
+    model: Option<String>,
 ) -> Result<SummarizeResponse, String> {
     let mut socket = open_bridge_socket()?;
 
@@ -325,6 +343,7 @@ fn summarize_conversation_blocking(
         msg_type: "summarize".to_string(),
         id: crate::store::uuid_simple(),
         history: history.to_vec(),
+        model,
     };
 
     let request_json = serde_json::to_string(&request).map_err(|e| e.to_string())?;
@@ -370,9 +389,10 @@ pub async fn send_command(
     style: Option<String>,
     style_overrides: Option<HashMap<String, String>>,
     code_mode: Option<bool>,
+    model: Option<String>,
 ) -> Result<CommandResult, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
-        send_command_blocking(&raw_text, clipboard.as_deref(), style.as_deref(), style_overrides, code_mode)
+        send_command_blocking(&raw_text, clipboard.as_deref(), style.as_deref(), style_overrides, code_mode, model)
     })
     .await
     .map_err(|e| format!("Task failed: {e}"))?;
@@ -385,6 +405,7 @@ fn send_command_blocking(
     style: Option<&str>,
     style_overrides: Option<HashMap<String, String>>,
     code_mode: Option<bool>,
+    model: Option<String>,
 ) -> Result<CommandResult, String> {
     let mut socket = open_bridge_socket()?;
 
@@ -396,6 +417,7 @@ fn send_command_blocking(
         style: style.map(|s| s.to_string()),
         style_overrides,
         code_mode,
+        model,
     };
 
     let json = serde_json::to_string(&request).map_err(|e| format!("Serialize error: {e}"))?;
@@ -430,6 +452,63 @@ fn send_command_blocking(
                         return Err(resp.error.unwrap_or_else(|| "Unknown bridge error".to_string()));
                     }
                     _ => continue,
+                }
+            }
+            tungstenite::Message::Close(_) => {
+                return Err("Bridge closed connection".to_string());
+            }
+            _ => continue,
+        }
+    }
+}
+
+// --- Model listing ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeModelInfo {
+    pub id: String,
+    pub name: String,
+    pub vendor: String,
+    pub family: String,
+}
+
+pub async fn list_models() -> Result<Vec<BridgeModelInfo>, String> {
+    let result = tauri::async_runtime::spawn_blocking(list_models_blocking)
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?;
+    result
+}
+
+fn list_models_blocking() -> Result<Vec<BridgeModelInfo>, String> {
+    let mut socket = open_bridge_socket()?;
+
+    let request = serde_json::json!({
+        "type": "list-models",
+        "id": crate::store::uuid_simple()
+    });
+
+    socket.send(tungstenite::Message::Text(request.to_string()))
+        .map_err(|e| format!("Failed to send message: {}", e))?;
+
+    loop {
+        let msg = socket.read()
+            .map_err(|e| format!("Failed to read response: {}", e))?;
+
+        match msg {
+            tungstenite::Message::Text(text) => {
+                let response: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|e| format!("Invalid response: {}", e))?;
+
+                if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
+                    return Err(error.to_string());
+                }
+
+                if response.get("type").and_then(|t| t.as_str()) == Some("models-list") {
+                    let models: Vec<BridgeModelInfo> = response.get("models")
+                        .and_then(|m| serde_json::from_value(m.clone()).ok())
+                        .unwrap_or_default();
+                    let _ = socket.close(None);
+                    return Ok(models);
                 }
             }
             tungstenite::Message::Close(_) => {

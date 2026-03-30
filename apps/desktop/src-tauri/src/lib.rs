@@ -22,6 +22,8 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    #[cfg(target_os = "macos")]
+                    stt::cleanup();
                     std::process::exit(0);
                 }
             }
@@ -34,6 +36,10 @@ pub fn run() {
                     log::error!("[Dev] Failed to seed sample data: {}", e);
                 }
             }
+
+            // Kill any orphaned recorder subprocess from a previous crash
+            #[cfg(target_os = "macos")]
+            stt::cleanup();
 
             hotkey::register(app)?;
             widget::setup(app);
@@ -108,6 +114,7 @@ pub fn run() {
             snippets::toggle_snippet_favorite,
             metrics::get_metrics,
             commands::check_bridge_status,
+            commands::list_bridge_models,
             commands::open_vscode,
             commands::test_api_key,
         ])
