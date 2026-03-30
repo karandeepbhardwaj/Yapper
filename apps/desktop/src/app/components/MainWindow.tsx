@@ -801,10 +801,10 @@ export function MainWindow({
                 <button
                   onClick={() => setActionFilter(null)}
                   style={{
-                    padding: "7px 16px",
-                    borderRadius: 10,
+                    padding: "5px 12px",
+                    borderRadius: 8,
                     border: !actionFilter ? "1px solid transparent" : "1px solid var(--yapper-border, #e5e5e5)",
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: 500,
                     cursor: "pointer",
                     background: !actionFilter ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
@@ -819,10 +819,10 @@ export function MainWindow({
                     key={action}
                     onClick={() => setActionFilter(actionFilter === action ? null : action)}
                     style={{
-                      padding: "7px 16px",
-                      borderRadius: 10,
+                      padding: "5px 12px",
+                      borderRadius: 8,
                       border: actionFilter === action ? "1px solid transparent" : "1px solid var(--yapper-border, #e5e5e5)",
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: 500,
                       cursor: "pointer",
                       background: actionFilter === action ? "#DA7756" : "var(--yapper-surface-low, #f5f5f5)",
