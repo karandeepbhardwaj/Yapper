@@ -128,9 +128,7 @@ function WidgetApp() {
               pointerEvents: "auto",
             }}
           >
-            <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(hotkey)}</span> to dictate
-            {" · "}
-            <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(convoHotkey)}</span> to yapp
+            press <span style={{ color: "#DA7756", fontWeight: 600 }}>{formatHotkey(hotkey)}</span> to yapp
           </motion.div>
         )}
       </AnimatePresence>

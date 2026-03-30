@@ -6,7 +6,7 @@ A minimal, always-available voice capture tool that treats spoken words as first
 
 ## Design Principles
 
-1. **Invisible until needed** — The widget is a thin pill at the bottom of the screen. It expands on hover, records on click, and collapses when done. Zero cognitive overhead.
+1. **Invisible until needed** — The widget is a thin pill at the bottom of the screen. It expands on hover (showing "press {hotkey} to yapp"), records on click, and collapses when done. Zero cognitive overhead.
 2. **Zero egress** — The desktop app makes no external network requests. STT is on-device. AI refinement goes through the local VS Code extension bridge only.
 3. **Works everywhere** — macOS: NSPanel with `canJoinAllSpaces` appears across all Spaces. Windows: always-on-top transparent window above taskbar.
 4. **Graceful degradation** — If VS Code isn't running or no AI provider is available, raw transcripts are pasted instead. The app never blocks on missing dependencies.
@@ -45,7 +45,7 @@ A minimal, always-available voice capture tool that treats spoken words as first
 ## Pipeline
 
 ### Recording Phase
-1. User triggers recording (widget click or hotkey)
+1. User triggers recording (widget click, dictation hotkey, or Fn key). Two recording modes: "Press" (toggle — press to start, press again to stop) and "Hold" (press-and-hold — release to stop, including Fn key release on macOS)
 2. **macOS**: Rust spawns Swift subprocess with AVAudioRecorder at native sample rate, mono 16-bit PCM
 3. **Windows (Classic)**: Rust spawns PowerShell subprocess with inline C# using `System.Speech.Recognition` (SAPI5). Offline, no setup needed.
 3. **Windows (Modern)**: Rust starts `SpeechRecognizer` via `windows::Media::SpeechRecognition` (WinRT, in-process). Higher accuracy but requires "Online speech recognition" privacy setting.
@@ -58,11 +58,13 @@ A minimal, always-available voice capture tool that treats spoken words as first
 2. **Windows (Modern)**: Transcript accumulated in-process via `ResultGenerated` event handler on `ContinuousRecognitionSession` during recording.
 
 ### Refinement Phase (optional)
-1. Rust connects to WebSocket at `127.0.0.1:9147` (500ms TCP timeout)
-2. Sends `{type: "refine", id, rawText, style}` to VS Code extension
-3. Extension tries providers in order: vscode.lm -> Groq -> Gemini -> Anthropic
-4. Provider returns `{refinedText, category, title}` as JSON
-5. If bridge unavailable -> raw transcript used as fallback
+1. Rust checks circuit breaker state — if 3 consecutive failures occurred, skips bridge for 30s cooldown
+2. Reads authentication token from `~/.yapper/bridge-token`
+3. Connects to WebSocket at `127.0.0.1:9147` (500ms TCP timeout) with token
+4. Sends `{type: "refine", id, rawText, style, token}` to VS Code extension
+5. Extension tries providers in order: vscode.lm -> Groq -> Gemini -> Anthropic (Gemini uses `x-goog-api-key` header, not URL parameter)
+6. Provider returns `{refinedText, category, title}` as JSON
+7. If bridge unavailable -> emits `refinement-skipped` event, raw transcript used as fallback
 
 ### Output Phase
 1. Refined (or raw) text copied to clipboard (pbcopy on macOS, PowerShell Set-Clipboard on Windows)
@@ -95,7 +97,7 @@ State 4: Processing
 
 ## Widget Positioning
 
-**macOS**: Centered on the screen containing the mouse cursor, 4px above the dock. Uses `NSEvent.mouseLocation` + `NSScreen.screens` for multi-monitor support. Repositioned every ~480ms.
+**macOS**: Centered on the screen containing the mouse cursor, 4px above the dock (via `visibleFrame`). In full-screen mode, `currentSystemPresentationOptions` detects the dock is hidden and positions the widget at the screen bottom. Position calculation runs on the main thread (via `run_on_main_thread`) for accurate `visibleFrame` values. Repositioned every ~480ms.
 
 **Windows**: Centered in the work area of the monitor containing the cursor, 4px above the taskbar. Uses `GetCursorPos` + `MonitorFromPoint` + `GetMonitorInfoW`. Same repositioning interval.
 
@@ -134,10 +136,14 @@ State 4: Processing
 - No API keys stored in the desktop app
 - No network requests from the desktop app
 - WebSocket bridge is localhost-only (127.0.0.1, not 0.0.0.0)
+- Bridge authentication via random token written to `~/.yapper/bridge-token` (0600 permissions)
+- Circuit breaker: 3 consecutive bridge failures trigger 30s cooldown, preventing repeated connection attempts
 - Audio files are temporary (`/tmp/yapper_recording.wav`) and overwritten each recording
+- All file persistence uses atomic writes (write-to-tmp-then-rename via `store.rs`) to prevent data corruption on crash
 - History stored as JSON in app data directory
 - LLM API keys are stored in VS Code settings (extension-side only)
 - AI provider authentication is handled by the VS Code extension
+- Gemini API key sent via `x-goog-api-key` HTTP header (not URL query parameter)
 
 ## Permissions Required
 
@@ -160,7 +166,25 @@ State 4: Processing
 ```json
 {
   "hotkey": "Ctrl+Shift+.",
-  "stt_engine": "classic"
+  "stt_engine": "classic",
+  "default_style": "Professional",
+  "style_overrides": {},
+  "metrics_enabled": true,
+  "code_mode": false,
+  "recording_mode": "Press",
+  "conversation_hotkey": "Cmd+Shift+Y"
 }
 ```
-Persisted to `{app_config_dir}/settings.json`. The `stt_engine` field ("classic" or "modern") controls which Windows STT engine is used. Restored on startup.
+Persisted to `{app_config_dir}/settings.json` using atomic file writes. The `stt_engine` field ("classic" or "modern") controls which Windows STT engine is used. The `recording_mode` field ("Press" or "Hold") controls recording behavior: "Press" toggles on/off, "Hold" records while key is held (Fn key release stops recording on macOS). The `conversation_hotkey` field sets the dedicated hotkey for starting conversation mode. All fields use `#[serde(default)]` for backward compatibility. Restored on startup.
+
+## Landing Page
+
+On first launch (before onboarding is complete), a landing page is shown with the "Yapper" heading in DM Serif Display font with animated breathing dots and an isomorphic 3D "Get Started" button. Clicking "Get Started" sets `yapper-onboarded` in localStorage and transitions to the main history dashboard.
+
+## App Icon
+
+3D isomorphic orange with DM Serif Display "Y" letter. DMG installer uses a custom background with centered vertical layout.
+
+## UI Transitions
+
+iOS-style spring-based push/pop view transitions between settings, dictionary, snippets, and main views. Settings uses an iOS 26 style "< Back" button in the header instead of a floating home button.

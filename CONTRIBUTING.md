@@ -68,6 +68,7 @@ Then press **F5** in VS Code (with the extension folder open) to launch an Exten
 ### General
 
 - No `console.log` in production code (use proper logging)
+- In Rust, use `log` macros (`log::info!`, `log::error!`, etc.) instead of `println!`
 - Keep files focused -- one component/module per file
 - Write descriptive commit messages (see below)
 - Stage specific files (not `git add -A`)
@@ -87,17 +88,18 @@ apps/desktop/
     widget.tsx             — Floating pill widget (separate webview)
     styles/                — CSS tokens + dark mode
   src-tauri/src/
-    lib.rs                 — Entry point (~61 lines): plugins, command registration, STT engine restore
-    commands.rs            — All Tauri commands (~317 lines): AppSettings, recording, history, hotkey, STT engine
+    lib.rs                 — Entry point: plugins, command registration, STT engine restore
+    commands.rs            — All Tauri commands: AppSettings (hotkey, stt_engine, default_style, style_overrides, metrics_enabled, code_mode, recording_mode, conversation_hotkey), recording, history, hotkey, STT engine, change_recording_mode, change_conversation_hotkey
+    store.rs               — Generic JSON persistence: atomic file writes (write-to-tmp-then-rename), load/save/data_path, uuid_simple()
     widget/mod.rs          — Platform dispatcher
     widget/macos.rs        — NSPanel + hover/click (objc2)
     widget/windows.rs      — Win32 DPI-aware positioning + hover/click
     stt/mod.rs             — State machine (Idle/Recording/Processing) with atomic transitions
     stt/macos.rs           — Swift subprocess STT
-    stt/windows.rs         — Dual-engine STT (~453 lines): Classic (SAPI5 PowerShell) + Modern (WinRT)
-    bridge.rs              — WebSocket client to VS Code extension
-    hotkey.rs              — Global shortcut register/update + Fn key monitor (macOS)
-    history.rs             — JSON file persistence (max 100 entries)
+    stt/windows.rs         — Dual-engine STT: Classic (SAPI5 PowerShell) + Modern (WinRT)
+    bridge.rs              — WebSocket client to VS Code extension, authenticated via ~/.yapper/bridge-token, circuit breaker (3 failures → 30s cooldown)
+    hotkey.rs              — Global shortcut register/update + Fn key monitor (macOS) + conversation hotkey
+    history.rs             — JSON file persistence (max 100 entries, atomic writes via store.rs)
     autopaste.rs           — Cross-platform paste (pbcopy/osascript or PowerShell)
 
 extensions/vscode-bridge/  — VS Code extension (multi-provider LLM)

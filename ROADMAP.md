@@ -13,8 +13,28 @@
 - [x] Fn key as hotkey (macOS only) with setup tooltip
 - [x] cocoa/objc/block -> objc2/objc2-app-kit/block2 migration
 - [x] Settings persistence (hotkey + STT engine in settings.json, restored on startup)
+- [x] Conversation hotkey — dedicated `Cmd+Shift+Y` / `Ctrl+Shift+Y`, configurable in settings
+- [x] Recording modes — "Press" (toggle) and "Hold" (press-and-hold, Fn release on macOS)
+- [x] Onboarding tutorial — animated tutorial on empty state (replaces sample data)
+- [x] New app icon — 3D isomorphic orange with DM Serif Display "Y"
+- [x] DMG installer with custom background
+- [x] Bridge authentication — random token in `~/.yapper/bridge-token`
+- [x] Circuit breaker — 3 failures → 30s cooldown on bridge connection
+- [x] Atomic file writes — write-to-tmp-then-rename via shared `store.rs`
+- [x] Gemini API key moved to `x-goog-api-key` header (security fix)
+- [x] All `println!` replaced with structured `log` macros
+- [x] Snippet word boundary matching (prevents false positives)
+- [x] Dictionary trailing punctuation handling
+- [x] iOS-style spring transitions between views
+- [x] Settings back button (iOS 26 style "< Back")
+- [x] Widget tooltip simplified to "press {hotkey} to yapp"
+- [x] Landing page with DM Serif Display heading + breathing dots
+- [x] Widget dock-aware positioning (full-screen detection, main thread execution)
+- [x] Empty-state hotkey message updates dynamically via `hotkey-changed` event
+- [x] Refinement-skipped event for user feedback
+- [x] Full code review — all 22 REVIEW.md findings addressed
 
-## v0.1.0 — Polish & Stability
+## v0.3.0 — Polish & Stability
 
 - [ ] Automated test suite (Rust unit tests + Vitest for React components)
 - [ ] Code signing for macOS distribution (Developer ID + notarization)
@@ -22,10 +42,9 @@
 - [ ] Auto-update support via Tauri's built-in updater
 - [ ] Accessibility permission detection — show setup guide if not granted
 - [ ] Microphone permission retry flow (currently requires app restart)
-- [ ] Settings UI for style preference (Professional/Casual/Technical/Creative)
 - [ ] Settings UI for locale selection (SFSpeechRecognizer supports 50+ locales)
 
-## v0.2.0 — Enhanced Features
+## v0.4.0 — Enhanced Features
 
 - [ ] Audio playback — listen back to original recording from history
 - [ ] Export history as Markdown, JSON, or CSV
@@ -36,13 +55,13 @@
 - [ ] Custom refinement instructions per category
 - [ ] Tags and filtering in history dashboard
 
-## v0.3.0 — Platform Expansion
+## v0.5.0 — Platform Expansion
 
 - [ ] Linux support (PipeWire + Whisper.cpp or Vosk for offline STT)
 - [ ] Tray icon with quick-access menu
 - [ ] System notification on refinement complete
 
-## v0.4.0 — Local AI
+## v0.6.0 — Local AI
 
 - [ ] On-device refinement via local LLM (Ollama, llama.cpp, MLX)
 - [ ] Remove VS Code dependency for users without an LLM provider
@@ -52,7 +71,6 @@
 
 - [ ] App Store distribution (sandboxed, signed)
 - [ ] Microsoft Store distribution
-- [ ] Onboarding wizard (permissions, VS Code setup, test recording)
 - [ ] Documentation site
 - [ ] Plugin/extension API for custom refinement backends
 

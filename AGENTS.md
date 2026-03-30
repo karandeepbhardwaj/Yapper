@@ -64,15 +64,16 @@ STT uses runtime-compiled Swift scripts in `/tmp/`. This is intentional — it a
 
 | File | Purpose | When to Edit |
 |------|---------|-------------|
-| `src-tauri/src/lib.rs` | Entry point (~61 lines): plugins, command registration, STT engine restore | Adding new modules/commands |
-| `src-tauri/src/commands.rs` | All Tauri commands (~317 lines): AppSettings, recording, history, hotkey, STT engine, speech permission | Adding/changing commands |
-| `src-tauri/src/widget/macos.rs` | NSPanel, hover/click detection (objc2) | macOS widget behavior |
+| `src-tauri/src/lib.rs` | Entry point: plugins, command registration, STT engine restore | Adding new modules/commands |
+| `src-tauri/src/commands.rs` | All Tauri commands: AppSettings (hotkey, stt_engine, default_style, style_overrides, metrics_enabled, code_mode, recording_mode, conversation_hotkey), recording, history, hotkey, STT engine, speech permission, change_recording_mode, change_conversation_hotkey | Adding/changing commands |
+| `src-tauri/src/store.rs` | Generic JSON persistence: atomic file writes (write-to-tmp-then-rename), load/save/data_path, uuid_simple() | Persistence changes |
+| `src-tauri/src/widget/macos.rs` | NSPanel, hover/click detection (objc2), dock-aware positioning (visibleFrame + full-screen detection) | macOS widget behavior |
 | `src-tauri/src/widget/windows.rs` | Win32 positioning, hover/click polling | Windows widget behavior |
 | `src-tauri/src/stt/macos.rs` | Swift-based STT | macOS recording/transcription |
 | `src-tauri/src/stt/windows.rs` | Dual-engine: Classic (SAPI5 PowerShell) + Modern (WinRT) | Windows recording/transcription |
-| `src-tauri/src/bridge.rs` | WebSocket client to VS Code | Changing refinement protocol |
+| `src-tauri/src/bridge.rs` | WebSocket client to VS Code, authenticated via ~/.yapper/bridge-token, circuit breaker (3 failures → 30s cooldown) | Changing refinement protocol |
 | `src-tauri/src/autopaste.rs` | Cross-platform paste | Paste behavior |
-| `src-tauri/src/hotkey.rs` | Global shortcut + Fn key | Hotkey behavior |
+| `src-tauri/src/hotkey.rs` | Global shortcut + Fn key + conversation hotkey (Cmd+Shift+Y / Ctrl+Shift+Y) | Hotkey behavior |
 | `src/widget.tsx` | Floating pill UI | Widget appearance/interaction |
 | `src/app/components/MainWindow.tsx` | History dashboard | Main window layout |
 | `src/app/components/HistoryCard.tsx` | History item cards | Card design |
@@ -88,19 +89,29 @@ No automated tests yet. Manual verification:
 # 1. Start dev server
 bun dev
 
-# 2. Test recording
+# 2. Test recording (Press mode)
 #    - Click widget or press Cmd+Shift+. (macOS) / Ctrl+Shift+. (Windows)
-#    - Speak, then click stop
+#    - Speak, then click stop or press hotkey again
 #    - Verify text pastes at cursor
 
-# 3. Test with VS Code bridge
+# 3. Test recording (Hold mode)
+#    - In Settings, switch recording mode to "Hold"
+#    - Hold hotkey or Fn key → speak → release to stop
+#    - Verify text pastes at cursor
+
+# 4. Test conversation hotkey
+#    - Press Cmd+Shift+Y (macOS) / Ctrl+Shift+Y (Windows)
+#    - Verify conversation mode opens
+
+# 5. Test with VS Code bridge
 #    - Open extensions/vscode-bridge in VS Code
 #    - Press F5 to launch Extension Development Host
 #    - Record in Yapper -> verify refined text appears
 
-# 4. Test widget visibility
+# 6. Test widget visibility
 #    macOS: Open a full-screen app, verify widget appears, switch Spaces
 #    Windows: Verify widget appears above taskbar
+#    Tooltip should show "press fn to yapp"
 ```
 
 ## Common Tasks
@@ -129,3 +140,17 @@ Add a `refineWith<Provider>` function in `copilot-bridge.ts`, add the API key se
 2. Add to the event payload in `commands.rs`
 3. Add to `HistoryItem` type in `types.ts`
 4. Display in `HistoryCard.tsx`
+
+### Adding a new settings field
+1. Add to `AppSettings` struct in `commands.rs` with `#[serde(default = "default_fn")]`
+2. Add the default function in `commands.rs`
+3. Add to the settings UI in `SettingsView.tsx`
+4. If it needs a dedicated command, add a `change_*` command and register in `lib.rs`
+5. All persistence goes through atomic writes via `store.rs`
+
+### Notes
+- **Conversation hotkey** — separate from the dictation hotkey, defaults to `Cmd+Shift+Y` (macOS) / `Ctrl+Shift+Y` (Windows). Changed via `change_conversation_hotkey` command.
+- **Recording mode** — "Press" (toggle, default) or "Hold" (press-and-hold). Changed via `change_recording_mode` command. In Hold mode, Fn key release also stops recording.
+- **Bridge authentication** — random token in `~/.yapper/bridge-token`. The desktop app reads this token and includes it in WebSocket messages. The VS Code extension validates it.
+- **Atomic file writes** — all persistence uses `store.rs` which writes to a `.json.tmp` file then renames to the final path.
+- **Logging** — use `log` macros (`log::info!`, `log::error!`, etc.), never `println!`.

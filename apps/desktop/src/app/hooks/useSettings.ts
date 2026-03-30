@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { DEFAULT_SETTINGS } from "../lib/types";
 import { getSettings, changeHotkey, changeSttEngine } from "../lib/tauri-bridge";
 
@@ -15,6 +16,11 @@ export function useSettings() {
         if (s.conversation_hotkey) setConversationHotkeyState(s.conversation_hotkey);
       })
       .catch((e) => console.error("Failed to load settings:", e));
+
+    const unsub = listen<string>("hotkey-changed", (event) => {
+      if (event.payload) setHotkeyState(event.payload);
+    });
+    return () => { unsub.then((fn) => fn()); };
   }, []);
 
   const setHotkey = useCallback(async (newHotkey: string) => {

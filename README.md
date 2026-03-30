@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://github.com/karandeepbhardwaj/Yapper/actions"><img src="https://github.com/karandeepbhardwaj/Yapper/actions/workflows/build.yml/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version" /></a>
+  <a href="https://github.com/karandeepbhardwaj/Yapper/releases"><img src="https://img.shields.io/badge/version-0.2.1-blue" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform" /></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
@@ -23,19 +23,25 @@
 - **On-device speech recognition** -- macOS `SFSpeechRecognizer` (offline) / Windows dual-engine: Classic (SAPI5 offline) or Modern (WinRT, higher accuracy)
 - **AI transcript refinement** -- multi-provider support (Groq, Gemini, Claude, GitHub Copilot) via VS Code extension bridge
 - **Auto-paste** refined text at your active cursor position
-- **Conversation mode** -- back-and-forth AI chat with live transcription, session summaries saved to history
-- **Dictionary** -- user-defined text replacements applied before AI refinement (e.g., "btw" -> "by the way")
-- **Snippets** -- reusable text templates that bypass AI (e.g., "my email" -> expands to your email address)
+- **Conversation mode** -- back-and-forth AI chat with a dedicated hotkey (`Cmd+Shift+Y` / `Ctrl+Shift+Y`), session summaries saved to history
+- **Recording modes** -- "Press" (toggle, default) or "Hold" (press-and-hold to record, release to stop; Fn key release supported on macOS)
+- **Onboarding tutorial** -- animated tutorial on empty state showing widget lifecycle, email paste workflow, and history dashboard
+- **Dictionary** -- user-defined text replacements applied before AI refinement (e.g., "btw" -> "by the way"), handles trailing punctuation
+- **Snippets** -- reusable text templates that bypass AI using word boundary matching (e.g., "my email" -> expands to your email address)
 - **Style settings** -- per-category refinement tone (Professional, Casual, Technical, Creative) for Email, Messages, Work, Personal
 - **Code mode** -- auto-detects file/variable names from VS Code workspace, preserves code references in backtick formatting
 - **Metrics** -- usage tracking with streak days, word count, WPM, total recordings
-- **Floating widget** -- follows you across macOS Spaces, positioned above taskbar on Windows, click-through when not hovered
+- **Floating widget** -- follows you across macOS Spaces, positioned above dock/taskbar (dock-aware on macOS, drops to bottom in full-screen), click-through when not hovered
 - **History dashboard** with fuzzy search (Fuse.js), pin/copy/delete with animations, sort by newest/oldest
 - **Dark/light mode** with circle reveal transition animation
-- **Settings page** -- centralized configuration for hotkey, style, dictionary, snippets, metrics, code mode
-- **Customizable hotkey** -- `Cmd+Shift+.` (macOS) / `Ctrl+Shift+.` (Windows), or set your own
-- **Fn key recording** (macOS) -- use the Globe/Fn key as your trigger
+- **iOS-style transitions** -- spring-based push/pop view transitions between app views
+- **Settings page** -- centralized configuration for hotkey, conversation hotkey, recording mode, style, dictionary, snippets, metrics, code mode. iOS 26 style "< Back" navigation
+- **Customizable hotkeys** -- dictation: `Cmd+Shift+.` (macOS) / `Ctrl+Shift+.` (Windows); conversation: `Cmd+Shift+Y` / `Ctrl+Shift+Y`
+- **Fn key recording** (macOS) -- use the Globe/Fn key as your trigger; Fn release stops recording in Hold mode
 - **STT engine selection** (Windows) -- toggle between Classic (offline, no setup) and Modern (cloud-assisted, higher accuracy) with in-app permission guidance
+- **Bridge authentication** -- random token written to `~/.yapper/bridge-token` secures the WebSocket connection
+- **Circuit breaker** -- 3 consecutive bridge failures trigger 30s cooldown with automatic fallback to raw transcript
+- **Atomic file writes** -- all persistence uses write-to-tmp-then-rename to prevent data corruption
 - **Zero egress** -- the desktop app makes no external network requests
 
 ---
@@ -142,7 +148,7 @@ Build output: `apps/desktop/src-tauri/target/release/bundle/`
   |                                       extension    (auto-paste)
 ```
 
-1. **Speak** -- press `Cmd+Shift+.` / `Ctrl+Shift+.` (or click the floating widget)
+1. **Speak** -- press `Cmd+Shift+.` / `Ctrl+Shift+.` (or click the floating widget, or press `Cmd+Shift+Y` / `Ctrl+Shift+Y` for conversation mode)
 2. **Record** -- audio is captured from the microphone
 3. **Transcribe** -- native speech recognition converts speech to text on-device
 4. **Refine** -- the raw transcript is sent over a local WebSocket to the VS Code extension, which refines it with an AI model
@@ -176,19 +182,39 @@ If no API keys are set and Copilot is unavailable, raw transcripts are pasted wi
 
 ## Configuration
 
-### Global Hotkey
+### Hotkeys
 
-| Platform | Default | Customizable |
-|----------|---------|-------------|
-| macOS | `Cmd+Shift+.` | Yes -- click the hotkey badge in the title bar |
-| macOS | `Fn` key | Yes -- use the "use fn" button |
-| Windows | `Ctrl+Shift+.` | Yes -- click the hotkey badge in the title bar |
+| Function | macOS Default | Windows Default | Customizable |
+|----------|---------------|-----------------|-------------|
+| Dictation | `Cmd+Shift+.` | `Ctrl+Shift+.` | Yes -- in Settings |
+| Conversation | `Cmd+Shift+Y` | `Ctrl+Shift+Y` | Yes -- in Settings |
+| Fn key | `Fn` (Globe key) | N/A | macOS only |
+
+### Recording Modes
+
+| Mode | Behavior |
+|------|----------|
+| Press (default) | Press hotkey to start, press again to stop |
+| Hold | Hold hotkey to record, release to stop (Fn key release also stops on macOS) |
+
+Configurable in Settings.
 
 ### Settings
 
-Settings are persisted per-platform in the app config directory:
+Settings are persisted per-platform in the app config directory using atomic file writes:
 - macOS: `~/Library/Application Support/com.yapper.app/settings.json`
 - Windows: `%APPDATA%/com.yapper.app/settings.json`
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `hotkey` | `Cmd+Shift+.` / `Ctrl+Shift+.` | Dictation hotkey |
+| `conversation_hotkey` | `Cmd+Shift+Y` / `Ctrl+Shift+Y` | Conversation mode hotkey |
+| `recording_mode` | `Press` | "Press" (toggle) or "Hold" (press-and-hold) |
+| `stt_engine` | `classic` | Windows STT engine ("classic" or "modern") |
+| `default_style` | `Professional` | Default refinement style |
+| `style_overrides` | `{}` | Per-category style overrides |
+| `metrics_enabled` | `true` | Usage metrics tracking |
+| `code_mode` | `false` | Code reference detection |
 
 ---
 

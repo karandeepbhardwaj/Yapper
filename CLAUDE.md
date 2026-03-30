@@ -46,19 +46,20 @@ apps/desktop/          — Tauri desktop app
     styles/            — CSS custom properties + dark mode tokens + DM Serif Display font
   src-tauri/src/       — Rust backend
     lib.rs             — Entry point: mod declarations + run()
-    commands.rs        — All Tauri commands, toggle_recording, AppSettings (hotkey, stt_engine, default_style, style_overrides, metrics_enabled, code_mode)
+    commands.rs        — All Tauri commands, toggle_recording, AppSettings (hotkey, stt_engine, default_style, style_overrides, metrics_enabled, code_mode, recording_mode, conversation_hotkey), change_recording_mode, change_conversation_hotkey
     conversation.rs    — Conversation mode: start/send_turn/end/discard sessions
-    dictionary.rs      — Dictionary CRUD + text replacement before AI refinement
-    snippets.rs        — Snippets CRUD + trigger detection (bypasses AI)
+    dictionary.rs      — Dictionary CRUD + text replacement before AI refinement (handles trailing punctuation)
+    snippets.rs        — Snippets CRUD + trigger detection using word boundary matching (bypasses AI)
     metrics.rs         — Computed usage stats (streak, words, WPM) from history
+    store.rs           — Generic JSON persistence: atomic file writes (write-to-tmp-then-rename), shared load/save/data_path, uuid_simple()
     widget/mod.rs      — Platform dispatcher for widget setup
-    widget/macos.rs    — NSPanel creation, hover/click polling, setIgnoresMouseEvents passthrough
+    widget/macos.rs    — NSPanel creation, hover/click polling, setIgnoresMouseEvents passthrough, dock-aware positioning (visibleFrame + full-screen detection via currentSystemPresentationOptions)
     widget/windows.rs  — Win32 positioning, hover/click polling
     stt/mod.rs         — STT state machine dispatcher
     stt/macos.rs       — Speech-to-text via Swift subprocess
     stt/windows.rs     — Speech-to-text via Windows.Media.SpeechRecognition
-    bridge.rs          — WebSocket client to VS Code extension (127.0.0.1:9147), supports refine/conversation/summarize with style + code mode
-    hotkey.rs          — Global shortcut + Fn key monitoring (macOS)
+    bridge.rs          — WebSocket client to VS Code extension (127.0.0.1:9147), supports refine/conversation/summarize with style + code mode, authenticated via random token from ~/.yapper/bridge-token, circuit breaker (3 failures → 30s cooldown)
+    hotkey.rs          — Global shortcut + Fn key monitoring (macOS), separate conversation hotkey (Cmd+Shift+Y / Ctrl+Shift+Y)
     history.rs         — History persistence (JSON, supports conversation entries with turns/keyPoints/duration)
     autopaste.rs       — Cross-platform paste: pbcopy+osascript (macOS) / PowerShell (Windows)
 
@@ -75,9 +76,12 @@ extensions/vscode-bridge/  — VS Code extension
 - **macOS interop**: Uses `objc2` + `objc2-app-kit` + `block2` crates (NOT deprecated `cocoa`/`objc`).
 - **Windows interop**: Uses `windows` crate for Win32 APIs and WinRT.
 - **Swift subprocesses** (macOS only): STT uses runtime-compiled Swift scripts in `/tmp/`.
-- **Main thread requirement** (macOS): All AppKit calls via `run_on_main_thread` with `MainThreadMarker`.
-- **Widget is a separate webview** (`widget.html` / `widget.tsx`) — communicates via Tauri events, `pointer-events: none` on root for click passthrough, `setIgnoresMouseEvents` toggled by hover detection.
-- **Bridge is optional**: Falls back to raw transcript if VS Code isn't running.
+- **Main thread requirement** (macOS): All AppKit calls via `run_on_main_thread` with `MainThreadMarker`. Widget position calculation also runs on the main thread for accurate `visibleFrame()` values.
+- **Widget is a separate webview** (`widget.html` / `widget.tsx`) — communicates via Tauri events, `pointer-events: none` on root for click passthrough, `setIgnoresMouseEvents` toggled by hover detection. `useSettings` hook listens for `hotkey-changed` events to keep the UI in sync when hotkeys are changed.
+- **Bridge is optional**: Falls back to raw transcript if VS Code isn't running. Circuit breaker skips bridge attempts for 30s after 3 consecutive failures. Authentication via random token in `~/.yapper/bridge-token`.
+- **Recording modes**: "Press" (toggle, default) starts/stops on hotkey press. "Hold" starts on press, stops on release (including Fn key release on macOS).
+- **Conversation hotkey**: Separate hotkey for starting conversations, default `Cmd+Shift+Y` (macOS) / `Ctrl+Shift+Y` (Windows). Configurable in settings.
+- **Atomic writes**: All persistence (history, dictionary, snippets, settings) uses write-to-tmp-then-rename via `store.rs` to prevent data corruption on crash.
 
 ## Recording Pipeline
 
@@ -85,12 +89,13 @@ extensions/vscode-bridge/  — VS Code extension
 1. User triggers hotkey/widget click
 2. start_recording → STT begins
 3. stop_recording →
-   a. Check snippets (detect_and_expand) → if match, paste directly, skip AI
-   b. Apply dictionary replacements (word-by-word)
-   c. Send to bridge with style + styleOverrides + codeMode
+   a. Check snippets (detect_and_expand, word boundary matching) → if match, paste directly, skip AI
+   b. Apply dictionary replacements (word-by-word, handles trailing punctuation)
+   c. Send to bridge with style + styleOverrides + codeMode (bridge authenticated via token)
    d. Bridge refines via LLM → returns refinedText + category + title
-   e. Auto-paste refined text
-   f. Save to history with duration_seconds
+   e. If bridge unavailable → emit `refinement-skipped` event, fall back to raw transcript
+   f. Auto-paste refined text
+   g. Save to history with duration_seconds
 ```
 
 ## Conversation Mode
@@ -126,6 +131,7 @@ Idle → start_recording → Recording → stop_recording → Processing → (pa
 - Don't use `enigo` for keyboard simulation — crashes on macOS. Use `autopaste.rs`.
 - Don't use `git add -A` — repo has build artifacts in `target/` and `dist/`.
 - Don't add `Co-Authored-By` lines to commits.
+- Use `log` macros (`log::info!`, `log::error!`, etc.) instead of `println!` — all println! has been replaced with structured logging.
 - Don't resize the NSPanel dynamically — crashes. Widget is fixed at 220x80.
 - Don't use Web Speech API — doesn't work in WKWebView.
 - Widget `pointer-events: none` on root, `auto` only on pill/tooltip. `setIgnoresMouseEvents` toggled by Rust hover detection for dock click passthrough.
@@ -142,6 +148,7 @@ App.tsx router: `history | conversation | settings | dictionary | snippets`
 No automated test suite. Manual testing:
 1. `bun dev` to start the app
 2. Click widget or press hotkey → speak → stop → verify text pastes
-3. Conversation mode: click Y. button → record turns → End to save
+3. Conversation mode: press Cmd+Shift+Y → record turns → End to save
 4. Settings: gear icon → configure style/hotkey/dictionary/snippets
-5. Widget: hover shows tooltip, click records, right area passes clicks through to dock
+5. Widget: hover shows tooltip "press fn to yapp", click records, right area passes clicks through to dock
+6. Recording modes: Settings → recording mode "Press" (toggle) vs "Hold" (press-and-hold); Fn key release stops recording in hold mode
