@@ -49,7 +49,162 @@ const STYLE_MODIFIERS: Record<string, string> = {
   Creative: "Enhance the language to be engaging and expressive. Use vivid words and varied sentence structure while preserving meaning.",
 };
 
-import type { ConversationTurn } from "./protocol";
+const CLASSIFY_SYSTEM_PROMPT = `You are a voice command classifier. Given a user's spoken transcript, determine their intent.
+
+Return ONLY valid JSON with no markdown fences. Possible intents:
+- "dictation" — user is dictating text to be refined and pasted (this is the default)
+- "translate" — user wants text translated. Extract targetLang.
+- "summarize" — user wants text summarized
+- "draft" — user wants structured writing generated. Extract type (email, message, PR description, commit message, etc.) and topic.
+- "explain" — user wants something explained
+- "unknown" — user wants something else. Include a description.
+- "chain" — user wants multiple actions in sequence. Return an actions array.
+
+For inputSource:
+- "spoken" — the user's own words are the content to process (e.g., "translate hello world to Spanish")
+- "clipboard" — the user wants to act on their clipboard content (e.g., "summarize this", "explain this code")
+
+Examples:
+- "I need to send an email to the team about the deadline" → {"intent": "dictation"}
+- "Translate this to Spanish" → {"intent": "translate", "params": {"targetLang": "Spanish"}, "inputSource": "clipboard"}
+- "Translate hello world to French" → {"intent": "translate", "params": {"targetLang": "French"}, "inputSource": "spoken"}
+- "Summarize this" → {"intent": "summarize", "inputSource": "clipboard"}
+- "Draft an email about tomorrow's standup" → {"intent": "draft", "params": {"type": "email", "topic": "tomorrow's standup"}, "inputSource": "spoken"}
+- "Explain this function" → {"intent": "explain", "inputSource": "clipboard"}
+- "Translate this to German and then summarize it" → {"intent": "chain", "actions": [{"intent": "translate", "params": {"targetLang": "German"}, "inputSource": "clipboard"}, {"intent": "summarize", "inputSource": "previous"}]}
+- "Rewrite this as a haiku" → {"intent": "unknown", "description": "Rewrite text as a haiku", "inputSource": "clipboard"}`;
+
+type ModelTier = "fast" | "quality";
+
+async function selectProviderByTier(
+  tier: ModelTier,
+  token: vscode.CancellationToken
+): Promise<{ type: "vscode"; model: vscode.LanguageModelChat } | { type: "api"; provider: string; apiKey: string } | null> {
+  if (tier === "quality") {
+    // Try vscode.lm first (Copilot, Claude for VS Code)
+    try {
+      const models = await vscode.lm.selectChatModels();
+      if (models.length > 0) {
+        return { type: "vscode", model: models[0] };
+      }
+    } catch {}
+
+    // Try Anthropic
+    const anthropicKey = getApiKey("anthropicApiKey", "ANTHROPIC_API_KEY");
+    if (anthropicKey) {
+      return { type: "api", provider: "anthropic", apiKey: anthropicKey };
+    }
+
+    // Fall through to fast tier
+  }
+
+  // Fast tier: Groq first, then Gemini
+  const groqKey = getApiKey("groqApiKey", "GROQ_API_KEY");
+  if (groqKey) {
+    return { type: "api", provider: "groq", apiKey: groqKey };
+  }
+
+  const geminiKey = getApiKey("geminiApiKey", "GEMINI_API_KEY");
+  if (geminiKey) {
+    return { type: "api", provider: "gemini", apiKey: geminiKey };
+  }
+
+  // Last resort: try vscode.lm even for fast tier
+  try {
+    const models = await vscode.lm.selectChatModels();
+    if (models.length > 0) {
+      return { type: "vscode", model: models[0] };
+    }
+  } catch {}
+
+  return null;
+}
+
+async function callProvider(
+  selected: { type: "vscode"; model: vscode.LanguageModelChat } | { type: "api"; provider: string; apiKey: string },
+  systemPrompt: string,
+  userPrompt: string,
+  token: vscode.CancellationToken
+): Promise<string> {
+  if (selected.type === "vscode") {
+    const messages = [
+      vscode.LanguageModelChatMessage.User(systemPrompt),
+      vscode.LanguageModelChatMessage.User(userPrompt),
+    ];
+    const response = await selected.model.sendRequest(messages, {}, token);
+    const chunks: string[] = [];
+    for await (const fragment of response.text) {
+      chunks.push(fragment);
+    }
+    return chunks.join("");
+  }
+
+  const { provider, apiKey } = selected;
+
+  if (provider === "groq") {
+    const body = JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3,
+    });
+    return httpPost("https://api.groq.com/openai/v1/chat/completions", {
+      "Authorization": `Bearer ${apiKey}`,
+    }, body).then(r => JSON.parse(r).choices[0].message.content);
+  }
+
+  if (provider === "gemini") {
+    const body = JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userPrompt }] }],
+      generationConfig: { temperature: 0.3 },
+    });
+    return httpPost(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+      { "x-goog-api-key": apiKey },
+      body
+    ).then(r => JSON.parse(r).candidates[0].content.parts[0].text);
+  }
+
+  if (provider === "anthropic") {
+    const body = JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+    return httpPost("https://api.anthropic.com/v1/messages", {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    }, body).then(r => JSON.parse(r).content[0].text);
+  }
+
+  throw new Error(`Unknown provider: ${provider}`);
+}
+
+export async function classifyIntent(
+  rawText: string,
+  token: vscode.CancellationToken
+): Promise<ClassifiedIntent> {
+  const selected = await selectProviderByTier("fast", token);
+  if (!selected) {
+    // No provider available — fall back to dictation
+    return { intent: "dictation" };
+  }
+
+  try {
+    const result = await callProvider(selected, CLASSIFY_SYSTEM_PROMPT, rawText, token);
+    const cleaned = result.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    return JSON.parse(cleaned) as ClassifiedIntent;
+  } catch (err) {
+    console.log("[Yapper] Classification failed, falling back to dictation:", err);
+    return { intent: "dictation" };
+  }
+}
+
+import type { ConversationTurn, ClassifiedIntent } from "./protocol";
 
 export interface RefinementResult {
   refinedText: string;
