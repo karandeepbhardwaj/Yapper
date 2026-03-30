@@ -96,19 +96,38 @@ pub async fn send_conversation_turn(
         content: user_text.clone(),
     }).ok();
 
-    // Send to bridge with streaming chunks
+    // Dispatch to direct API or VS Code bridge based on settings
+    let settings = crate::commands::get_settings_internal(&app);
     let app_clone = app.clone();
     let session_id_clone = session_id.clone();
-    let result = bridge::send_conversation_turn(
-        prior_history,
-        user_text,
-        move |chunk| {
-            app_clone.emit("conversation-ai-chunk", AiChunkPayload {
-                session_id: session_id_clone.clone(),
-                content: chunk,
-            }).ok();
-        },
-    ).await?;
+    let result = if settings.ai_provider_mode == "apikey"
+        && !settings.ai_api_key.is_empty()
+        && !settings.ai_provider.is_empty()
+    {
+        crate::ai_provider::send_conversation_turn(
+            prior_history,
+            user_text,
+            &settings.ai_provider,
+            &settings.ai_api_key,
+            move |chunk| {
+                app_clone.emit("conversation-ai-chunk", AiChunkPayload {
+                    session_id: session_id_clone.clone(),
+                    content: chunk,
+                }).ok();
+            },
+        ).await?
+    } else {
+        bridge::send_conversation_turn(
+            prior_history,
+            user_text,
+            move |chunk| {
+                app_clone.emit("conversation-ai-chunk", AiChunkPayload {
+                    session_id: session_id_clone.clone(),
+                    content: chunk,
+                }).ok();
+            },
+        ).await?
+    };
 
     // Add assistant turn to session
     {
@@ -161,8 +180,20 @@ pub async fn end_conversation(app: tauri::AppHandle) -> Result<ConversationSumma
         return Err("Conversation has no turns".to_string());
     }
 
-    // Get summary from bridge
-    let summary_result = bridge::summarize_conversation(history).await;
+    // Dispatch to direct API or VS Code bridge based on settings
+    let settings = crate::commands::get_settings_internal(&app);
+    let summary_result = if settings.ai_provider_mode == "apikey"
+        && !settings.ai_api_key.is_empty()
+        && !settings.ai_provider.is_empty()
+    {
+        crate::ai_provider::summarize_conversation(
+            history,
+            &settings.ai_provider,
+            &settings.ai_api_key,
+        ).await
+    } else {
+        bridge::summarize_conversation(history).await
+    };
 
     let (summary_text, title, key_points) = match summary_result {
         Ok(r) => (r.summary, r.title, r.key_points),

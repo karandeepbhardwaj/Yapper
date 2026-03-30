@@ -76,16 +76,52 @@ export interface SummarizeResultResponse {
   keyPoints?: string[];
 }
 
+// --- Command ---
+
+export interface CommandRequest {
+  type: "command";
+  id: string;
+  rawText: string;
+  clipboard: string | null;
+  style?: "Professional" | "Casual" | "Technical" | "Creative";
+  styleOverrides?: Record<string, string>;
+  codeMode?: boolean;
+}
+
+export interface ClassifiedAction {
+  intent: "dictation" | "translate" | "summarize" | "draft" | "explain" | "unknown";
+  params?: Record<string, string>;
+  inputSource?: "spoken" | "clipboard" | "previous";
+  description?: string;
+}
+
+export interface ClassifiedIntent {
+  intent: "dictation" | "translate" | "summarize" | "draft" | "explain" | "unknown" | "chain";
+  params?: Record<string, string>;
+  inputSource?: "spoken" | "clipboard" | "previous";
+  description?: string;
+  actions?: ClassifiedAction[];
+}
+
+export interface CommandResultResponse {
+  type: "command_result";
+  id: string;
+  result: string;
+  action: string;
+  params?: Record<string, string>;
+}
+
 // --- Union types ---
 
-export type IncomingMessage = RefineRequest | ConversationRequest | SummarizeRequest;
+export type IncomingMessage = RefineRequest | ConversationRequest | SummarizeRequest | CommandRequest;
 export type OutgoingMessage =
   | ChunkResponse
   | ResultResponse
   | ErrorResponse
   | ConversationChunkResponse
   | ConversationResultResponse
-  | SummarizeResultResponse;
+  | SummarizeResultResponse
+  | CommandResultResponse;
 
 export const BRIDGE_PORT = 9147;
 export const BRIDGE_HOST = "127.0.0.1";
