@@ -343,6 +343,7 @@ function SegmentedControl({
           style={{
             position: "relative",
             zIndex: 1,
+            flex: 1,
             padding: "6px 16px",
             borderRadius: 8,
             border: "none",
@@ -353,6 +354,7 @@ function SegmentedControl({
             color: opt.value === value ? "#fff" : "var(--yapper-text-primary)",
             transition: "color 0.2s",
             whiteSpace: "nowrap",
+            textAlign: "center",
           }}
         >
           {opt.label}
