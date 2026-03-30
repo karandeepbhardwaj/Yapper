@@ -190,6 +190,8 @@ function formatActionLabel(action: string, params?: Record<string, string>): str
       return params?.steps ? params.steps.split(" + ").map(s =>
         s.charAt(0).toUpperCase() + s.slice(1)
       ).join(" + ") : "Chained";
+    case "unrefined":
+      return "Not AI Refined";
     default:
       return action.charAt(0).toUpperCase() + action.slice(1);
   }
@@ -395,12 +397,12 @@ export function HistoryCard({
                 fontWeight: 700,
                 letterSpacing: "0.06em",
                 textTransform: "uppercase" as const,
-                background: variant === "pinned"
-                  ? "rgba(255,255,255,0.2)"
-                  : "rgba(218,119,86,0.12)",
-                color: variant === "pinned"
-                  ? "rgba(255,255,255,0.9)"
-                  : "#DA7756",
+                background: action === "unrefined"
+                  ? (variant === "pinned" ? "rgba(255,255,255,0.2)" : "rgba(180,130,50,0.12)")
+                  : (variant === "pinned" ? "rgba(255,255,255,0.2)" : "rgba(218,119,86,0.12)"),
+                color: action === "unrefined"
+                  ? (variant === "pinned" ? "rgba(255,255,255,0.7)" : "#b48232")
+                  : (variant === "pinned" ? "rgba(255,255,255,0.9)" : "#DA7756"),
               }}
             >
               {formatActionLabel(action, actionParams)}

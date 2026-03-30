@@ -210,7 +210,7 @@ async fn process_recording_result(
                         reason: reason.to_string(),
                     }).ok();
                     log::warn!("Bridge refinement failed, using raw transcript: {}", e);
-                    (raw_transcript.clone(), None, None, None, None)
+                    (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
                 }
             }
         }
