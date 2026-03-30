@@ -136,6 +136,9 @@ struct RecordingResult {
     refined_text: String,
     category: Option<String>,
     title: Option<String>,
+    action: Option<String>,
+    #[serde(rename = "actionParams", skip_serializing_if = "Option::is_none")]
+    action_params: Option<HashMap<String, String>>,
 }
 
 async fn process_recording_result(
@@ -230,6 +233,8 @@ async fn process_recording_result(
         refined_text,
         category,
         title,
+        action,
+        action_params,
     }).ok();
 
     Ok(())
