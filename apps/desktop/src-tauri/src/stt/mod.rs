@@ -34,6 +34,12 @@ pub fn transition(expected: State, new: State) -> bool {
     }
 }
 
+/// Kill any lingering recorder subprocess on app shutdown.
+#[cfg(target_os = "macos")]
+pub fn cleanup() {
+    macos::cleanup();
+}
+
 pub async fn start(app: &tauri::AppHandle) -> Result<(), String> {
     if !transition(State::Idle, State::Recording) {
         return Err("Not idle".to_string());

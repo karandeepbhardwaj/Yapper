@@ -133,8 +133,8 @@ fn start_hover_thread(app_handle: tauri::AppHandle) {
 
             // Reposition widget every ~480ms
             if tick % 6 == 0 {
-                let panel_w = 180.0;
-                let panel_h = 34.0;
+                let panel_w = 280.0;
+                let panel_h = 110.0;
                 if let Some((x, y)) = get_widget_position(panel_w, panel_h) {
                     if (x - last_x).abs() > 2.0 || (y - last_y).abs() > 2.0 {
                         if let Some(widget) = hover_handle.get_webview_window("widget") {
@@ -186,7 +186,7 @@ pub fn setup(app: &tauri::App) {
     if let Some(widget) = app.get_webview_window("widget") {
         log::info!("[Widget] Windows setup starting");
 
-        let _ = widget.set_size(tauri::LogicalSize::new(180.0, 34.0));
+        let _ = widget.set_size(tauri::LogicalSize::new(280.0, 110.0));
 
         // Set initial position (physical pixels)
         let panel_w = 180.0;
