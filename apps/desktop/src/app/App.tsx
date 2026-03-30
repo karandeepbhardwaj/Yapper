@@ -53,8 +53,9 @@ export default function App() {
   const { latestResult, error, setError } = useTauriEvents();
   const { historyItems, addItem, refresh, clearAll, deleteItem, togglePin } = useHistory();
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
   const themeOriginRef = useRef<{ x: number; y: number }>({ x: window.innerWidth / 2, y: 40 });
-  const isDarkMode = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const isDarkMode = theme === "dark" || (theme === "system" && systemDark);
   const [activeView, setActiveView] = useState<"history" | "conversation" | "settings" | "dictionary" | "snippets" | "help">("history");
   const [hasOnboarded, setHasOnboarded] = useState(() => {
     return localStorage.getItem("yapper-onboarded") === "true";
@@ -262,14 +263,13 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Listen for system theme changes when in "system" mode (force re-evaluation)
+  // Track system theme changes
   useEffect(() => {
-    if (theme !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => setTheme("system");
+    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [theme]);
+  }, []);
 
   // Listen for theme changes from Settings page
   useEffect(() => {
