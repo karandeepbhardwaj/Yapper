@@ -23,6 +23,7 @@ chrono = "0.4"
 once_cell = "1"
 libc = "0.2"
 regex = "1"
+ureq = { version = "3", features = ["json"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tempfile = "3"
