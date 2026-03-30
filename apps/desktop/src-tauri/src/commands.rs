@@ -199,8 +199,15 @@ async fn process_recording_result(
                     struct RefinementSkipped {
                         reason: String,
                     }
+                    let reason = if e.contains("cooldown") {
+                        "AI temporarily unavailable — try again shortly"
+                    } else if e.contains("not available") || e.contains("Connection refused") {
+                        "VS Code not connected — open VS Code to enable AI"
+                    } else {
+                        "No AI provider available — check VS Code extension"
+                    };
                     app.emit("refinement-skipped", RefinementSkipped {
-                        reason: "Bridge unavailable".to_string(),
+                        reason: reason.to_string(),
                     }).ok();
                     log::warn!("Bridge refinement failed, using raw transcript: {}", e);
                     (raw_transcript.clone(), None, None, None, None)
