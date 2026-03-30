@@ -15,8 +15,10 @@ import type {
   ConversationResultResponse,
   SummarizeRequest,
   SummarizeResultResponse,
+  CommandRequest,
+  CommandResultResponse,
 } from "./protocol";
-import { refineWithCopilot, handleConversation, handleSummarize } from "./copilot-bridge";
+import { refineWithCopilot, handleConversation, handleSummarize, handleCommand } from "./copilot-bridge";
 
 let server: http.Server | undefined;
 let wss: WebSocketServer | undefined;
@@ -115,6 +117,9 @@ function startServer(context: vscode.ExtensionContext) {
               break;
             case "summarize":
               await handleSummarizeMessage(ws, message, tokenSource);
+              break;
+            case "command":
+              await handleCommandMessage(ws, message as CommandRequest, tokenSource);
               break;
             default:
               sendError(ws, (message as { id?: string }).id || "unknown", `Unknown message type: ${(message as { type: string }).type}`);
@@ -277,6 +282,38 @@ async function handleSummarizeMessage(
       title: result.title,
       keyPoints: result.keyPoints,
     };
+    ws.send(JSON.stringify(response));
+  }
+}
+
+async function handleCommandMessage(
+  ws: WebSocket,
+  message: CommandRequest,
+  tokenSource: vscode.CancellationTokenSource
+) {
+  if (!message.rawText || message.rawText.trim().length === 0) {
+    sendError(ws, message.id, "Empty transcript");
+    return;
+  }
+
+  const result = await handleCommand(
+    message.rawText,
+    message.clipboard,
+    message.style,
+    message.styleOverrides,
+    message.codeMode,
+    tokenSource.token
+  );
+
+  const response: CommandResultResponse = {
+    type: "command_result",
+    id: message.id,
+    result: result.result,
+    action: result.action,
+    params: result.params,
+  };
+
+  if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(response));
   }
 }
