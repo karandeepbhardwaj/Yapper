@@ -147,15 +147,17 @@ function WidgetApp() {
             style={{
               marginBottom: 8,
               padding: "10px 20px",
-              borderRadius: 24,
+              borderRadius: 16,
               background: "#2a231d",
               border: "1px solid rgba(255,107,74,0.2)",
               boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 500,
+              lineHeight: 1.4,
               letterSpacing: "0.01em",
               color: "#ff6b4a",
-              whiteSpace: "nowrap",
+              textAlign: "center",
+              maxWidth: 200,
               pointerEvents: "auto",
             }}
           >
