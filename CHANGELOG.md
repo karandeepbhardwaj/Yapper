@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-29
+
+### Added
+
+- **Voice commands** — AI-first intent classification dispatches spoken commands before standard refinement:
+  - `translate` — translate the transcript to a specified language
+  - `summarize` — produce a concise summary of the spoken content
+  - `draft` — generate a full draft (email, message, document) from a brief description
+  - `explain` — explain a concept or term spoken aloud
+  - `chain` — chain multiple voice commands in sequence
+- **AI provider modes** — two mutually exclusive modes selectable in Settings:
+  - **VS Code mode** — routes through the local VS Code extension using `vscode.lm` (Copilot); no API key required in the app
+  - **API Key mode** — direct Groq or Anthropic calls from the Rust backend (`ai_provider.rs`); VS Code not required
+- **Direct Groq/Anthropic support** — `ai_provider.rs` module handles authenticated HTTPS calls to Groq (Llama) and Anthropic (Claude) without VS Code
+- **New `AppSettings` fields**: `ai_provider_mode`, `ai_provider`, `ai_api_key` (encrypted), `theme`
+- **API key encryption** — `ai_api_key` stored encrypted in `settings.json`; `test_api_key` command validates before saving
+- **New Tauri commands**: `check_bridge_status`, `open_vscode`, `test_api_key`
+- **Help screen** — "How to Yapp" view (`HelpView.tsx`) with voice command reference and usage guide
+- **Bridge connection status** — Settings page shows live bridge connectivity indicator via `check_bridge_status`
+- **Theme persistence** — Light / Dark / Auto theme selection persisted in settings; theme changes use a circle-reveal animation
+- **Segmented controls in Settings** — provider mode, AI provider, and theme use segmented control UI
+- **Hint tooltips on settings** — contextual tooltip hints on Settings rows explain each option
+- **Filter dropdown for history** — multi-select category/type filter on the history dashboard
+- **Action badges on history cards** — visual badges indicate the action taken (translated, summarized, drafted, etc.)
+- **Widget error messages** — widget surface now surfaces error states to the user
+- **Empty state examples** — Dictionary and Snippets views show illustrative examples when empty
+- **Settings reordered by UX priority** — most-used settings moved to the top of the Settings page
+
+### Changed
+
+- **VS Code extension simplified to Copilot-only** — bridge (`copilot-bridge.ts`) now uses `vscode.lm` exclusively; Groq/Gemini/Anthropic API key fallback removed from the extension (moved to `ai_provider.rs`)
+- **Settings page restructured** — AI provider section added; settings reordered by frequency of use
+
 ## [0.2.2] - 2026-03-29
 
 ### Added
