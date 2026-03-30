@@ -164,11 +164,24 @@ export function DictionaryView({ onBack }: DictionaryViewProps) {
       onNavigate={() => onBack()}
       emptyIcon={<BookOpen style={{ width: 22, height: 22, color: "var(--yapper-accent)" }} />}
       emptyMessage={
-        <>
-          No dictionary entries yet.
-          <br />
-          Add shorthand expansions to refine your transcripts.
-        </>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left", width: "100%" }}>
+          <span>Words you say get replaced before AI refinement.</span>
+          <div style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "var(--yapper-surface-low, #f5f5f5)",
+            border: "1px solid var(--yapper-border, #eee)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            fontSize: 12,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--yapper-accent)", marginBottom: 2 }}>Examples</div>
+            <div><strong>brb</strong> → be right back</div>
+            <div><strong>k8s</strong> → Kubernetes</div>
+            <div><strong>ty</strong> → thank you</div>
+          </div>
+        </div>
       }
     />
   );
