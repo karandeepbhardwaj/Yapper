@@ -802,7 +802,7 @@ export function MainWindow({
                 right: 0,
                 bottom: 0,
                 width: 32,
-                background: "linear-gradient(to right, transparent, var(--background))",
+                background: "linear-gradient(to right, transparent, var(--yapper-bg-lighter, #f6efe9))",
                 pointerEvents: "none",
                 zIndex: 1,
               }} />
