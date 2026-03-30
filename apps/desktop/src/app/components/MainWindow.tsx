@@ -5,8 +5,6 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Fuse from "fuse.js";
 import type { HistoryItem } from "../lib/types";
 import { FONT_SIZE, ANIMATION } from "../lib/tokens";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 
 const isMac = navigator.platform.toUpperCase().includes("MAC");
 
@@ -494,20 +492,9 @@ export function MainWindow({
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [actionFilter, setActionFilter] = useState<string | null>(null);
-  const [bridgeConnected, setBridgeConnected] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const hoveredRef = useRef<string | null>(null);
-
-  // Poll bridge status every 5 seconds
-  useEffect(() => {
-    const check = () => {
-      invoke<boolean>("check_bridge_status").then(setBridgeConnected).catch(() => setBridgeConnected(false));
-    };
-    check();
-    const interval = setInterval(check, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -1003,66 +990,6 @@ export function MainWindow({
         </div>
       )}
 
-      {/* Bridge status cloud */}
-      {bridgeConnected !== null && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 48,
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "center",
-            paddingBottom: 8,
-            background: bridgeConnected
-              ? (isDarkMode
-                ? "linear-gradient(to bottom, transparent, rgba(52,199,89,0.06))"
-                : "linear-gradient(to bottom, transparent, rgba(52,199,89,0.05))")
-              : (isDarkMode
-                ? "linear-gradient(to bottom, transparent, rgba(255,59,48,0.06))"
-                : "linear-gradient(to bottom, transparent, rgba(255,59,48,0.05))"),
-            userSelect: "none",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: bridgeConnected ? "#34c759" : "#ff3b30",
-            flexShrink: 0,
-          }} />
-          <span style={{
-            fontSize: 11,
-            fontWeight: 500,
-            color: bridgeConnected
-              ? (isDarkMode ? "rgba(52,199,89,0.7)" : "rgba(40,160,70,0.6)")
-              : (isDarkMode ? "rgba(255,59,48,0.7)" : "rgba(220,50,40,0.6)"),
-          }}>
-            {bridgeConnected ? "VS Code Connected" : "VS Code Disconnected"}
-          </span>
-          {!bridgeConnected && (
-            <button
-              onClick={() => invoke("open_vscode").catch(console.error)}
-              style={{
-                padding: "2px 10px",
-                borderRadius: 8,
-                border: "none",
-                background: isDarkMode ? "rgba(255,59,48,0.12)" : "rgba(255,59,48,0.1)",
-                color: isDarkMode ? "rgba(255,59,48,0.8)" : "rgba(220,50,40,0.7)",
-                fontSize: 10,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Open VS Code
-            </button>
-          )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
