@@ -82,3 +82,39 @@ pub async fn stop() -> Result<String, String> {
         Err("Speech recognition not available on this platform".to_string())
     }
 }
+
+/// Direct platform STT start (no state management). Used by NativeOsProvider.
+pub fn platform_start(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let app = app.clone();
+        tokio::runtime::Handle::current().block_on(macos::start_recognition(&app))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let app = app.clone();
+        tokio::runtime::Handle::current().block_on(windows::start_recognition(&app))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    Err("STT not supported on this platform".to_string())
+}
+
+/// Direct platform STT stop (no state management). Used by NativeOsProvider.
+pub fn platform_stop() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        tokio::runtime::Handle::current().block_on(macos::stop_recognition())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        tokio::runtime::Handle::current().block_on(windows::stop_recognition())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    Err("STT not supported on this platform".to_string())
+}
+
+/// Direct platform cleanup. Used by NativeOsProvider.
+pub fn platform_cleanup() {
+    #[cfg(target_os = "macos")]
+    macos::cleanup();
+}
