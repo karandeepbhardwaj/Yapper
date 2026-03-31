@@ -1,8 +1,224 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Copy, ChevronDown, Check, Star, Pin, Trash2, MessageCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import type { ConversationData } from "../lib/types";
 import { FONT_SIZE, SPACING, BORDER_RADIUS } from "../lib/tokens";
+
+/** Lightweight markdown-to-JSX renderer for refined text.
+ *  Supports: **bold**, *italic*, ## headings, - bullet lists, numbered lists, line breaks. */
+function FormattedText({ text, color }: { text: string; color: string }) {
+  const elements = useMemo(() => {
+    const lines = text.split("\n");
+    const result: React.ReactNode[] = [];
+    let listItems: React.ReactNode[] = [];
+    let listType: "ul" | "ol" | null = null;
+
+    const flushList = () => {
+      if (listItems.length > 0 && listType) {
+        const Tag = listType;
+        result.push(
+          <Tag key={`list-${result.length}`} style={{
+            margin: "4px 0",
+            paddingLeft: 20,
+            listStyleType: listType === "ul" ? "disc" : "decimal",
+          }}>
+            {listItems}
+          </Tag>
+        );
+        listItems = [];
+        listType = null;
+      }
+    };
+
+    const formatInline = (line: string): React.ReactNode[] => {
+      const parts: React.ReactNode[] = [];
+      const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+      let lastIndex = 0;
+      let match;
+      let i = 0;
+      while ((match = regex.exec(line)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(line.slice(lastIndex, match.index));
+        }
+        if (match[2]) {
+          parts.push(<strong key={`b${i}`}>{match[2]}</strong>);
+        } else if (match[3]) {
+          parts.push(<em key={`i${i}`}>{match[3]}</em>);
+        } else if (match[4]) {
+          parts.push(
+            <code key={`c${i}`} style={{
+              background: "rgba(0,0,0,0.06)",
+              borderRadius: 3,
+              padding: "1px 4px",
+              fontSize: "0.9em",
+            }}>{match[4]}</code>
+          );
+        }
+        lastIndex = regex.lastIndex;
+        i++;
+      }
+      if (lastIndex < line.length) {
+        parts.push(line.slice(lastIndex));
+      }
+      return parts.length > 0 ? parts : [line];
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed) {
+        flushList();
+        continue;
+      }
+
+      // Headings
+      const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)/);
+      if (headingMatch) {
+        flushList();
+        const level = headingMatch[1].length;
+        const sizes = [FONT_SIZE.base + 1, FONT_SIZE.base, FONT_SIZE.base];
+        const weights = [600, 600, 500];
+        result.push(
+          <div key={`h-${i}`} style={{
+            fontSize: sizes[level - 1] || FONT_SIZE.base,
+            fontWeight: weights[level - 1] || 600,
+            marginTop: result.length > 0 ? 10 : 0,
+            marginBottom: 4,
+            letterSpacing: "-0.01em",
+          }}>
+            {formatInline(headingMatch[2])}
+          </div>
+        );
+        continue;
+      }
+
+      // Bullet list
+      const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
+      if (bulletMatch) {
+        if (listType !== "ul") flushList();
+        listType = "ul";
+        listItems.push(
+          <li key={`li-${i}`} style={{ marginBottom: 2 }}>
+            {formatInline(bulletMatch[1])}
+          </li>
+        );
+        continue;
+      }
+
+      // Numbered list
+      const numMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
+      if (numMatch) {
+        if (listType !== "ol") flushList();
+        listType = "ol";
+        listItems.push(
+          <li key={`li-${i}`} style={{ marginBottom: 2 }}>
+            {formatInline(numMatch[1])}
+          </li>
+        );
+        continue;
+      }
+
+      // Regular paragraph
+      flushList();
+      result.push(
+        <div key={`p-${i}`} style={{ marginBottom: 2 }}>
+          {formatInline(trimmed)}
+        </div>
+      );
+    }
+    flushList();
+    return result;
+  }, [text]);
+
+  return (
+    <div style={{ color, fontSize: FONT_SIZE.base, lineHeight: 1.7 }}>
+      {elements}
+    </div>
+  );
+}
+
+function ExpandableText({
+  text,
+  isPinnedCard,
+  isExpanded,
+  onToggle,
+}: {
+  text: string;
+  isPinnedCard: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [fullHeight, setFullHeight] = useState(0);
+  const textColor = isPinnedCard ? "rgba(255,255,255,0.9)" : "var(--yapper-text-secondary)";
+  const linkColor = isPinnedCard ? "rgba(255,255,255,0.7)" : "var(--yapper-accent, #DA7756)";
+  const needsExpand = text.split("\n").length > 3 || text.length > 180;
+  // 3 lines at base font size * 1.7 line-height
+  const collapsedHeight = Math.round(FONT_SIZE.base * 1.7 * 3);
+
+  // Measure full content height once on mount and when text changes
+  const measureRef = useRef<HTMLDivElement>(null);
+  useState(() => {
+    // Will measure after first render via the effect below
+  });
+
+  return (
+    <div>
+      {/* Hidden measurer — always full height, never clamped */}
+      <div
+        ref={measureRef}
+        style={{ position: "absolute", visibility: "hidden", width: "100%", pointerEvents: "none" }}
+        // Use a callback ref to measure
+      >
+        <div style={{ fontSize: FONT_SIZE.base, lineHeight: 1.7 }}>
+          <FormattedText text={text} color={textColor} />
+        </div>
+      </div>
+
+      {/* Content with animated max-height — content is ALWAYS rendered, never removed */}
+      <div
+        ref={(el) => {
+          if (el && fullHeight === 0) {
+            setFullHeight(el.scrollHeight);
+          }
+          (contentRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }}
+        style={{
+          fontSize: FONT_SIZE.base,
+          lineHeight: 1.7,
+          color: textColor,
+          overflow: "hidden",
+          maxHeight: isExpanded ? (fullHeight || 2000) : collapsedHeight,
+          transition: "max-height 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)",
+          position: "relative",
+          ...(!isExpanded && needsExpand ? {
+            maskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
+            WebkitMaskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
+          } : {}),
+        }}
+      >
+        <FormattedText text={text} color={textColor} />
+      </div>
+
+      {needsExpand && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <span
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            style={{
+              fontSize: FONT_SIZE.xs,
+              fontWeight: 600,
+              color: linkColor,
+              cursor: "pointer",
+              marginTop: 4,
+            }}
+          >
+            {isExpanded ? "less" : "more"}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* Extracted standalone components (Finding #14) */
 
@@ -233,6 +449,7 @@ export function HistoryCard({
   actionParams,
 }: HistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isTextExpanded, setIsTextExpanded] = useState(false);
   const [isConversationExpanded, setIsConversationExpanded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -331,32 +548,6 @@ export function HistoryCard({
         gap: SPACING.sm,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, flex: 1, minWidth: 0 }}>
-          {isPinnedCard && (
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px 4px 8px",
-              borderRadius: 20,
-              background: "rgba(255,255,255,0.15)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.12)",
-              border: "1px solid rgba(255,255,255,0.12)",
-            }}>
-              <Star style={{ width: 10, height: 10, color: "#fff", fill: "#fff", flexShrink: 0, position: "relative", top: -0.5 }} />
-              <span style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: "#fff",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                lineHeight: 1,
-              }}>
-                Pinned
-              </span>
-            </div>
-          )}
           {category && (
             <span
               style={{
@@ -459,7 +650,7 @@ export function HistoryCard({
                 transition={{ type: "spring", stiffness: 300, damping: 15 }}
                 style={{ display: "flex" }}
               >
-                <Pin style={{ width: 13, height: 13 }} />
+                <Pin style={{ width: 13, height: 13, fill: isPinned ? "currentColor" : "none" }} />
               </motion.div>
             </IconButton>
           )}
@@ -482,8 +673,8 @@ export function HistoryCard({
           fontFamily: "var(--font-headline, 'Manrope', sans-serif)",
           fontWeight: 700,
           fontSize: FONT_SIZE.lg,
-          lineHeight: 1.35,
-          letterSpacing: "-0.02em",
+          lineHeight: 1.4,
+          letterSpacing: "0.01em",
           color: isPinnedCard ? "#fff" : "var(--yapper-text-primary)",
           marginBottom: SPACING.sm,
           display: "-webkit-box",
@@ -497,19 +688,12 @@ export function HistoryCard({
       )}
 
       {/* Refined Text */}
-      <div
-        style={{
-          fontSize: FONT_SIZE.base,
-          lineHeight: 1.7,
-          color: isPinnedCard ? "rgba(255,255,255,0.9)" : "var(--yapper-text-secondary)",
-          display: "-webkit-box",
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {refinedText}
-      </div>
+      <ExpandableText
+        text={refinedText}
+        isPinnedCard={isPinnedCard}
+        isExpanded={isTextExpanded}
+        onToggle={() => setIsTextExpanded(!isTextExpanded)}
+      />
 
       {/* Conversation turns (expandable) */}
       {entryType === "conversation" && conversation && conversation.turns.length > 0 && (
