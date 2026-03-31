@@ -218,7 +218,7 @@ function WidgetApp() {
           pointerEvents: "auto",
         }}
       >
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout">
           {!isActive && isHovered && !errorMessage && (
             <motion.div
               key="hover"
