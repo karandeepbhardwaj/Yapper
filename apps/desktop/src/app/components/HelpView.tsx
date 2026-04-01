@@ -194,6 +194,25 @@ export function HelpView({ onBack, hotkey, conversationHotkey }: HelpViewProps) 
           </SectionCard>
 
           <SectionCard>
+            <SectionHeader icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            }>
+              Screen Capture
+            </SectionHeader>
+            <ExampleRow command="What's on my screen" description="Captures and summarizes visible screen" />
+            <ExampleRow command="Screen summarize" description="Same as above — summarize screen content" />
+            <ExampleRow command="Screen extract text" description="OCR — extracts text from screen" />
+            <ExampleRow command="Screen explain" description="Detailed explanation of what's visible" />
+            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 8, paddingLeft: 12 }}>
+              You can also use {formatHotkey("Cmd+Shift+S")} to capture a screen region.
+            </div>
+          </SectionCard>
+
+          <SectionCard>
             <SectionHeader icon={<Link style={{ width: 14, height: 14 }} />}>Chaining</SectionHeader>
             <ExampleRow command="Translate this to French and then summarize it" description="Runs multiple commands in sequence" />
           </SectionCard>

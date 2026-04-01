@@ -24,6 +24,7 @@ export interface HistoryItem {
   durationSeconds?: number;
   action?: string;
   actionParams?: Record<string, string>;
+  screenshotThumbnail?: string;
 }
 
 export interface ConversationSummary {
@@ -49,6 +50,12 @@ export interface AppSettings {
   vscode_model: string;
   ai_model: string;
   theme: string;               // "light" | "dark" | "system"
+  stt_provider: "whisper" | "native";
+  whisper_model: string;
+  whisper_language: string;
+  streaming_enabled: boolean;
+  screen_capture_hotkey: string;
+  save_screenshots: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -66,6 +73,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vscode_model: "",
   ai_model: "",
   theme: "system",
+  stt_provider: "whisper",
+  whisper_model: "",
+  whisper_language: "auto",
+  streaming_enabled: true,
+  screen_capture_hotkey: "Cmd+Shift+S",
+  save_screenshots: true,
 };
 
 export interface DictionaryEntry {
@@ -93,3 +106,24 @@ export interface Metrics {
   totalEntries: number;
   totalDurationSeconds: number;
 }
+
+export interface ModelInfo {
+  name: string;
+  size: string;
+  description: string;
+}
+
+export interface ModelDownloadProgress {
+  model: string;
+  downloaded_bytes: number;
+  total_bytes: number;
+  percent: number;
+}
+
+export const WHISPER_MODELS: ModelInfo[] = [
+  { name: "tiny", size: "75 MB", description: "Fastest, decent accuracy" },
+  { name: "base", size: "150 MB", description: "Good balance of speed and accuracy" },
+  { name: "small", size: "500 MB", description: "Great accuracy, moderate speed" },
+  { name: "medium", size: "1.5 GB", description: "Excellent accuracy, slower" },
+  { name: "large-v3", size: "3 GB", description: "Best accuracy, slowest" },
+];

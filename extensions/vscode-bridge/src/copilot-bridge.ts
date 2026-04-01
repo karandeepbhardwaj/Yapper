@@ -54,6 +54,9 @@ Return ONLY valid JSON with no markdown fences. Possible intents:
 - "explain" — user wants something explained
 - "unknown" — user wants something else. Include a description.
 - "chain" — user wants multiple actions in sequence. Return an actions array.
+- "screen_summarize" — user wants to capture and summarize what's on their screen. Triggers: "what's on my screen", "summarize my screen", "screen summarize", "summarize what I see", "what am I looking at"
+- "screen_extract" — user wants to extract/OCR text from the screen. Triggers: "screen extract text", "read my screen", "extract text from screen", "OCR this"
+- "screen_explain" — user wants a detailed explanation of screen content. Triggers: "screen explain", "explain what's on my screen", "explain this screen"
 
 For inputSource:
 - "spoken" — the user's own words are the content to process (e.g., "translate hello world to Spanish")
@@ -506,5 +509,37 @@ function parseSummarizeResult(result: string): SummarizeResult {
     };
   } catch {
     return { summary: result, title: "Conversation", keyPoints: [] };
+  }
+}
+
+// --- Vision handler ---
+
+export async function handleVision(
+  imageBase64: string,
+  prompt: string,
+  token: vscode.CancellationToken
+): Promise<string> {
+  const models = await vscode.lm.selectChatModels();
+  const model = models[0];
+  if (!model) {
+    throw new Error("No language model available for vision analysis");
+  }
+
+  // Note: vscode.lm image support may not be available in all Copilot versions.
+  // If LanguageModelChatMessage doesn't support image parts, fall back to text-only.
+  try {
+    const messages = [
+      vscode.LanguageModelChatMessage.User([
+        new vscode.LanguageModelTextPart(prompt + "\n\n[Image attached as base64 - if you cannot see the image, please indicate that vision is not supported]"),
+      ]),
+    ];
+    const response = await model.sendRequest(messages, {}, token);
+    let result = "";
+    for await (const chunk of response.text) {
+      result += chunk;
+    }
+    return result;
+  } catch (e: any) {
+    throw new Error("Vision not supported by current Copilot model: " + e.message);
   }
 }

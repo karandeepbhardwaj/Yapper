@@ -54,6 +54,9 @@ Return ONLY valid JSON with no markdown fences. Possible intents:
 - "explain" — user wants something explained
 - "unknown" — user wants something else. Include a description.
 - "chain" — user wants multiple actions in sequence. Return an actions array.
+- "screen_summarize" — user wants to capture and summarize what's on their screen. Triggers: "what's on my screen", "summarize my screen", "screen summarize", "summarize what I see", "what am I looking at"
+- "screen_extract" — user wants to extract/OCR text from the screen. Triggers: "screen extract text", "read my screen", "extract text from screen", "OCR this"
+- "screen_explain" — user wants a detailed explanation of screen content. Triggers: "screen explain", "explain what's on my screen", "explain this screen"
 
 For inputSource:
 - "spoken" — the user's own words are the content to process (e.g., "translate hello world to Spanish")

@@ -13,6 +13,9 @@ mod widget;
 mod dictionary;
 mod snippets;
 mod metrics;
+pub mod providers;
+pub mod model_manager;
+pub mod screen_capture;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -117,6 +120,10 @@ pub fn run() {
             commands::list_bridge_models,
             commands::open_vscode,
             commands::test_api_key,
+            commands::capture_screen,
+            commands::get_model_status,
+            commands::download_whisper_model,
+            commands::delete_whisper_model,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

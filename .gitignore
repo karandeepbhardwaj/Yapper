@@ -42,3 +42,4 @@ extensions/vscode-bridge/out/
 *.tmp
 *.bak
 .npmrc.tmp
+*.superpowers/

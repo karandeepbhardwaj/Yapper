@@ -1,13 +1,60 @@
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
-use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, snippets, stt};
+use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, model_manager, snippets, stt};
+use crate::providers::SttProvider;
+use crate::providers::VisionProvider;
+use crate::providers::stt_whisper::WhisperCppProvider;
+use crate::providers::stt_native::NativeOsProvider;
+use crate::providers::vision_anthropic::AnthropicVisionProvider;
+use crate::providers::vision_bridge::CopilotVisionProvider;
+use crate::providers::vision_native::NativeOcrProvider;
 
-static RECORDING_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+static RECORDING_START: Mutex<Option<Instant>> = Mutex::new(None);
+
+static ACTIVE_STT: Lazy<Mutex<Option<Box<dyn SttProvider>>>> = Lazy::new(|| Mutex::new(None));
 
 pub static HOLD_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn create_stt_provider(settings: &AppSettings) -> Result<Box<dyn SttProvider>, String> {
+    if settings.stt_provider == "whisper" && !settings.whisper_model.is_empty() {
+        match WhisperCppProvider::new(
+            &settings.whisper_model,
+            &settings.whisper_language,
+            settings.streaming_enabled,
+        ) {
+            Ok(provider) => return Ok(Box::new(provider)),
+            Err(e) => {
+                log::warn!("Whisper not available, falling back to native: {}", e);
+            }
+        }
+    }
+    Ok(Box::new(NativeOsProvider::new()))
+}
+
+fn create_vision_provider(settings: &AppSettings) -> Box<dyn VisionProvider> {
+    if settings.ai_provider_mode == "vscode" {
+        // Quick TCP check to see if the bridge is reachable
+        let bridge_available = std::net::TcpStream::connect_timeout(
+            &"127.0.0.1:9147".parse().unwrap(),
+            std::time::Duration::from_millis(300),
+        )
+        .is_ok();
+        if bridge_available {
+            return Box::new(CopilotVisionProvider::new());
+        }
+    } else if !settings.ai_api_key.is_empty() && settings.ai_provider == "anthropic" {
+        return Box::new(AnthropicVisionProvider::new(
+            &settings.ai_api_key,
+            &settings.ai_model,
+        ));
+    }
+    Box::new(NativeOcrProvider::new())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
@@ -38,6 +85,18 @@ pub struct AppSettings {
     pub ai_model: String,
     #[serde(default = "default_theme")]
     pub theme: String,                // "light" | "dark" | "system"
+    #[serde(default = "default_stt_provider")]
+    pub stt_provider: String,
+    #[serde(default)]
+    pub whisper_model: String,
+    #[serde(default = "default_whisper_language")]
+    pub whisper_language: String,
+    #[serde(default = "default_streaming_enabled")]
+    pub streaming_enabled: bool,
+    #[serde(default = "default_screen_capture_hotkey")]
+    pub screen_capture_hotkey: String,
+    #[serde(default = "default_save_screenshots")]
+    pub save_screenshots: bool,
 }
 
 fn read_clipboard() -> Option<String> {
@@ -103,6 +162,14 @@ fn default_conversation_hotkey() -> String {
 
 fn default_ai_provider_mode() -> String { "vscode".to_string() }
 fn default_theme() -> String { "system".to_string() }
+fn default_stt_provider() -> String { "whisper".to_string() }
+fn default_whisper_language() -> String { "auto".to_string() }
+fn default_streaming_enabled() -> bool { true }
+fn default_screen_capture_hotkey() -> String {
+    if cfg!(target_os = "macos") { "Cmd+Shift+S".to_string() }
+    else { "Ctrl+Shift+S".to_string() }
+}
+fn default_save_screenshots() -> bool { true }
 
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
@@ -191,6 +258,12 @@ impl Default for AppSettings {
             vscode_model: String::new(),
             ai_model: String::new(),
             theme: "system".to_string(),
+            stt_provider: default_stt_provider(),
+            whisper_model: String::new(),
+            whisper_language: default_whisper_language(),
+            streaming_enabled: default_streaming_enabled(),
+            screen_capture_hotkey: default_screen_capture_hotkey(),
+            save_screenshots: default_save_screenshots(),
         }
     }
 }
@@ -352,6 +425,58 @@ async fn process_recording_result(
         }
     };
 
+    // Handle screen capture voice commands
+    let (refined_text, category, title, action, action_params) =
+        if matches!(action.as_deref(), Some("screen_summarize") | Some("screen_extract") | Some("screen_explain")) {
+            let screen_action = action.as_deref().unwrap_or("screen_summarize");
+            log::info!("Screen voice command detected: {}", screen_action);
+
+            match crate::screen_capture::capture_full_screen() {
+                Ok(image_bytes) => {
+                    let settings = get_settings_internal(app);
+                    let vision = create_vision_provider(&settings);
+
+                    let prompt = match screen_action {
+                        "screen_extract" => "Extract all visible text from this image. Return only the extracted text, preserving the original layout as much as possible.".to_string(),
+                        "screen_explain" => "Explain what is shown in this screenshot in detail. Describe the UI elements, content, and context.".to_string(),
+                        _ => "Summarize what you see in this image.".to_string(),
+                    };
+
+                    match tokio::task::spawn_blocking(move || {
+                        if vision.supports_ai_analysis() {
+                            vision.analyze(&image_bytes, &prompt)
+                        } else {
+                            vision.ocr(&image_bytes)
+                        }
+                    })
+                    .await
+                    {
+                        Ok(Ok(result)) => (
+                            result,
+                            Some("Screen Capture".to_string()),
+                            Some("Screen Analysis".to_string()),
+                            Some(screen_action.to_string()),
+                            action_params,
+                        ),
+                        Ok(Err(e)) => {
+                            log::error!("Vision analysis failed: {}", e);
+                            (format!("Screen capture failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
+                        }
+                        Err(e) => {
+                            log::error!("Vision task failed: {}", e);
+                            (format!("Screen capture task failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Screen capture failed: {}", e);
+                    (format!("Screen capture failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
+                }
+            }
+        } else {
+            (refined_text, category, title, action, action_params)
+        };
+
     // Auto-paste
     let text_for_paste = refined_text.clone();
     std::thread::spawn(move || {
@@ -387,29 +512,58 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
     let current = stt::get_state();
     match current {
         stt::State::Idle => {
+            let settings = get_settings_internal(handle);
+            let provider = match create_stt_provider(&settings) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("STT provider creation failed: {}", e);
+                    handle.emit("stt-error", e).ok();
+                    return;
+                }
+            };
+
             *RECORDING_START.lock().unwrap() = Some(Instant::now());
+            stt::set_state(stt::State::Recording);
             handle.emit("stt-state-changed", "listening").ok();
-            if let Err(e) = stt::start(handle).await {
+
+            if let Err(e) = provider.start(handle) {
                 log::error!("STT start failed: {}", e);
                 *RECORDING_START.lock().unwrap() = None;
                 stt::set_state(stt::State::Idle);
                 handle.emit("stt-state-changed", "idle").ok();
                 handle.emit("stt-error", e).ok();
+                return;
             }
+
+            *ACTIVE_STT.lock().unwrap() = Some(provider);
         }
         stt::State::Recording => {
             let duration_secs = RECORDING_START.lock().unwrap().take()
                 .map(|s| s.elapsed().as_secs())
                 .unwrap_or(0);
 
+            stt::set_state(stt::State::Processing);
             handle.emit("stt-state-changed", "processing").ok();
             handle.emit("stop-speech-recognition", ()).ok();
-            let raw_transcript = match stt::stop().await {
-                Ok(t) => t,
-                Err(_) => {
-                    stt::set_state(stt::State::Idle);
-                    handle.emit("stt-state-changed", "idle").ok();
-                    return;
+
+            let provider = ACTIVE_STT.lock().unwrap().take();
+            let raw_transcript = if let Some(provider) = provider {
+                match provider.stop() {
+                    Ok(t) => t,
+                    Err(_) => {
+                        stt::set_state(stt::State::Idle);
+                        handle.emit("stt-state-changed", "idle").ok();
+                        return;
+                    }
+                }
+            } else {
+                match stt::stop().await {
+                    Ok(t) => t,
+                    Err(_) => {
+                        stt::set_state(stt::State::Idle);
+                        handle.emit("stt-state-changed", "idle").ok();
+                        return;
+                    }
                 }
             };
 
@@ -434,14 +588,23 @@ pub async fn start_recording(app: tauri::AppHandle) -> Result<(), String> {
     if stt::get_state() != stt::State::Idle {
         return Err("Not idle".to_string());
     }
+
+    let settings = get_settings_internal(&app);
+    let provider = create_stt_provider(&settings)?;
+
     *RECORDING_START.lock().unwrap() = Some(Instant::now());
+    stt::set_state(stt::State::Recording);
     app.emit("stt-state-changed", "listening").map_err(|e| e.to_string())?;
-    stt::start(&app).await.map_err(|e| {
+
+    if let Err(e) = provider.start(&app) {
         *RECORDING_START.lock().unwrap() = None;
         stt::set_state(stt::State::Idle);
         app.emit("stt-state-changed", "idle").ok();
-        e.to_string()
-    })
+        return Err(e);
+    }
+
+    *ACTIVE_STT.lock().unwrap() = Some(provider);
+    Ok(())
 }
 
 #[tauri::command]
@@ -453,14 +616,24 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         .map(|s| s.elapsed().as_secs())
         .unwrap_or(0);
 
+    stt::set_state(stt::State::Processing);
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
     app.emit("stop-speech-recognition", ()).ok();
 
-    let raw_transcript = stt::stop().await.map_err(|e| {
-        stt::set_state(stt::State::Idle);
-        app.emit("stt-state-changed", "idle").ok();
-        e.to_string()
-    })?;
+    let provider = ACTIVE_STT.lock().unwrap().take();
+    let raw_transcript = if let Some(provider) = provider {
+        provider.stop().map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e
+        })?
+    } else {
+        stt::stop().await.map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e.to_string()
+        })?
+    };
 
     process_recording_result(&app, raw_transcript, duration_secs).await?;
 
@@ -477,14 +650,24 @@ pub async fn stop_recording_raw(app: tauri::AppHandle) -> Result<String, String>
     if stt::get_state() != stt::State::Recording {
         return Err("Not recording".to_string());
     }
+    stt::set_state(stt::State::Processing);
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
     app.emit("stop-speech-recognition", ()).ok();
 
-    let raw_transcript = stt::stop().await.map_err(|e| {
-        stt::set_state(stt::State::Idle);
-        app.emit("stt-state-changed", "idle").ok();
-        e.to_string()
-    })?;
+    let provider = ACTIVE_STT.lock().unwrap().take();
+    let raw_transcript = if let Some(provider) = provider {
+        provider.stop().map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e
+        })?
+    } else {
+        stt::stop().await.map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e.to_string()
+        })?
+    };
 
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
@@ -495,7 +678,15 @@ pub async fn stop_recording_raw(app: tauri::AppHandle) -> Result<String, String>
 #[tauri::command]
 pub async fn cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("stop-speech-recognition", ()).ok();
-    let _ = stt::stop().await;
+
+    let provider = ACTIVE_STT.lock().unwrap().take();
+    if let Some(provider) = provider {
+        provider.cleanup();
+    } else {
+        let _ = stt::stop().await;
+    }
+
+    *RECORDING_START.lock().unwrap() = None;
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").ok();
     Ok(())
@@ -772,4 +963,89 @@ pub async fn test_api_key(provider: String, api_key: String) -> Result<bool, Str
     })
     .await
     .map_err(|e| format!("Task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn capture_screen(
+    app: tauri::AppHandle,
+    mode: String,
+    prompt: Option<String>,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<String, String> {
+    let _ = app.emit("stt-state-changed", "processing");
+
+    let image_bytes = if mode == "region" {
+        let x = x.ok_or("Region capture requires x coordinate")?;
+        let y = y.ok_or("Region capture requires y coordinate")?;
+        let w = width.ok_or("Region capture requires width")?;
+        let h = height.ok_or("Region capture requires height")?;
+        crate::screen_capture::capture_region(x, y, w, h)?
+    } else {
+        crate::screen_capture::capture_full_screen()?
+    };
+
+    let settings = get_settings_internal(&app);
+    let vision = create_vision_provider(&settings);
+
+    let prompt_text = prompt.unwrap_or_else(|| "Summarize what you see in this image.".to_string());
+
+    let analysis_result = tokio::task::spawn_blocking(move || {
+        if vision.supports_ai_analysis() {
+            vision.analyze(&image_bytes, &prompt_text)
+        } else {
+            vision.ocr(&image_bytes)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))??;
+
+    // Auto-paste result
+    let paste_text = analysis_result.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        if let Err(e) = autopaste::paste_text(&paste_text) {
+            log::warn!("Auto-paste failed: {}", e);
+        }
+    });
+
+    // Save to history
+    let _ = history::add_entry(
+        &app,
+        "Screen capture",
+        &analysis_result,
+        Some("Screen Capture"),
+        Some("Screen Analysis"),
+        None,
+        Some("screen"),
+        None,
+    );
+
+    let _ = app.emit("stt-state-changed", "idle");
+    let _ = app.emit("refinement-complete", serde_json::json!({ "action": "screen" }));
+
+    Ok(analysis_result)
+}
+
+#[tauri::command]
+pub async fn get_model_status(app: tauri::AppHandle) -> Result<model_manager::ModelStatus, String> {
+    let settings = get_settings_internal(&app);
+    Ok(model_manager::get_status(&settings.whisper_model))
+}
+
+#[tauri::command]
+pub async fn download_whisper_model(app: tauri::AppHandle, model: String) -> Result<(), String> {
+    let app_clone = app.clone();
+    tokio::task::spawn_blocking(move || {
+        model_manager::download_model(&model, &app_clone)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+pub async fn delete_whisper_model(model: String) -> Result<(), String> {
+    model_manager::delete_model(&model)
 }

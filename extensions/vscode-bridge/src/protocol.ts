@@ -93,14 +93,14 @@ export interface CommandRequest {
 }
 
 export interface ClassifiedAction {
-  intent: "dictation" | "translate" | "summarize" | "draft" | "explain" | "unknown";
+  intent: "dictation" | "translate" | "summarize" | "draft" | "explain" | "unknown" | "screen_summarize" | "screen_extract" | "screen_explain";
   params?: Record<string, string>;
   inputSource?: "spoken" | "clipboard" | "previous";
   description?: string;
 }
 
 export interface ClassifiedIntent {
-  intent: "dictation" | "translate" | "summarize" | "draft" | "explain" | "unknown" | "chain";
+  intent: "dictation" | "translate" | "summarize" | "draft" | "explain" | "unknown" | "chain" | "screen_summarize" | "screen_extract" | "screen_explain";
   params?: Record<string, string>;
   inputSource?: "spoken" | "clipboard" | "previous";
   description?: string;
@@ -113,6 +113,22 @@ export interface CommandResultResponse {
   result: string;
   action: string;
   params?: Record<string, string>;
+}
+
+// --- Vision ---
+
+export interface VisionRequest {
+  type: "vision";
+  id: string;
+  image: string;
+  prompt: string;
+  token: string;
+}
+
+export interface VisionResultResponse {
+  type: "vision_result";
+  id: string;
+  refinedText: string;
 }
 
 // --- Model listing ---
@@ -137,7 +153,7 @@ export interface ListModelsResponse {
 
 // --- Union types ---
 
-export type IncomingMessage = RefineRequest | ConversationRequest | SummarizeRequest | CommandRequest | ListModelsRequest;
+export type IncomingMessage = RefineRequest | ConversationRequest | SummarizeRequest | CommandRequest | ListModelsRequest | VisionRequest;
 export type OutgoingMessage =
   | ChunkResponse
   | ResultResponse
@@ -146,7 +162,8 @@ export type OutgoingMessage =
   | ConversationResultResponse
   | SummarizeResultResponse
   | CommandResultResponse
-  | ListModelsResponse;
+  | ListModelsResponse
+  | VisionResultResponse;
 
 export const BRIDGE_PORT = 9147;
 export const BRIDGE_HOST = "127.0.0.1";

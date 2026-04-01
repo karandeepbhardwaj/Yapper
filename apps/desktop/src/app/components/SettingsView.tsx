@@ -4,7 +4,7 @@ import { Home, BookOpen, FileText, ChevronRight, X, ExternalLink, Info, RefreshC
 import { AnimatePresence } from "motion/react";
 import fnKeySettingsImg from "../../assets/fn-key-settings.png";
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import type { AppSettings, Metrics } from "../lib/types";
 import { DEFAULT_SETTINGS } from "../lib/types";
 
@@ -557,6 +557,36 @@ export function SettingsView({
     }
   }, [bridgeConnected, settings.ai_provider_mode, fetchBridgeModels]);
 
+  // Speech Recognition: model status
+  const [modelStatus, setModelStatus] = useState<{
+    available_models: { name: string; size_display: string; description: string; downloaded: boolean }[];
+    current_model: string | null;
+    is_downloading: boolean;
+    download_progress: { model: string; percent: number; downloaded_bytes: number; total_bytes: number } | null;
+  } | null>(null);
+
+  useEffect(() => {
+    invoke("get_model_status").then((status: any) => setModelStatus(status)).catch(() => {});
+
+    const unlisten1 = listen<any>("model-download-progress", (event) => {
+      setModelStatus((prev) =>
+        prev ? { ...prev, is_downloading: true, download_progress: event.payload } : prev
+      );
+    });
+    const unlisten2 = listen("model-download-complete", () => {
+      invoke("get_model_status").then((status: any) => setModelStatus(status)).catch(() => {});
+    });
+    const unlisten3 = listen("model-download-error", () => {
+      invoke("get_model_status").then((status: any) => setModelStatus(status)).catch(() => {});
+    });
+
+    return () => {
+      unlisten1.then((fn) => fn());
+      unlisten2.then((fn) => fn());
+      unlisten3.then((fn) => fn());
+    };
+  }, []);
+
   // AI Provider: API key test
   const [keyTestResult, setKeyTestResult] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [showKey, setShowKey] = useState(false);
@@ -807,6 +837,247 @@ export function SettingsView({
             </SettingRow>
           )}
 
+        </SectionCard>
+
+        {/* Speech Recognition */}
+        <SectionCard>
+          <SectionHeader>Speech Recognition</SectionHeader>
+
+          {/* Whisper Model picker */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--yapper-text-primary)",
+            }}>
+              Whisper Model
+              <HintBubble text="Larger models are more accurate but slower and require more disk space. Download a model to use on-device speech recognition." />
+            </span>
+            {modelStatus ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {modelStatus.available_models.map((m) => {
+                  const isActive = modelStatus.current_model === m.name;
+                  const isDownloading = modelStatus.is_downloading && modelStatus.download_progress?.model === m.name;
+                  return (
+                    <div
+                      key={m.name}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: isActive
+                          ? "1.5px solid #DA7756"
+                          : "1px solid var(--yapper-border, #e5e5e5)",
+                        background: isActive
+                          ? "rgba(218,119,86,0.05)"
+                          : "var(--yapper-surface-low, #f8f4f0)",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: "var(--yapper-text-primary)",
+                            textTransform: "capitalize",
+                          }}>
+                            {m.name}
+                          </span>
+                          <span style={{
+                            fontSize: 11,
+                            color: "var(--yapper-text-secondary)",
+                            opacity: 0.7,
+                          }}>
+                            {m.size_display}
+                          </span>
+                        </div>
+                        <div style={{
+                          fontSize: 11,
+                          color: "var(--yapper-text-secondary)",
+                          lineHeight: 1.3,
+                          marginTop: 2,
+                        }}>
+                          {m.description}
+                        </div>
+                        {isDownloading && modelStatus.download_progress && (
+                          <div style={{ marginTop: 6 }}>
+                            <div style={{
+                              height: 4,
+                              borderRadius: 2,
+                              background: "var(--yapper-border, #e5e5e5)",
+                              overflow: "hidden",
+                            }}>
+                              <div style={{
+                                height: "100%",
+                                width: `${modelStatus.download_progress.percent}%`,
+                                background: "linear-gradient(90deg, #DA7756, #c4684a)",
+                                borderRadius: 2,
+                                transition: "width 0.3s ease",
+                              }} />
+                            </div>
+                            <span style={{ fontSize: 10, color: "var(--yapper-text-secondary)", marginTop: 2, display: "block" }}>
+                              {Math.round(modelStatus.download_progress.percent)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flexShrink: 0 }}>
+                        {isActive ? (
+                          <span style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "#DA7756",
+                            padding: "4px 10px",
+                            borderRadius: 6,
+                            background: "rgba(218,119,86,0.1)",
+                          }}>
+                            Active
+                          </span>
+                        ) : m.downloaded ? (
+                          <button
+                            onClick={() => update({ whisper_model: m.name, stt_provider: "whisper" })}
+                            style={{
+                              padding: "5px 12px",
+                              borderRadius: 8,
+                              border: "1px solid var(--yapper-border, #e5e5e5)",
+                              background: "var(--yapper-surface-lowest)",
+                              color: "var(--yapper-text-primary)",
+                              fontSize: 12,
+                              fontWeight: 500,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Select
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => invoke("download_whisper_model", { model: m.name }).catch(console.error)}
+                            disabled={modelStatus.is_downloading}
+                            style={{
+                              padding: "5px 12px",
+                              borderRadius: 8,
+                              border: "none",
+                              background: modelStatus.is_downloading ? "var(--yapper-surface-low)" : "#DA7756",
+                              color: modelStatus.is_downloading ? "var(--yapper-text-secondary)" : "#fff",
+                              fontSize: 12,
+                              fontWeight: 500,
+                              cursor: modelStatus.is_downloading ? "not-allowed" : "pointer",
+                              opacity: modelStatus.is_downloading && !isDownloading ? 0.5 : 1,
+                            }}
+                          >
+                            {isDownloading ? "Downloading…" : "Download"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{
+                fontSize: 12,
+                color: "var(--yapper-text-secondary)",
+                padding: "10px 0",
+                opacity: 0.6,
+              }}>
+                Loading models…
+              </div>
+            )}
+          </div>
+
+          <div style={{ height: 1, background: "var(--yapper-border, #eee)", margin: "2px 0" }} />
+
+          {/* Language selector */}
+          <SettingRow
+            label="Language"
+            description="Transcription language hint"
+            hint="Setting a specific language can improve accuracy. Auto detects the language automatically."
+          >
+            <select
+              value={settings.whisper_language || "auto"}
+              onChange={(e) => update({ whisper_language: e.target.value })}
+              style={{
+                padding: "8px 14px",
+                paddingRight: 30,
+                borderRadius: 10,
+                border: "1px solid var(--yapper-border, #ddd)",
+                background: "var(--yapper-surface-low, #f5f5f5)",
+                color: "var(--yapper-text-primary)",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                outline: "none",
+                minWidth: 140,
+                appearance: "none",
+                WebkitAppearance: "none",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+              }}
+            >
+              <option value="auto">Auto detect</option>
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="zh">Chinese</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="pt">Portuguese</option>
+              <option value="ru">Russian</option>
+              <option value="ar">Arabic</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </SettingRow>
+
+          <div style={{ height: 1, background: "var(--yapper-border, #eee)", margin: "2px 0" }} />
+
+          {/* Live Transcription toggle */}
+          <SettingRow
+            label="Live Transcription"
+            description="Stream partial results while recording"
+            hint="Shows transcription in real-time as you speak. Disable for lower latency on slower devices."
+          >
+            <Toggle
+              checked={settings.streaming_enabled}
+              onChange={(val) => update({ streaming_enabled: val })}
+              label="Live transcription"
+            />
+          </SettingRow>
+        </SectionCard>
+
+        {/* Screen Capture */}
+        <SectionCard>
+          <SectionHeader>Screen Capture</SectionHeader>
+
+          <SettingRow label="Capture Hotkey" hint="Press this hotkey to capture a screen region for AI analysis.">
+            <div style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: "var(--yapper-surface-lowest)",
+              border: "1px solid var(--yapper-border)",
+              fontSize: 13,
+              fontFamily: "monospace",
+            }}>
+              {isMac
+                ? settings.screen_capture_hotkey.replace("Cmd", "\u2318").replace("Shift", "\u21E7").replace("+", "")
+                : settings.screen_capture_hotkey}
+            </div>
+          </SettingRow>
+
+          <SettingRow label="Save Screenshots">
+            <Toggle
+              checked={settings.save_screenshots}
+              onChange={(v) => update({ save_screenshots: v })}
+              label="Save thumbnails in history"
+            />
+          </SettingRow>
         </SectionCard>
 
         {/* AI Provider */}
