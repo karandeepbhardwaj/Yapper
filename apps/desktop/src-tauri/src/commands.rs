@@ -7,8 +7,12 @@ use tauri::{Emitter, Manager};
 
 use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, model_manager, snippets, stt};
 use crate::providers::SttProvider;
+use crate::providers::VisionProvider;
 use crate::providers::stt_whisper::WhisperCppProvider;
 use crate::providers::stt_native::NativeOsProvider;
+use crate::providers::vision_anthropic::AnthropicVisionProvider;
+use crate::providers::vision_bridge::CopilotVisionProvider;
+use crate::providers::vision_native::NativeOcrProvider;
 
 static RECORDING_START: Mutex<Option<Instant>> = Mutex::new(None);
 
@@ -30,6 +34,26 @@ fn create_stt_provider(settings: &AppSettings) -> Result<Box<dyn SttProvider>, S
         }
     }
     Ok(Box::new(NativeOsProvider::new()))
+}
+
+fn create_vision_provider(settings: &AppSettings) -> Box<dyn VisionProvider> {
+    if settings.ai_provider_mode == "vscode" {
+        // Quick TCP check to see if the bridge is reachable
+        let bridge_available = std::net::TcpStream::connect_timeout(
+            &"127.0.0.1:9147".parse().unwrap(),
+            std::time::Duration::from_millis(300),
+        )
+        .is_ok();
+        if bridge_available {
+            return Box::new(CopilotVisionProvider::new());
+        }
+    } else if !settings.ai_api_key.is_empty() && settings.ai_provider == "anthropic" {
+        return Box::new(AnthropicVisionProvider::new(
+            &settings.ai_api_key,
+            &settings.ai_model,
+        ));
+    }
+    Box::new(NativeOcrProvider::new())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -400,6 +424,58 @@ async fn process_recording_result(
             }
         }
     };
+
+    // Handle screen capture voice commands
+    let (refined_text, category, title, action, action_params) =
+        if matches!(action.as_deref(), Some("screen_summarize") | Some("screen_extract") | Some("screen_explain")) {
+            let screen_action = action.as_deref().unwrap_or("screen_summarize");
+            log::info!("Screen voice command detected: {}", screen_action);
+
+            match crate::screen_capture::capture_full_screen() {
+                Ok(image_bytes) => {
+                    let settings = get_settings_internal(app);
+                    let vision = create_vision_provider(&settings);
+
+                    let prompt = match screen_action {
+                        "screen_extract" => "Extract all visible text from this image. Return only the extracted text, preserving the original layout as much as possible.".to_string(),
+                        "screen_explain" => "Explain what is shown in this screenshot in detail. Describe the UI elements, content, and context.".to_string(),
+                        _ => "Summarize what you see in this image.".to_string(),
+                    };
+
+                    match tokio::task::spawn_blocking(move || {
+                        if vision.supports_ai_analysis() {
+                            vision.analyze(&image_bytes, &prompt)
+                        } else {
+                            vision.ocr(&image_bytes)
+                        }
+                    })
+                    .await
+                    {
+                        Ok(Ok(result)) => (
+                            result,
+                            Some("Screen Capture".to_string()),
+                            Some("Screen Analysis".to_string()),
+                            Some(screen_action.to_string()),
+                            action_params,
+                        ),
+                        Ok(Err(e)) => {
+                            log::error!("Vision analysis failed: {}", e);
+                            (format!("Screen capture failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
+                        }
+                        Err(e) => {
+                            log::error!("Vision task failed: {}", e);
+                            (format!("Screen capture task failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Screen capture failed: {}", e);
+                    (format!("Screen capture failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
+                }
+            }
+        } else {
+            (refined_text, category, title, action, action_params)
+        };
 
     // Auto-paste
     let text_for_paste = refined_text.clone();
@@ -887,6 +963,70 @@ pub async fn test_api_key(provider: String, api_key: String) -> Result<bool, Str
     })
     .await
     .map_err(|e| format!("Task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn capture_screen(
+    app: tauri::AppHandle,
+    mode: String,
+    prompt: Option<String>,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<String, String> {
+    let _ = app.emit("stt-state-changed", "processing");
+
+    let image_bytes = if mode == "region" {
+        let x = x.ok_or("Region capture requires x coordinate")?;
+        let y = y.ok_or("Region capture requires y coordinate")?;
+        let w = width.ok_or("Region capture requires width")?;
+        let h = height.ok_or("Region capture requires height")?;
+        crate::screen_capture::capture_region(x, y, w, h)?
+    } else {
+        crate::screen_capture::capture_full_screen()?
+    };
+
+    let settings = get_settings_internal(&app);
+    let vision = create_vision_provider(&settings);
+
+    let prompt_text = prompt.unwrap_or_else(|| "Summarize what you see in this image.".to_string());
+
+    let analysis_result = tokio::task::spawn_blocking(move || {
+        if vision.supports_ai_analysis() {
+            vision.analyze(&image_bytes, &prompt_text)
+        } else {
+            vision.ocr(&image_bytes)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))??;
+
+    // Auto-paste result
+    let paste_text = analysis_result.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        if let Err(e) = autopaste::paste_text(&paste_text) {
+            log::warn!("Auto-paste failed: {}", e);
+        }
+    });
+
+    // Save to history
+    let _ = history::add_entry(
+        &app,
+        "Screen capture",
+        &analysis_result,
+        Some("Screen Capture"),
+        Some("Screen Analysis"),
+        None,
+        Some("screen"),
+        None,
+    );
+
+    let _ = app.emit("stt-state-changed", "idle");
+    let _ = app.emit("refinement-complete", serde_json::json!({ "action": "screen" }));
+
+    Ok(analysis_result)
 }
 
 #[tauri::command]
