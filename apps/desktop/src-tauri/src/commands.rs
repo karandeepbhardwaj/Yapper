@@ -1,13 +1,36 @@
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
 use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, model_manager, snippets, stt};
+use crate::providers::SttProvider;
+use crate::providers::stt_whisper::WhisperCppProvider;
+use crate::providers::stt_native::NativeOsProvider;
 
-static RECORDING_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+static RECORDING_START: Mutex<Option<Instant>> = Mutex::new(None);
+
+static ACTIVE_STT: Lazy<Mutex<Option<Box<dyn SttProvider>>>> = Lazy::new(|| Mutex::new(None));
 
 pub static HOLD_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn create_stt_provider(settings: &AppSettings) -> Result<Box<dyn SttProvider>, String> {
+    if settings.stt_provider == "whisper" && !settings.whisper_model.is_empty() {
+        match WhisperCppProvider::new(
+            &settings.whisper_model,
+            &settings.whisper_language,
+            settings.streaming_enabled,
+        ) {
+            Ok(provider) => return Ok(Box::new(provider)),
+            Err(e) => {
+                log::warn!("Whisper not available, falling back to native: {}", e);
+            }
+        }
+    }
+    Ok(Box::new(NativeOsProvider::new()))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
@@ -413,29 +436,58 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
     let current = stt::get_state();
     match current {
         stt::State::Idle => {
+            let settings = get_settings_internal(handle);
+            let provider = match create_stt_provider(&settings) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("STT provider creation failed: {}", e);
+                    handle.emit("stt-error", e).ok();
+                    return;
+                }
+            };
+
             *RECORDING_START.lock().unwrap() = Some(Instant::now());
+            stt::set_state(stt::State::Recording);
             handle.emit("stt-state-changed", "listening").ok();
-            if let Err(e) = stt::start(handle).await {
+
+            if let Err(e) = provider.start(handle) {
                 log::error!("STT start failed: {}", e);
                 *RECORDING_START.lock().unwrap() = None;
                 stt::set_state(stt::State::Idle);
                 handle.emit("stt-state-changed", "idle").ok();
                 handle.emit("stt-error", e).ok();
+                return;
             }
+
+            *ACTIVE_STT.lock().unwrap() = Some(provider);
         }
         stt::State::Recording => {
             let duration_secs = RECORDING_START.lock().unwrap().take()
                 .map(|s| s.elapsed().as_secs())
                 .unwrap_or(0);
 
+            stt::set_state(stt::State::Processing);
             handle.emit("stt-state-changed", "processing").ok();
             handle.emit("stop-speech-recognition", ()).ok();
-            let raw_transcript = match stt::stop().await {
-                Ok(t) => t,
-                Err(_) => {
-                    stt::set_state(stt::State::Idle);
-                    handle.emit("stt-state-changed", "idle").ok();
-                    return;
+
+            let provider = ACTIVE_STT.lock().unwrap().take();
+            let raw_transcript = if let Some(provider) = provider {
+                match provider.stop() {
+                    Ok(t) => t,
+                    Err(_) => {
+                        stt::set_state(stt::State::Idle);
+                        handle.emit("stt-state-changed", "idle").ok();
+                        return;
+                    }
+                }
+            } else {
+                match stt::stop().await {
+                    Ok(t) => t,
+                    Err(_) => {
+                        stt::set_state(stt::State::Idle);
+                        handle.emit("stt-state-changed", "idle").ok();
+                        return;
+                    }
                 }
             };
 
@@ -460,14 +512,23 @@ pub async fn start_recording(app: tauri::AppHandle) -> Result<(), String> {
     if stt::get_state() != stt::State::Idle {
         return Err("Not idle".to_string());
     }
+
+    let settings = get_settings_internal(&app);
+    let provider = create_stt_provider(&settings)?;
+
     *RECORDING_START.lock().unwrap() = Some(Instant::now());
+    stt::set_state(stt::State::Recording);
     app.emit("stt-state-changed", "listening").map_err(|e| e.to_string())?;
-    stt::start(&app).await.map_err(|e| {
+
+    if let Err(e) = provider.start(&app) {
         *RECORDING_START.lock().unwrap() = None;
         stt::set_state(stt::State::Idle);
         app.emit("stt-state-changed", "idle").ok();
-        e.to_string()
-    })
+        return Err(e);
+    }
+
+    *ACTIVE_STT.lock().unwrap() = Some(provider);
+    Ok(())
 }
 
 #[tauri::command]
@@ -479,14 +540,24 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
         .map(|s| s.elapsed().as_secs())
         .unwrap_or(0);
 
+    stt::set_state(stt::State::Processing);
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
     app.emit("stop-speech-recognition", ()).ok();
 
-    let raw_transcript = stt::stop().await.map_err(|e| {
-        stt::set_state(stt::State::Idle);
-        app.emit("stt-state-changed", "idle").ok();
-        e.to_string()
-    })?;
+    let provider = ACTIVE_STT.lock().unwrap().take();
+    let raw_transcript = if let Some(provider) = provider {
+        provider.stop().map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e
+        })?
+    } else {
+        stt::stop().await.map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e.to_string()
+        })?
+    };
 
     process_recording_result(&app, raw_transcript, duration_secs).await?;
 
@@ -503,14 +574,24 @@ pub async fn stop_recording_raw(app: tauri::AppHandle) -> Result<String, String>
     if stt::get_state() != stt::State::Recording {
         return Err("Not recording".to_string());
     }
+    stt::set_state(stt::State::Processing);
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
     app.emit("stop-speech-recognition", ()).ok();
 
-    let raw_transcript = stt::stop().await.map_err(|e| {
-        stt::set_state(stt::State::Idle);
-        app.emit("stt-state-changed", "idle").ok();
-        e.to_string()
-    })?;
+    let provider = ACTIVE_STT.lock().unwrap().take();
+    let raw_transcript = if let Some(provider) = provider {
+        provider.stop().map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e
+        })?
+    } else {
+        stt::stop().await.map_err(|e| {
+            stt::set_state(stt::State::Idle);
+            app.emit("stt-state-changed", "idle").ok();
+            e.to_string()
+        })?
+    };
 
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
@@ -521,7 +602,15 @@ pub async fn stop_recording_raw(app: tauri::AppHandle) -> Result<String, String>
 #[tauri::command]
 pub async fn cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("stop-speech-recognition", ()).ok();
-    let _ = stt::stop().await;
+
+    let provider = ACTIVE_STT.lock().unwrap().take();
+    if let Some(provider) = provider {
+        provider.cleanup();
+    } else {
+        let _ = stt::stop().await;
+    }
+
+    *RECORDING_START.lock().unwrap() = None;
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").ok();
     Ok(())
