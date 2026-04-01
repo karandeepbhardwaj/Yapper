@@ -1052,6 +1052,34 @@ export function SettingsView({
           </SettingRow>
         </SectionCard>
 
+        {/* Screen Capture */}
+        <SectionCard>
+          <SectionHeader>Screen Capture</SectionHeader>
+
+          <SettingRow label="Capture Hotkey" hint="Press this hotkey to capture a screen region for AI analysis.">
+            <div style={{
+              padding: "6px 12px",
+              borderRadius: 8,
+              background: "var(--yapper-surface-lowest)",
+              border: "1px solid var(--yapper-border)",
+              fontSize: 13,
+              fontFamily: "monospace",
+            }}>
+              {isMac
+                ? settings.screen_capture_hotkey.replace("Cmd", "\u2318").replace("Shift", "\u21E7").replace("+", "")
+                : settings.screen_capture_hotkey}
+            </div>
+          </SettingRow>
+
+          <SettingRow label="Save Screenshots">
+            <Toggle
+              checked={settings.save_screenshots}
+              onChange={(v) => update({ save_screenshots: v })}
+              label="Save thumbnails in history"
+            />
+          </SettingRow>
+        </SectionCard>
+
         {/* AI Provider */}
         <SectionCard>
           <SectionHeader>AI Provider</SectionHeader>
