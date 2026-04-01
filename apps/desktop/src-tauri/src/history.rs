@@ -41,6 +41,8 @@ pub struct HistoryEntry {
     pub action: Option<String>,
     #[serde(rename = "actionParams", skip_serializing_if = "Option::is_none")]
     pub action_params: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub screenshot_thumbnail: Option<String>,
 }
 
 pub fn get_all(app: &tauri::AppHandle) -> Result<Vec<HistoryEntry>, String> {
@@ -73,6 +75,7 @@ pub fn add_entry(
         duration_seconds,
         action: action.map(|a| a.to_string()),
         action_params: action_params.cloned(),
+        screenshot_thumbnail: None,
     };
 
     entries.insert(0, entry);
@@ -114,6 +117,7 @@ pub fn add_conversation_entry(
         duration_seconds: Some(duration_seconds),
         action: None,
         action_params: None,
+        screenshot_thumbnail: None,
     };
 
     entries.insert(0, entry);
@@ -153,6 +157,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(12),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 200).to_string(),
@@ -166,6 +171,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(15),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 300).to_string(),
@@ -179,6 +185,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(18),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 400).to_string(),
@@ -192,6 +199,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(22),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 500).to_string(),
@@ -205,6 +213,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(10),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 600).to_string(),
@@ -218,6 +227,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(8),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 700).to_string(),
@@ -231,6 +241,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(14),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 800).to_string(),
@@ -244,6 +255,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(16),
             action: None,
             action_params: None,
+            screenshot_thumbnail: None,
         },
         // Voice command sample entries
         HistoryEntry {
@@ -258,6 +270,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(9),
             action: Some("translate".into()),
             action_params: Some(HashMap::from([("targetLang".into(), "Spanish".into())])),
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 1000).to_string(),
@@ -271,6 +284,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(3),
             action: Some("summarize".into()),
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 1100).to_string(),
@@ -284,6 +298,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(7),
             action: Some("draft".into()),
             action_params: Some(HashMap::from([("type".into(), "email".into()), ("topic".into(), "moving standup to 10:30 due to all-hands".into())])),
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 1200).to_string(),
@@ -297,6 +312,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(4),
             action: Some("explain".into()),
             action_params: None,
+            screenshot_thumbnail: None,
         },
         HistoryEntry {
             id: (now.timestamp_millis() - 1300).to_string(),
@@ -310,6 +326,7 @@ pub fn seed_sample_data(app: &tauri::AppHandle) -> Result<(), String> {
             duration_seconds: Some(5),
             action: Some("chain".into()),
             action_params: Some(HashMap::from([("steps".into(), "translate + summarize".into()), ("targetLang".into(), "French".into())])),
+            screenshot_thumbnail: None,
         },
     ];
     store::save(app, "history.json", &entries)
