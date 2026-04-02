@@ -13,7 +13,7 @@ const COLLAPSED_H = 8;
 const HOVER_W = 64;
 const HOVER_H = 48;
 const RECORDING_W = 200;
-const RECORDING_H = 42;
+const RECORDING_H = 62;
 
 const PILL_EASE = [0.34, 1.1, 0.64, 1] as const;
 
@@ -24,6 +24,7 @@ function WidgetApp() {
   const [convoHotkey, setConvoHotkey] = useState("Cmd+Shift+Y");
   const [actionLabel, setActionLabel] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [partialText, setPartialText] = useState<string>("");
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
@@ -45,7 +46,16 @@ function WidgetApp() {
       if (event.payload === "listening") {
         setErrorMessage(null);
       }
+      if (event.payload !== "listening") {
+        setPartialText("");
+      }
     });
+    const unlistenPartial = listen<{ text: string; is_final: boolean }>(
+      "stt-partial",
+      (event) => {
+        setPartialText(event.payload.text);
+      }
+    );
     const unsubAction = listen<{action?: string}>("refinement-complete", (event) => {
       const action = event.payload?.action;
       if (action && action !== "dictation") {
@@ -67,6 +77,7 @@ function WidgetApp() {
     });
     return () => {
       unsub.then((fn) => fn());
+      unlistenPartial.then((fn) => fn());
       unsubAction.then((fn) => fn());
       unsubSkipped.then((fn) => fn());
     };
@@ -325,6 +336,32 @@ function WidgetApp() {
                   <div style={{ width: 9, height: 9, borderRadius: 2, background: "#fff" }} />
                 </motion.button>
               </div>
+              {/* Live transcript text */}
+              {partialText && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.7 }}
+                  style={{
+                    position: "absolute",
+                    bottom: 4,
+                    left: 12,
+                    right: 48,
+                    fontSize: 10,
+                    color: "var(--yapper-text-secondary, #aaa)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    direction: "rtl",
+                    textAlign: "left",
+                    pointerEvents: "none",
+                    fontStyle: "italic",
+                  }}
+                >
+                  <span style={{ unicodeBidi: "plaintext" }}>
+                    {partialText.length > 50 ? "..." + partialText.slice(-50) : partialText}
+                  </span>
+                </motion.div>
+              )}
             </motion.div>
           )}
           {isProcessing && (
