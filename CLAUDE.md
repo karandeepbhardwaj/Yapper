@@ -64,6 +64,18 @@ apps/desktop/          — Tauri desktop app
     hotkey.rs          — Global shortcut + Fn key monitoring (macOS), separate conversation hotkey (Cmd+Shift+Y / Ctrl+Shift+Y)
     history.rs         — History persistence (JSON, supports conversation entries with turns/keyPoints/duration)
     autopaste.rs       — Cross-platform paste: pbcopy+osascript (macOS) / PowerShell (Windows)
+    providers/mod.rs          — Provider trait definitions (SttProvider, AiProvider, VisionProvider)
+    providers/stt_whisper.rs  — WhisperCppProvider (cpal + whisper-rs, streaming)
+    providers/stt_native.rs   — NativeOsProvider (fallback, wraps existing platform STT)
+    providers/ai_bridge.rs    — BridgeAiProvider (wraps bridge.rs)
+    providers/ai_direct.rs    — DirectAiProvider (wraps ai_provider.rs)
+    providers/vision_anthropic.rs — AnthropicVisionProvider (Claude API with images)
+    providers/vision_bridge.rs    — CopilotVisionProvider (via VS Code bridge)
+    providers/vision_native.rs    — NativeOcrProvider (Apple Vision / Windows OCR)
+    model_manager.rs          — Whisper model download, verification, status
+    screen_capture/mod.rs     — Screen capture dispatcher
+    screen_capture/macos.rs   — macOS CGDisplay screenshot via Swift subprocess
+    screen_capture/windows.rs — Windows placeholder
 
 extensions/vscode-bridge/  — VS Code extension (Copilot-only; no API key fallback in bridge)
   src/extension.ts         — WebSocket server, routes refine/conversation/summarize messages
@@ -88,17 +100,22 @@ extensions/vscode-bridge/  — VS Code extension (Copilot-only; no API key fallb
 - **Recording modes**: "Press" (toggle, default) starts/stops on hotkey press. "Hold" starts on press, stops on release (including Fn key release on macOS).
 - **Conversation hotkey**: Separate hotkey for starting conversations, default `Cmd+Shift+Y` (macOS) / `Ctrl+Shift+Y` (Windows). Configurable in settings.
 - **Atomic writes**: All persistence (history, dictionary, snippets, settings) uses write-to-tmp-then-rename via `store.rs` to prevent data corruption on crash.
+- **Whisper STT**: Primary STT via whisper-rs (local). Models downloaded from Hugging Face on first use to `~/.yapper/models/`. Falls back to native OS STT before model download.
+- **Screen Capture**: macOS uses CGDisplayCreateImage via Swift subprocess. Region select deferred to follow-up. Requires Screen Recording permission on macOS.
+- **Vision AI**: Routes through same dual-provider pattern. Native OCR fallback for offline use.
+- **Provider traits**: All providers (STT, AI, Vision) use trait-based dispatch in commands.rs via factory functions.
 
 ## Recording Pipeline
 
 ```
 1. User triggers hotkey/widget click
-2. start_recording → STT begins
+2. start_recording → cpal audio capture → whisper-rs streaming → stt-partial events emitted → final pass on stop
 3. stop_recording →
    a. Check snippets (detect_and_expand, word boundary matching) → if match, paste directly, skip AI
    b. Apply dictionary replacements (word-by-word, handles trailing punctuation)
-   c. AI-first intent classification → detect voice commands (translate, summarize, draft, explain, chain)
+   c. AI-first intent classification → detect voice commands (translate, summarize, draft, explain, chain, screen_summarize, screen_extract, screen_explain)
       - If voice command detected → dispatch to voice command handler → execute → paste result
+      - Screen commands: capture screen first via screen_capture, then route to vision provider
    d. (Non-command path) Route by provider mode:
       - VS Code mode: send to bridge with style + styleOverrides + codeMode (token auth)
         → Bridge refines via vscode.lm → returns refinedText + category + title
@@ -144,16 +161,21 @@ Idle → start_recording → Recording → stop_recording → Processing → (pa
 - Use `YAPPER_SAMPLE_DATA=1 bun tauri dev` to start with sample history data for development/demos.
 - Don't add `Co-Authored-By` lines to commits.
 - Use `log` macros (`log::info!`, `log::error!`, etc.) instead of `println!` — all println! has been replaced with structured logging.
-- Don't resize the NSPanel dynamically — crashes. Widget is fixed at 220x80.
+- Don't resize the NSPanel dynamically — crashes. Widget is fixed at 220x80 (recording height is now 62, was 42, to accommodate live transcript).
 - Don't use Web Speech API — doesn't work in WKWebView.
 - Widget `pointer-events: none` on root, `auto` only on pill/tooltip. `setIgnoresMouseEvents` toggled by Rust hover detection for dock click passthrough.
 - CSS can't transition between gradients — use overlays or instant switch for background gradient changes.
 - `user-select: none` on all elements except inputs to prevent text selection.
 - Dictionary replacements happen BEFORE AI refinement. Snippets bypass AI entirely.
+- whisper-rs requires CMake for first build (compiles whisper.cpp C++ code).
+- cpal audio capture requires microphone permission on macOS.
+- Screen capture requires Screen Recording permission on macOS.
 
 ## App Views
 
 App.tsx router: `history | conversation | settings | dictionary | snippets | help`
+
+Settings includes new sections: **Speech Recognition** (model picker, language, streaming toggle) and **Screen Capture** (hotkey, save screenshots).
 
 ## Testing
 
