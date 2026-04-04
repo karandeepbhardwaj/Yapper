@@ -120,6 +120,7 @@ pub fn run() {
             commands::list_bridge_models,
             commands::open_vscode,
             commands::test_api_key,
+            commands::capture_screen,
             commands::get_model_status,
             commands::download_whisper_model,
             commands::delete_whisper_model,
