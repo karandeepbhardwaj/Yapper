@@ -519,6 +519,91 @@ fn list_models_blocking() -> Result<Vec<BridgeModelInfo>, String> {
     }
 }
 
+// --- Vision support ---
+
+#[derive(Debug, serde::Serialize)]
+pub struct VisionRequest {
+    #[serde(rename = "type")]
+    pub msg_type: String,
+    pub id: String,
+    pub image: String,
+    pub prompt: String,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct VisionResponse {
+    pub analysis: String,
+}
+
+pub async fn send_vision_request(image: &str, prompt: &str) -> Result<VisionResponse, String> {
+    let image = image.to_string();
+    let prompt = prompt.to_string();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        send_vision_request_blocking(&image, &prompt)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?;
+    result
+}
+
+fn send_vision_request_blocking(image: &str, prompt: &str) -> Result<VisionResponse, String> {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").ok()
+    } else {
+        std::env::var("HOME").ok()
+    };
+    let token = home
+        .map(|h| std::path::PathBuf::from(h).join(".yapper").join("bridge-token"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    let mut socket = open_bridge_socket()?;
+
+    let request = VisionRequest {
+        msg_type: "vision".to_string(),
+        id: crate::store::uuid_simple(),
+        image: image.to_string(),
+        prompt: prompt.to_string(),
+        token,
+    };
+
+    let request_json = serde_json::to_string(&request).map_err(|e| e.to_string())?;
+    socket
+        .send(Message::Text(request_json))
+        .map_err(|e| format!("Failed to send message: {}", e))?;
+
+    loop {
+        let msg = socket
+            .read()
+            .map_err(|e| format!("Failed to read response: {}", e))?;
+
+        match msg {
+            Message::Text(text) => {
+                let response: BridgeResponse = serde_json::from_str(&text)
+                    .map_err(|e| format!("Invalid response: {}", e))?;
+
+                if let Some(error) = response.error {
+                    return Err(error);
+                }
+
+                if response.msg_type == "vision_result" {
+                    let _ = socket.close(None);
+                    return Ok(VisionResponse {
+                        analysis: response.refined_text.unwrap_or_default(),
+                    });
+                }
+            }
+            Message::Close(_) => {
+                return Err("Bridge closed connection before completing vision request".to_string());
+            }
+            _ => {}
+        }
+    }
+}
+
 // --- Shared helpers ---
 
 fn open_bridge_socket() -> Result<WebSocket<MaybeTlsStream<TcpStream>>, String> {
