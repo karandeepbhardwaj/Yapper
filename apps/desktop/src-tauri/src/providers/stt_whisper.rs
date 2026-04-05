@@ -102,19 +102,34 @@ impl SttProvider for WhisperCppProvider {
         self.audio_buffer.lock().unwrap().clear();
         *self.final_transcript.lock().unwrap() = None;
 
-        // Start cpal audio capture
+        // Start cpal audio capture using device's default config, resample to 16kHz
         let host = cpal::default_host();
         let device = host
             .default_input_device()
             .ok_or("No audio input device found")?;
 
+        let default_config = device
+            .default_input_config()
+            .map_err(|e| format!("Failed to get default input config: {}", e))?;
+
+        let device_sample_rate = default_config.sample_rate().0;
+        let device_channels = default_config.channels() as usize;
+
+        log::info!(
+            "Audio device: {}Hz, {} channels — resampling to {}Hz mono",
+            device_sample_rate,
+            device_channels,
+            WHISPER_SAMPLE_RATE
+        );
+
         let config = cpal::StreamConfig {
-            channels: 1,
-            sample_rate: cpal::SampleRate(WHISPER_SAMPLE_RATE),
+            channels: default_config.channels(),
+            sample_rate: default_config.sample_rate(),
             buffer_size: cpal::BufferSize::Default,
         };
 
         let buffer = self.audio_buffer.clone();
+        let resample_ratio = device_sample_rate as f64 / WHISPER_SAMPLE_RATE as f64;
         let err_fn = |err: cpal::StreamError| {
             log::error!("Audio capture error: {}", err);
         };
@@ -123,7 +138,36 @@ impl SttProvider for WhisperCppProvider {
             .build_input_stream(
                 &config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    buffer.lock().unwrap().extend_from_slice(data);
+                    // Convert multi-channel to mono by averaging channels
+                    let mono: Vec<f32> = if device_channels > 1 {
+                        data.chunks(device_channels)
+                            .map(|frame| frame.iter().sum::<f32>() / device_channels as f32)
+                            .collect()
+                    } else {
+                        data.to_vec()
+                    };
+
+                    // Downsample from device rate to 16kHz using simple linear interpolation
+                    if device_sample_rate == WHISPER_SAMPLE_RATE {
+                        buffer.lock().unwrap().extend_from_slice(&mono);
+                    } else {
+                        let output_len = (mono.len() as f64 / resample_ratio) as usize;
+                        let mut resampled = Vec::with_capacity(output_len);
+                        for i in 0..output_len {
+                            let src_idx = i as f64 * resample_ratio;
+                            let idx = src_idx as usize;
+                            let frac = src_idx - idx as f64;
+                            let sample = if idx + 1 < mono.len() {
+                                mono[idx] * (1.0 - frac as f32) + mono[idx + 1] * frac as f32
+                            } else if idx < mono.len() {
+                                mono[idx]
+                            } else {
+                                0.0
+                            };
+                            resampled.push(sample);
+                        }
+                        buffer.lock().unwrap().extend_from_slice(&resampled);
+                    }
                 },
                 err_fn,
                 None,
