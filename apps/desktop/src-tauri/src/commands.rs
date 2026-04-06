@@ -990,7 +990,7 @@ pub async fn capture_screen(
     width: Option<u32>,
     height: Option<u32>,
 ) -> Result<String, String> {
-    log::info!("[ScreenCapture] Starting capture, mode={}", mode);
+    eprintln!("[ScreenCapture] Starting capture, mode={}", mode);
     SCREEN_CAPTURE_CANCEL.store(false, Ordering::Relaxed);
     let _ = app.emit("stt-state-changed", "processing");
 

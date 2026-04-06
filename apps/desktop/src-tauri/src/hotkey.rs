@@ -124,11 +124,12 @@ fn conversation_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: tau
 }
 
 fn screen_capture_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+    eprintln!("[Hotkey] screen_capture_handler called, state={:?}", event.state);
     if event.state == ShortcutState::Pressed {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             use tauri::Emitter;
-            log::info!("[Hotkey] Screen capture triggered");
+            eprintln!("[Hotkey] Screen capture triggered, calling capture_screen...");
             if let Err(e) = crate::commands::capture_screen(
                 app.clone(),
                 "full".to_string(),
@@ -180,12 +181,18 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Screen capture hotkey
     let sc_hotkey = load_saved_screen_capture_hotkey_app(app)
         .unwrap_or_else(|| if cfg!(target_os = "macos") { "Cmd+Shift+S".to_string() } else { "Ctrl+Shift+S".to_string() });
-    if let Ok(sc_shortcut) = parse_hotkey(&sc_hotkey) {
-        app.global_shortcut().on_shortcut(sc_shortcut, screen_capture_handler).ok();
-        log::info!("[Hotkey] Screen capture shortcut registered: {}", sc_hotkey);
+    eprintln!("[Hotkey] Registering screen capture hotkey: {}", sc_hotkey);
+    match parse_hotkey(&sc_hotkey) {
+        Ok(sc_shortcut) => {
+            match app.global_shortcut().on_shortcut(sc_shortcut, screen_capture_handler) {
+                Ok(_) => eprintln!("[Hotkey] Screen capture shortcut registered OK: {}", sc_hotkey),
+                Err(e) => eprintln!("[Hotkey] FAILED to register screen capture shortcut: {}", e),
+            }
+        }
+        Err(e) => eprintln!("[Hotkey] FAILED to parse screen capture hotkey '{}': {}", sc_hotkey, e),
     }
 
-    log::info!("[Hotkey] All shortcuts registered");
+    eprintln!("[Hotkey] All shortcuts registered");
     Ok(())
 }
 
