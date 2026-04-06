@@ -127,8 +127,10 @@ fn screen_capture_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: t
     if event.state == ShortcutState::Pressed {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
+            use tauri::Emitter;
+            log::info!("[Hotkey] Screen capture triggered");
             if let Err(e) = crate::commands::capture_screen(
-                app,
+                app.clone(),
                 "full".to_string(),
                 None,
                 None,
@@ -139,6 +141,7 @@ fn screen_capture_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: t
             .await
             {
                 log::error!("[Hotkey] Screen capture failed: {}", e);
+                let _ = app.emit("stt-error", format!("Screen capture failed: {}", e));
             }
         });
     }

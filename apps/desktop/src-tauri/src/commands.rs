@@ -48,8 +48,9 @@ fn create_vision_provider(settings: &AppSettings) -> Box<dyn VisionProvider> {
             return Box::new(CopilotVisionProvider::new());
         }
     } else if !settings.ai_api_key.is_empty() && settings.ai_provider == "anthropic" {
+        let api_key = decrypt_key(&settings.ai_api_key);
         return Box::new(AnthropicVisionProvider::new(
-            &settings.ai_api_key,
+            &api_key,
             &settings.ai_model,
         ));
     }
