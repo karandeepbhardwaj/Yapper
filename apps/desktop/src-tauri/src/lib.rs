@@ -121,6 +121,7 @@ pub fn run() {
             commands::open_vscode,
             commands::test_api_key,
             commands::capture_screen,
+            commands::cancel_screen_capture,
             commands::get_model_status,
             commands::download_whisper_model,
             commands::delete_whisper_model,
