@@ -377,6 +377,7 @@ function WidgetApp() {
                 borderRadius: "inherit",
                 overflow: "hidden",
                 position: "relative",
+                pointerEvents: "auto",
               }}
             >
               {/* Animated hue wave */}
