@@ -432,7 +432,10 @@ async fn process_recording_result(
             let screen_action = action.as_deref().unwrap_or("screen_summarize");
             log::info!("Screen voice command detected: {}", screen_action);
 
-            match crate::screen_capture::capture_full_screen() {
+            let capture_result = tokio::task::spawn_blocking(|| {
+                crate::screen_capture::capture_full_screen()
+            }).await.map_err(|e| format!("Task error: {}", e))?;
+            match capture_result {
                 Ok(image_bytes) => {
                     let settings = get_settings_internal(app);
                     let vision = create_vision_provider(&settings);
@@ -976,22 +979,43 @@ pub async fn capture_screen(
     width: Option<u32>,
     height: Option<u32>,
 ) -> Result<String, String> {
+    log::info!("[ScreenCapture] Starting capture, mode={}", mode);
     let _ = app.emit("stt-state-changed", "processing");
 
-    let image_bytes = if mode == "region" {
-        let x = x.ok_or("Region capture requires x coordinate")?;
-        let y = y.ok_or("Region capture requires y coordinate")?;
-        let w = width.ok_or("Region capture requires width")?;
-        let h = height.ok_or("Region capture requires height")?;
-        crate::screen_capture::capture_region(x, y, w, h)?
-    } else {
-        crate::screen_capture::capture_full_screen()?
+    // Run screen capture in a blocking thread (Swift subprocess blocks)
+    let capture_mode = mode.clone();
+    let image_bytes = tokio::task::spawn_blocking(move || {
+        if capture_mode == "region" {
+            let x = x.ok_or("Region capture requires x coordinate")?;
+            let y = y.ok_or("Region capture requires y coordinate")?;
+            let w = width.ok_or("Region capture requires width")?;
+            let h = height.ok_or("Region capture requires height")?;
+            crate::screen_capture::capture_region(x, y, w, h)
+        } else {
+            crate::screen_capture::capture_full_screen()
+        }
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))?;
+
+    let image_bytes = match image_bytes {
+        Ok(bytes) => {
+            log::info!("[ScreenCapture] Captured {} bytes", bytes.len());
+            bytes
+        }
+        Err(e) => {
+            log::error!("[ScreenCapture] Capture failed: {}", e);
+            let _ = app.emit("stt-state-changed", "idle");
+            let _ = app.emit("stt-error", format!("Screen capture failed: {}", e));
+            return Err(e);
+        }
     };
 
     let settings = get_settings_internal(&app);
     let vision = create_vision_provider(&settings);
 
     let prompt_text = prompt.unwrap_or_else(|| "Summarize what you see in this image.".to_string());
+    log::info!("[ScreenCapture] Sending to vision provider, prompt: {}", &prompt_text[..prompt_text.len().min(50)]);
 
     let analysis_result = tokio::task::spawn_blocking(move || {
         if vision.supports_ai_analysis() {
@@ -1001,7 +1025,20 @@ pub async fn capture_screen(
         }
     })
     .await
-    .map_err(|e| format!("Task error: {}", e))??;
+    .map_err(|e| format!("Task error: {}", e))?;
+
+    let analysis_result = match analysis_result {
+        Ok(result) => {
+            log::info!("[ScreenCapture] Analysis complete: {} chars", result.len());
+            result
+        }
+        Err(e) => {
+            log::error!("[ScreenCapture] Vision analysis failed: {}", e);
+            let _ = app.emit("stt-state-changed", "idle");
+            let _ = app.emit("stt-error", format!("Vision analysis failed: {}", e));
+            return Err(e);
+        }
+    };
 
     // Auto-paste result
     let paste_text = analysis_result.clone();
