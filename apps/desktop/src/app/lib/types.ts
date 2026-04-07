@@ -77,7 +77,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   whisper_model: "",
   whisper_language: "auto",
   streaming_enabled: true,
-  screen_capture_hotkey: "Cmd+Shift+S",
+  screen_capture_hotkey: "Cmd+Shift+0",
   save_screenshots: true,
 };
 
