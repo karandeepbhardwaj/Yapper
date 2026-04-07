@@ -423,16 +423,16 @@ function WidgetApp() {
                   }}
                 />
               ))}
-              {/* Action label overlay */}
-              {actionLabel && (
-                <div style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  zIndex: 2,
-                }}>
+              {/* Action label overlay + cancel button */}
+              <div style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 2,
+              }}>
+                {actionLabel && (
                   <span
                     style={{
                       color: "white",
@@ -447,8 +447,33 @@ function WidgetApp() {
                   >
                     {actionLabel}...
                   </span>
-                </div>
-              )}
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => invoke("cancel_screen_capture")}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: "rgba(255,255,255,0.2)",
+                    color: "white",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 4,
+                    pointerEvents: "auto",
+                  }}
+                  title="Cancel"
+                >
+                  ✕
+                </motion.button>
+              </div>
             </motion.div>
           )}
           {isConversation && (

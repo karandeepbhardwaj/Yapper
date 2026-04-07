@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
@@ -969,6 +970,16 @@ pub async fn test_api_key(provider: String, api_key: String) -> Result<bool, Str
     .map_err(|e| format!("Task failed: {e}"))?
 }
 
+static SCREEN_CAPTURE_CANCEL: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+pub async fn cancel_screen_capture(app: tauri::AppHandle) -> Result<(), String> {
+    log::info!("[ScreenCapture] Cancelled by user");
+    SCREEN_CAPTURE_CANCEL.store(true, Ordering::Relaxed);
+    let _ = app.emit("stt-state-changed", "idle");
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn capture_screen(
     app: tauri::AppHandle,
@@ -980,6 +991,7 @@ pub async fn capture_screen(
     height: Option<u32>,
 ) -> Result<String, String> {
     log::info!("[ScreenCapture] Starting capture, mode={}", mode);
+    SCREEN_CAPTURE_CANCEL.store(false, Ordering::Relaxed);
     let _ = app.emit("stt-state-changed", "processing");
 
     // Run screen capture in a blocking thread (Swift subprocess blocks)
@@ -1010,6 +1022,12 @@ pub async fn capture_screen(
             return Err(e);
         }
     };
+
+    if SCREEN_CAPTURE_CANCEL.load(Ordering::Relaxed) {
+        log::info!("[ScreenCapture] Cancelled after capture");
+        let _ = app.emit("stt-state-changed", "idle");
+        return Err("Screen capture cancelled".to_string());
+    }
 
     let settings = get_settings_internal(&app);
     let vision = create_vision_provider(&settings);
