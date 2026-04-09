@@ -1,13 +1,13 @@
 {
   "name": "yapper",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "extensions/*"
-  ],
   "scripts": {
     "dev": "bun run --filter desktop dev",
     "build": "bun run --filter desktop build",
     "tauri": "bun run --filter desktop tauri"
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "extensions/*"
+  ]
 }

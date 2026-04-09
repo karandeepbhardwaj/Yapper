@@ -11,6 +11,10 @@
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" /></a>
 </p>
 
+<p align="center">
+  <img src="demo.gif" alt="Yapper Demo" width="400" />
+</p>
+
 ---
 
 ## Features
