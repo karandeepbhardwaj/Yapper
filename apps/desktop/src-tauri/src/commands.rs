@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
-use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, snippets, stt};
+use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, model_manager, snippets, stt};
 
 static RECORDING_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
@@ -38,6 +38,18 @@ pub struct AppSettings {
     pub ai_model: String,
     #[serde(default = "default_theme")]
     pub theme: String,                // "light" | "dark" | "system"
+    #[serde(default = "default_stt_provider")]
+    pub stt_provider: String,
+    #[serde(default)]
+    pub whisper_model: String,
+    #[serde(default = "default_whisper_language")]
+    pub whisper_language: String,
+    #[serde(default = "default_streaming_enabled")]
+    pub streaming_enabled: bool,
+    #[serde(default = "default_screen_capture_hotkey")]
+    pub screen_capture_hotkey: String,
+    #[serde(default = "default_save_screenshots")]
+    pub save_screenshots: bool,
 }
 
 fn read_clipboard() -> Option<String> {
@@ -103,6 +115,14 @@ fn default_conversation_hotkey() -> String {
 
 fn default_ai_provider_mode() -> String { "vscode".to_string() }
 fn default_theme() -> String { "system".to_string() }
+fn default_stt_provider() -> String { "whisper".to_string() }
+fn default_whisper_language() -> String { "auto".to_string() }
+fn default_streaming_enabled() -> bool { true }
+fn default_screen_capture_hotkey() -> String {
+    if cfg!(target_os = "macos") { "Cmd+Shift+S".to_string() }
+    else { "Ctrl+Shift+S".to_string() }
+}
+fn default_save_screenshots() -> bool { true }
 
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
@@ -191,6 +211,12 @@ impl Default for AppSettings {
             vscode_model: String::new(),
             ai_model: String::new(),
             theme: "system".to_string(),
+            stt_provider: default_stt_provider(),
+            whisper_model: String::new(),
+            whisper_language: default_whisper_language(),
+            streaming_enabled: default_streaming_enabled(),
+            screen_capture_hotkey: default_screen_capture_hotkey(),
+            save_screenshots: default_save_screenshots(),
         }
     }
 }
@@ -772,4 +798,25 @@ pub async fn test_api_key(provider: String, api_key: String) -> Result<bool, Str
     })
     .await
     .map_err(|e| format!("Task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn get_model_status(app: tauri::AppHandle) -> Result<model_manager::ModelStatus, String> {
+    let settings = get_settings_internal(&app);
+    Ok(model_manager::get_status(&settings.whisper_model))
+}
+
+#[tauri::command]
+pub async fn download_whisper_model(app: tauri::AppHandle, model: String) -> Result<(), String> {
+    let app_clone = app.clone();
+    tokio::task::spawn_blocking(move || {
+        model_manager::download_model(&model, &app_clone)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+pub async fn delete_whisper_model(model: String) -> Result<(), String> {
+    model_manager::delete_model(&model)
 }
