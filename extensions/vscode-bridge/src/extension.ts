@@ -20,8 +20,10 @@ import type {
   ListModelsRequest,
   ListModelsResponse,
   ModelInfo,
+  VisionRequest,
+  VisionResultResponse,
 } from "./protocol";
-import { refineWithCopilot, handleConversation, handleSummarize, handleCommand } from "./copilot-bridge";
+import { refineWithCopilot, handleConversation, handleSummarize, handleCommand, handleVision } from "./copilot-bridge";
 
 let server: http.Server | undefined;
 let wss: WebSocketServer | undefined;
@@ -126,6 +128,9 @@ function startServer(context: vscode.ExtensionContext) {
               break;
             case "list-models":
               await handleListModels(ws, message as ListModelsRequest);
+              break;
+            case "vision":
+              await handleVisionMessage(ws, message as VisionRequest, tokenSource);
               break;
             default:
               sendError(ws, (message as { id?: string }).id || "unknown", `Unknown message type: ${(message as { type: string }).type}`);
@@ -349,6 +354,28 @@ async function handleListModels(ws: WebSocket, message: ListModelsRequest) {
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Failed to list models";
     sendError(ws, message.id, errorMessage);
+  }
+}
+
+async function handleVisionMessage(
+  ws: WebSocket,
+  message: VisionRequest,
+  tokenSource: vscode.CancellationTokenSource
+) {
+  try {
+    if (!message.image || !message.prompt) {
+      sendError(ws, message.id, "Missing image or prompt");
+      return;
+    }
+    const result = await handleVision(message.image, message.prompt, tokenSource.token);
+    const response: VisionResultResponse = {
+      type: "vision_result",
+      id: message.id,
+      refinedText: result,
+    };
+    ws.send(JSON.stringify(response));
+  } catch (error: any) {
+    sendError(ws, message.id, error.message || "Vision analysis failed");
   }
 }
 
