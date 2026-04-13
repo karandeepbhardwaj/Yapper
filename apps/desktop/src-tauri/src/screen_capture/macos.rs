@@ -1,14 +1,44 @@
 use std::os::unix::fs::PermissionsExt;
 
-/// Swift script that captures the full screen and writes PNG bytes to stdout.
+/// Swift script that captures the full screen using ScreenCaptureKit and writes PNG bytes to stdout.
 static SWIFT_CAPTURE_FULL: &str = r#"
 import Cocoa
-let displayID = CGMainDisplayID()
-guard let screenshot = CGDisplayCreateImage(displayID) else {
-    fputs("Failed to capture screen\n", stderr)
+import ScreenCaptureKit
+
+let semaphore = DispatchSemaphore(value: 0)
+var capturedImage: CGImage?
+
+Task {
+    do {
+        let content = try await SCShareableContent.current
+        guard let display = content.displays.first else {
+            fputs("No display found\n", stderr)
+            exit(1)
+        }
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let config = SCStreamConfiguration()
+        config.width = display.width
+        config.height = display.height
+        config.capturesAudio = false
+        config.showsCursor = false
+        capturedImage = try await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: config
+        )
+        semaphore.signal()
+    } catch {
+        fputs("Capture error: \(error)\n", stderr)
+        exit(1)
+    }
+}
+
+semaphore.wait()
+
+guard let cgImage = capturedImage else {
+    fputs("No image captured\n", stderr)
     exit(1)
 }
-let bitmap = NSBitmapImageRep(cgImage: screenshot)
+let bitmap = NSBitmapImageRep(cgImage: cgImage)
 guard let png = bitmap.representation(using: .png, properties: [:]) else {
     fputs("Failed to encode PNG\n", stderr)
     exit(1)
@@ -16,29 +46,58 @@ guard let png = bitmap.representation(using: .png, properties: [:]) else {
 FileHandle.standardOutput.write(png)
 "#;
 
-/// Swift script that captures a screen region and writes PNG bytes to stdout.
+/// Swift script that captures a screen region using ScreenCaptureKit.
 /// Arguments: x y width height
 static SWIFT_CAPTURE_REGION: &str = r#"
 import Cocoa
+import ScreenCaptureKit
+
 let args = CommandLine.arguments
 guard args.count == 5,
-      let x = Double(args[1]),
-      let y = Double(args[2]),
-      let w = Double(args[3]),
-      let h = Double(args[4]) else {
+      let rx = Int(args[1]),
+      let ry = Int(args[2]),
+      let rw = Int(args[3]),
+      let rh = Int(args[4]) else {
     fputs("Usage: script x y width height\n", stderr)
     exit(1)
 }
-let displayID = CGMainDisplayID()
-let displayHeight = Double(CGDisplayPixelsHigh(displayID))
-// CoreGraphics origin is bottom-left; flip y for top-left coordinate input
-let cgY = displayHeight - y - h
-let rect = CGRect(x: x, y: cgY, width: w, height: h)
-guard let screenshot = CGDisplayCreateImage(displayID, rect: rect) else {
-    fputs("Failed to capture region\n", stderr)
+
+let semaphore = DispatchSemaphore(value: 0)
+var capturedImage: CGImage?
+
+Task {
+    do {
+        let content = try await SCShareableContent.current
+        guard let display = content.displays.first else {
+            fputs("No display found\n", stderr)
+            exit(1)
+        }
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let config = SCStreamConfiguration()
+        config.width = display.width
+        config.height = display.height
+        config.capturesAudio = false
+        config.showsCursor = false
+        // Capture full screen then crop
+        config.sourceRect = CGRect(x: rx, y: ry, width: rw, height: rh)
+        capturedImage = try await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: config
+        )
+        semaphore.signal()
+    } catch {
+        fputs("Capture error: \(error)\n", stderr)
+        exit(1)
+    }
+}
+
+semaphore.wait()
+
+guard let cgImage = capturedImage else {
+    fputs("No image captured\n", stderr)
     exit(1)
 }
-let bitmap = NSBitmapImageRep(cgImage: screenshot)
+let bitmap = NSBitmapImageRep(cgImage: cgImage)
 guard let png = bitmap.representation(using: .png, properties: [:]) else {
     fputs("Failed to encode PNG\n", stderr)
     exit(1)
