@@ -1387,7 +1387,7 @@ Expected: Both pass with no errors.
 - [ ] **Step 2: Run the app**
 
 ```bash
-cd /Users/kdb/Developer/Yapper && bun dev
+cd ~/Developer/Yapper && bun dev
 ```
 
 - [ ] **Step 3: Manual test — regular dictation**
