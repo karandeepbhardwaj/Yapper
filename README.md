@@ -28,12 +28,11 @@
 
 ## Features
 
+- **100% local, private by design** -- speech recognition and AI refinement both run on your machine. No cloud APIs, no API keys, no external apps. Your audio and text never leave the device.
 - **Voice capture** -- press a global hotkey and start talking
 - **Voice commands** -- speak `translate`, `summarize`, `draft`, `explain`, or `chain` to trigger AI actions directly; classified before refinement
-- **On-device speech recognition** -- macOS `SFSpeechRecognizer` (offline) / Windows dual-engine: Classic (SAPI5 offline) or Modern (WinRT, higher accuracy)
-- **Dual AI provider modes** -- choose in Settings:
-  - **VS Code mode** -- routes through the local VS Code extension using `vscode.lm` / Copilot (no API key in the app)
-  - **API Key mode** -- direct Groq or Anthropic calls from the app; no VS Code required
+- **Local speech-to-text (Whisper)** -- on-device transcription via [whisper.cpp](https://github.com/ggerganov/whisper.cpp); pick a model size (tiny → large-v3) in Settings, downloaded once
+- **Local AI refinement (Ollama)** -- transcripts are cleaned up by an open model (e.g. Llama 3.2) running in your local [Ollama](https://ollama.com) server; no API key in the app
 - **Auto-paste** refined text at your active cursor position
 - **Conversation mode** -- back-and-forth AI chat with a dedicated hotkey (`Cmd+Shift+Y` / `Ctrl+Shift+Y`), session summaries saved to history
 - **Recording modes** -- "Press" (toggle, default) or "Hold" (press-and-hold to record, release to stop; Fn key release supported on macOS)
@@ -42,54 +41,47 @@
 - **Dictionary** -- user-defined text replacements applied before AI refinement (e.g., "btw" -> "by the way"), handles trailing punctuation
 - **Snippets** -- reusable text templates that bypass AI using word boundary matching (e.g., "my email" -> expands to your email address)
 - **Style settings** -- per-category refinement tone (Professional, Casual, Technical, Creative) for Email, Messages, Work, Personal
-- **Code mode** -- auto-detects file/variable names from VS Code workspace, preserves code references in backtick formatting
+- **Code mode** -- preserves code references in backtick formatting during refinement
 - **Metrics** -- usage tracking with streak days, word count, WPM, total recordings
 - **Floating widget** -- follows you across macOS Spaces, positioned above dock/taskbar (dock-aware on macOS, drops to bottom in full-screen), click-through when not hovered; shows error messages on failure
 - **History dashboard** -- fuzzy search (Fuse.js), pin/copy/delete with animations, sort by newest/oldest, multi-select category filter dropdown, action badges on cards
 - **Theme persistence** -- Light / Dark / Auto theme with circle-reveal transition animation
 - **iOS-style transitions** -- spring-based push/pop view transitions between app views
-- **Settings page** -- AI provider mode, provider selection, API key (encrypted), theme, hotkeys, recording mode, style, dictionary, snippets, metrics, code mode; segmented controls and hint tooltips; settings reordered by UX priority. iOS 26 style "< Back" navigation
+- **Settings page** -- Whisper model picker, local AI (Ollama) model + server URL with live status, theme, hotkeys, recording mode, style, dictionary, snippets, metrics, code mode; segmented controls and hint tooltips. iOS 26 style "< Back" navigation
 - **Customizable hotkeys** -- dictation: `Cmd+Shift+.` (macOS) / `Ctrl+Shift+.` (Windows); conversation: `Cmd+Shift+Y` / `Ctrl+Shift+Y`
 - **Fn key recording** (macOS) -- use the Globe/Fn key as your trigger; Fn release stops recording in Hold mode
-- **STT engine selection** (Windows) -- toggle between Classic (offline, no setup) and Modern (cloud-assisted, higher accuracy) with in-app permission guidance
-- **Bridge authentication** -- random token written to `~/.yapper/bridge-token` secures the WebSocket connection
-- **Circuit breaker** -- 3 consecutive bridge failures trigger 30s cooldown with automatic fallback to raw transcript (VS Code mode)
 - **Atomic file writes** -- all persistence uses write-to-tmp-then-rename to prevent data corruption
-- **API key encryption** -- API keys stored encrypted in settings; validated before saving via `test_api_key`
 
 ---
 
 ## Architecture
 
+Everything runs locally — no network calls leave your machine.
+
 ```
-+--------------------------+                                +-------------------------+
-|    Desktop App (Tauri)   |                                |   VS Code Extension     |
-|                          |  WebSocket (127.0.0.1:9147)    |   (VS Code mode only)   |
-|  +--------------------+  | <----------------------------> |                         |
-|  |  React Frontend    |  |         local only              |  +-------------------+  |
-|  |  (Tailwind+Motion) |  |                                 |  | WebSocket Server  |  |
-|  +---------+----------+  |                                 |  | (ws, 127.0.0.1)   |  |
-|            | IPC          |                                 |  +--------+----------+  |
-|  +---------+----------+  |                                 |           |              |
-|  |  Rust Backend       |  |                                 |  +--------+----------+  |
-|  |  - Global Hotkey    |  |                                 |  | vscode.lm         |  |
-|  |  - Native STT       |  |                                 |  | (Copilot only)    |  |
-|  |  - Voice Cmd        |  |                                 |  +-------------------+  |
-|  |    Classifier       |  |                                 +-------------------------+
-|  |  - bridge.rs        |  |
-|  |  - ai_provider.rs --+--+--> Groq / Anthropic (API Key mode, direct HTTPS)
-|  |  - Auto-paste       |  |
-|  |  - History          |  |
-|  +--------------------+  |
-+-----------+--------------+
-            |
-     +------+-------+
-     | Native STT          |
-     | macOS: Swift         |
-     | Win: Classic (SAPI5) |
-     |   or Modern (WinRT)  |
-     | (on-device)          |
-     +----------------------+
++----------------------------------+
+|        Desktop App (Tauri)       |
+|  +----------------------------+  |
+|  |  React Frontend            |  |
+|  |  (Tailwind + Motion)       |  |
+|  +-------------+--------------+  |
+|                | IPC             |
+|  +-------------+--------------+  |
+|  |  Rust Backend              |  |
+|  |  - Global Hotkey           |  |
+|  |  - cpal audio capture      |  |
+|  |  - Voice Cmd Classifier    |  |
+|  |  - Auto-paste / History    |  |
+|  |                            |  |
+|  |  whisper.cpp  ai_provider  |  |
+|  +------+-----------+---------+  |
++---------|-----------|------------+
+          |           | HTTP (localhost:11434)
+   +------v-----+  +--v---------------------+
+   | Whisper    |  | Ollama (local LLM)     |
+   | model      |  | e.g. llama3.2          |
+   | (on-device)|  | OpenAI-compatible API  |
+   +------------+  +------------------------+
 ```
 
 ---
@@ -112,15 +104,21 @@ Download from the [latest release](https://github.com/karandeepbhardwaj/Yapper/r
 xattr -cr /Applications/Yapper.app
 ```
 
-**Windows permissions**: Grant microphone access in Settings > Privacy > Microphone. For the Modern STT engine, enable Settings > Privacy & security > Speech > "Online speech recognition" (the app will guide you with a tooltip when needed).
+**Windows permissions**: Grant microphone access in Settings > Privacy > Microphone.
 
-### VS Code Extension (optional — VS Code mode only)
+### Required: local AI runtime (Ollama)
 
-1. Download `yapper-bridge-x.x.x.vsix` from the [latest release](https://github.com/karandeepbhardwaj/Yapper/releases)
-2. In VS Code: `Cmd+Shift+P` / `Ctrl+Shift+P` > **Extensions: Install from VSIX...** > select the `.vsix` file
-3. The bridge auto-starts when VS Code opens -- look for the radio tower icon in the status bar
+Yapper refines transcripts with a local LLM via [Ollama](https://ollama.com). One-time setup:
 
-> **Note:** The VS Code extension is only required when using **VS Code mode**. In **API Key mode**, you can skip this step entirely — just enter your Groq or Anthropic API key in Yapper's Settings.
+1. Install Ollama from [ollama.com](https://ollama.com)
+2. Pull a model: `ollama pull llama3.2`
+3. Make sure the server is running: `ollama serve` (the desktop app does the rest)
+
+In Yapper's **Settings → Local AI (Ollama)** you can change the model name (default `llama3.2`) and server URL, and check live connection status. If Ollama isn't running, dictation still works — Yapper pastes the raw transcript and tells you AI refinement is unavailable.
+
+### Required: a Whisper model
+
+On first launch, open **Settings → Speech Recognition** and download a Whisper model (start with `base` or `small`). Transcription runs fully on-device; nothing is uploaded.
 
 ---
 
@@ -133,8 +131,9 @@ xattr -cr /Applications/Yapper.app
 | Rust | 1.75+ | [rustup.rs](https://rustup.rs) |
 | Node.js | 20+ | [nodejs.org](https://nodejs.org) |
 | Bun | latest | [bun.sh](https://bun.sh) |
+| CMake | latest | Required to build whisper.cpp (`brew install cmake`) |
 | Xcode CLI Tools (macOS) | latest | `xcode-select --install` |
-| VS Code | latest | For testing the bridge |
+| Ollama | latest | [ollama.com](https://ollama.com) — local LLM runtime |
 
 ### Build & Run
 
@@ -160,41 +159,35 @@ Build output: `apps/desktop/src-tauri/target/release/bundle/`
 ```
  Speak  -->  Record  -->  Transcribe  -->  Classify  -->  Refine/Execute  -->  Paste
   |            |              |               |                 |                 |
-  |       Microphone     Native STT      Voice cmd?        LLM via           Keystroke
-  |       capture        (on-device)    (translate,       VS Code or         simulation
-  |                                      summarize,       direct API        (auto-paste)
+  |       Microphone     whisper.cpp     Voice cmd?        local Ollama       Keystroke
+  |       (cpal)         (on-device)    (translate,       (llama3.2)         simulation
+  |                                      summarize,       on localhost      (auto-paste)
   |                                       draft…)
 ```
 
 1. **Speak** -- press `Cmd+Shift+.` / `Ctrl+Shift+.` (or click the floating widget, or press `Cmd+Shift+Y` / `Ctrl+Shift+Y` for conversation mode)
-2. **Record** -- audio is captured from the microphone
-3. **Transcribe** -- native speech recognition converts speech to text on-device
+2. **Record** -- audio is captured from the microphone via `cpal`
+3. **Transcribe** -- whisper.cpp converts speech to text fully on-device
 4. **Classify** -- AI-first intent classifier detects voice commands (translate, summarize, draft, explain, chain) and dispatches them; non-commands proceed to refinement
-5. **Refine** -- in VS Code mode, the transcript is sent over a local WebSocket to the VS Code extension (vscode.lm); in API Key mode, `ai_provider.rs` calls Groq or Anthropic directly
+5. **Refine** -- the transcript is sent to your local Ollama model over `localhost:11434`
 6. **Paste** -- the refined or command-executed text is automatically pasted at your current cursor position
 
 ---
 
 ## AI Model Configuration
 
-Yapper supports two AI provider modes. Select your preferred mode in **Settings > AI Provider**.
+Yapper refines text with a local model served by **[Ollama](https://ollama.com)** — no API keys, no cloud. Configure it in **Settings → Local AI (Ollama)**.
 
-### VS Code Mode
+1. Install Ollama and pull a model: `ollama pull llama3.2`
+2. (Optional) Set a different model name or server URL in Settings. Any chat model in your Ollama library works — e.g. `llama3.1`, `mistral`, `qwen2.5`.
+3. Use **Test model** in Settings to confirm it responds.
 
-Routes through the local VS Code extension using `vscode.lm` (Copilot). Install GitHub Copilot or another registered VS Code LLM extension. No API key required in the app.
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Model | `llama3.2` | Any model pulled into Ollama |
+| Server URL | `http://localhost:11434` | Override with the `YAPPER_OLLAMA_URL` env var too |
 
-> The VS Code extension no longer has API key fallback — it uses `vscode.lm` exclusively.
-
-### API Key Mode
-
-Makes direct calls to Groq or Anthropic from the app. VS Code is not required.
-
-| Provider | Model | Setup |
-|----------|-------|-------|
-| Groq | Llama 3.3 70B | Enter Groq API key in Settings (free at [console.groq.com](https://console.groq.com)) |
-| Anthropic | Claude Sonnet 4 | Enter Anthropic API key in Settings |
-
-API keys are validated (`test_api_key`) and stored encrypted. If the key is invalid or missing, raw transcripts are pasted without refinement.
+> If Ollama isn't running, Yapper pastes the raw transcript unrefined and surfaces a "Local AI not running" notice.
 
 ### Voice Commands
 
@@ -237,14 +230,14 @@ Settings are persisted per-platform in the app config directory using atomic fil
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `ai_provider_mode` | `vscode` | AI routing: "vscode" (bridge) or "apikey" (direct) |
-| `ai_provider` | `groq` | Direct provider in API Key mode: "groq" or "anthropic" |
-| `ai_api_key` | -- | Encrypted API key for API Key mode |
+| `ollama_model` | `llama3.2` | Local LLM model name (must be pulled in Ollama) |
+| `ollama_url` | `http://localhost:11434` | Local Ollama server URL |
+| `whisper_model` | -- | Downloaded Whisper model (tiny → large-v3) |
+| `whisper_language` | `auto` | Transcription language, or auto-detect |
 | `theme` | `Auto` | UI theme: "Light", "Dark", or "Auto" |
 | `hotkey` | `Cmd+Shift+.` / `Ctrl+Shift+.` | Dictation hotkey |
 | `conversation_hotkey` | `Cmd+Shift+Y` / `Ctrl+Shift+Y` | Conversation mode hotkey |
 | `recording_mode` | `Press` | "Press" (toggle) or "Hold" (press-and-hold) |
-| `stt_engine` | `classic` | Windows STT engine ("classic" or "modern") |
 | `default_style` | `Professional` | Default refinement style |
 | `style_overrides` | `{}` | Per-category style overrides |
 | `metrics_enabled` | `true` | Usage metrics tracking |
@@ -281,10 +274,9 @@ Settings are persisted per-platform in the app config directory using atomic fil
 | Desktop framework | [Tauri 2](https://v2.tauri.app) (Rust) |
 | Frontend | React 18, TypeScript, Tailwind CSS 4 |
 | Animations | Motion (Framer Motion) |
-| Speech-to-text (macOS) | `SFSpeechRecognizer` via Swift subprocess |
-| Speech-to-text (Windows) | Classic: SAPI5 via PowerShell, Modern: `Windows.Media.SpeechRecognition` |
-| AI refinement | Multi-provider: Groq, Gemini, Claude, Copilot |
-| Bridge protocol | WebSocket (`ws`) on `127.0.0.1:9147` |
+| Speech-to-text | [whisper.cpp](https://github.com/ggerganov/whisper.cpp) via `whisper-rs` (on-device, all platforms) |
+| Audio capture | `cpal` (cross-platform, 16 kHz mono) |
+| AI refinement | Local [Ollama](https://ollama.com) model over its OpenAI-compatible API |
 | Search | Fuse.js (fuzzy search) |
 | macOS interop | `objc2` + `objc2-app-kit` + `block2` |
 | Windows interop | `windows` crate (Win32 + WinRT) |

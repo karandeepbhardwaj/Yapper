@@ -7,7 +7,6 @@
     "tauri": "bun run --filter desktop tauri"
   },
   "workspaces": [
-    "apps/*",
-    "extensions/*"
+    "apps/*"
   ]
 }

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-01
+
+### Changed (Breaking)
+
+- **Fully local, no external apps.** Yapper no longer depends on VS Code/Copilot or cloud APIs. Speech-to-text runs through local **whisper.cpp**, and AI refinement runs through a local **Ollama** model — everything stays on your machine.
+- **AI refinement now uses Ollama.** The app calls a local Ollama server (default `http://localhost:11434`) via its OpenAI-compatible endpoint. Configure the model (default `llama3.2`) and server URL in Settings → Local AI. Run `ollama serve` and `ollama pull llama3.2` once before use.
+- **Speech-to-text is now whisper.cpp only.** A Whisper model must be downloaded in Settings → Speech Recognition before dictation works.
+
+### Removed
+
+- **VS Code bridge** — removed the WebSocket bridge, the `vscode-bridge` extension dependency, bridge authentication/token, and the "VS Code mode" setting.
+- **Native OS speech recognition** — removed macOS `SFSpeechRecognizer` and Windows SAPI5/WinRT engines (and the Windows "Classic/Modern" STT engine toggle).
+- **Cloud AI providers & API keys** — removed direct Groq/Anthropic API-key mode, encrypted-key storage, and the `test_api_key` flow. (Groq still serves Llama, but Yapper now runs the open model locally instead.)
+- Settings fields `ai_provider_mode`, `ai_provider`, `ai_api_key`, `vscode_model`, `ai_model`, and `stt_engine`; commands `check_bridge_status`, `list_bridge_models`, `open_vscode`, `test_api_key`, `change_stt_engine`.
+
+### Added
+
+- `ollama_model` and `ollama_url` settings; `check_ollama_status` and `test_ollama` commands.
+- Settings → **Local AI (Ollama)** section: live server status, model name, server URL, and a "Test model" button.
+
 ## [0.4.0] - 2026-03-31
 
 ### Added
