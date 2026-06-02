@@ -1,13 +1,16 @@
 pub mod stt_whisper;
-pub mod stt_native;
-pub mod ai_bridge;
 pub mod ai_direct;
-pub mod vision_anthropic;
-pub mod vision_bridge;
 pub mod vision_native;
 
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
+
+/// A single turn in a conversation history (role + content).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ConversationTurnMsg {
+    pub role: String,
+    pub content: String,
+}
 
 /// Partial transcript segment emitted during streaming STT.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -99,14 +102,14 @@ pub trait AiProvider: Send + Sync {
 
     fn converse(
         &self,
-        history: &[crate::bridge::ConversationTurnMsg],
+        history: &[ConversationTurnMsg],
         user_message: &str,
         on_chunk: Option<Box<dyn Fn(&str) + Send>>,
     ) -> Result<ConversationResponse, String>;
 
     fn summarize(
         &self,
-        history: &[crate::bridge::ConversationTurnMsg],
+        history: &[ConversationTurnMsg],
     ) -> Result<SummaryResult, String>;
 }
 
