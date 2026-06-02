@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-31
+
+### Added
+
+- **Dynamic model selection** — choose the LLM model in both VS Code mode and API Key mode
+- **Markdown rendering in history** — history cards render Markdown with expandable text
+- **Improved refinement prompts** — better error correction, spoken-punctuation handling, and self-correction in STT refinement
+- **Help screen guides** — Dictionary, Snippets, Refinement Style, and Code Mode added to the in-app Help view
+
+### Fixed
+
+- **WebSocket bridge URL** — missing trailing slash caused 400 errors on connect
+- **Silent refinement failures** — surface a proper error on WebSocket Close frame instead of failing quietly
+- **Microphone cleanup** — mic access no longer persists after app exit (cleanup + PID tracking)
+- **Recording animation** — fixed animation getting stuck after the first use
+- **WPM metric** — corrected words-per-minute calculation
+
 ## [0.3.0] - 2026-03-29
 
 ### Added
