@@ -5,7 +5,6 @@ pub mod conversation;
 pub mod store;
 mod hotkey;
 mod stt;
-mod bridge;
 mod ai_provider;
 mod autopaste;
 mod history;
@@ -25,8 +24,6 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
-                    #[cfg(target_os = "macos")]
-                    stt::cleanup();
                     std::process::exit(0);
                 }
             }
@@ -40,26 +37,8 @@ pub fn run() {
                 }
             }
 
-            // Kill any orphaned recorder subprocess from a previous crash
-            #[cfg(target_os = "macos")]
-            stt::cleanup();
-
             hotkey::register(app)?;
             widget::setup(app);
-
-            // Restore STT engine preference on Windows
-            #[cfg(target_os = "windows")]
-            {
-                use tauri::Manager;
-                if let Ok(path) = app.path().app_config_dir() {
-                    let settings_path = path.join("settings.json");
-                    if let Ok(data) = std::fs::read_to_string(&settings_path) {
-                        if let Ok(settings) = serde_json::from_str::<commands::AppSettings>(&data) {
-                            stt::windows::set_engine(settings.stt_engine == "modern");
-                        }
-                    }
-                }
-            }
 
             // Restore recording mode preference
             {
@@ -83,7 +62,6 @@ pub fn run() {
             commands::start_recording,
             commands::stop_recording,
             commands::cancel_recording,
-            commands::set_transcript,
             commands::get_history,
             commands::clear_history,
             commands::delete_history_item,
@@ -91,7 +69,6 @@ pub fn run() {
             commands::change_hotkey,
             commands::get_settings,
             commands::save_settings,
-            commands::change_stt_engine,
             commands::change_recording_mode,
             commands::change_conversation_hotkey,
             commands::stop_recording_raw,
@@ -116,10 +93,8 @@ pub fn run() {
             snippets::delete_snippet,
             snippets::toggle_snippet_favorite,
             metrics::get_metrics,
-            commands::check_bridge_status,
-            commands::list_bridge_models,
-            commands::open_vscode,
-            commands::test_api_key,
+            commands::check_ollama_status,
+            commands::test_ollama,
             commands::capture_screen,
             commands::cancel_screen_capture,
             commands::get_model_status,

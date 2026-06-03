@@ -6,13 +6,10 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
-use crate::{ai_provider, autopaste, bridge, conversation, dictionary, history, model_manager, snippets, stt};
+use crate::{ai_provider, autopaste, conversation, dictionary, history, model_manager, snippets, stt};
 use crate::providers::SttProvider;
 use crate::providers::VisionProvider;
 use crate::providers::stt_whisper::WhisperCppProvider;
-use crate::providers::stt_native::NativeOsProvider;
-use crate::providers::vision_anthropic::AnthropicVisionProvider;
-use crate::providers::vision_bridge::CopilotVisionProvider;
 use crate::providers::vision_native::NativeOcrProvider;
 
 static RECORDING_START: Mutex<Option<Instant>> = Mutex::new(None);
@@ -22,47 +19,25 @@ static ACTIVE_STT: Lazy<Mutex<Option<Box<dyn SttProvider>>>> = Lazy::new(|| Mute
 pub static HOLD_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn create_stt_provider(settings: &AppSettings) -> Result<Box<dyn SttProvider>, String> {
-    if settings.stt_provider == "whisper" && !settings.whisper_model.is_empty() {
-        match WhisperCppProvider::new(
-            &settings.whisper_model,
-            &settings.whisper_language,
-            settings.streaming_enabled,
-        ) {
-            Ok(provider) => return Ok(Box::new(provider)),
-            Err(e) => {
-                log::warn!("Whisper not available, falling back to native: {}", e);
-            }
-        }
+    if settings.whisper_model.is_empty() {
+        return Err("No Whisper model downloaded yet. Download one in Settings.".to_string());
     }
-    Ok(Box::new(NativeOsProvider::new()))
+    let provider = WhisperCppProvider::new(
+        &settings.whisper_model,
+        &settings.whisper_language,
+        settings.streaming_enabled,
+    )?;
+    Ok(Box::new(provider))
 }
 
-fn create_vision_provider(settings: &AppSettings) -> Box<dyn VisionProvider> {
-    if settings.ai_provider_mode == "vscode" {
-        // Quick TCP check to see if the bridge is reachable
-        let bridge_available = std::net::TcpStream::connect_timeout(
-            &"127.0.0.1:9147".parse().unwrap(),
-            std::time::Duration::from_millis(300),
-        )
-        .is_ok();
-        if bridge_available {
-            return Box::new(CopilotVisionProvider::new());
-        }
-    } else if !settings.ai_api_key.is_empty() && settings.ai_provider == "anthropic" {
-        let api_key = decrypt_key(&settings.ai_api_key);
-        return Box::new(AnthropicVisionProvider::new(
-            &api_key,
-            &settings.ai_model,
-        ));
-    }
+fn create_vision_provider(_settings: &AppSettings) -> Box<dyn VisionProvider> {
+    // Fully local: on-device OCR text extraction (Apple Vision / Windows OCR).
     Box::new(NativeOcrProvider::new())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub hotkey: String,
-    #[serde(default = "default_stt_engine")]
-    pub stt_engine: String,
     #[serde(default = "default_style")]
     pub default_style: String,
     #[serde(default)]
@@ -75,20 +50,14 @@ pub struct AppSettings {
     pub recording_mode: String,
     #[serde(default = "default_conversation_hotkey")]
     pub conversation_hotkey: String,
-    #[serde(default = "default_ai_provider_mode")]
-    pub ai_provider_mode: String,     // "vscode" | "apikey"
-    #[serde(default)]
-    pub ai_provider: String,          // "groq" | "anthropic"
-    #[serde(default)]
-    pub ai_api_key: String,           // the actual key (decrypted in memory)
-    #[serde(default)]
-    pub vscode_model: String,
-    #[serde(default)]
-    pub ai_model: String,
+    // Local LLM (Ollama) — fully on-device AI refinement.
+    #[serde(default = "default_ollama_model")]
+    pub ollama_model: String,         // e.g. "llama3.2"
+    #[serde(default = "default_ollama_url")]
+    pub ollama_url: String,           // e.g. "http://localhost:11434"
     #[serde(default = "default_theme")]
     pub theme: String,                // "light" | "dark" | "system"
-    #[serde(default = "default_stt_provider")]
-    pub stt_provider: String,
+    // Speech-to-text — local whisper.cpp only.
     #[serde(default)]
     pub whisper_model: String,
     #[serde(default = "default_whisper_language")]
@@ -144,9 +113,8 @@ fn capitalize_first(s: &str) -> String {
     }
 }
 
-fn default_stt_engine() -> String {
-    "classic".to_string()
-}
+fn default_ollama_model() -> String { "llama3.2".to_string() }
+fn default_ollama_url() -> String { "http://localhost:11434".to_string() }
 
 fn default_style() -> String {
     "Professional".to_string()
@@ -162,9 +130,7 @@ fn default_conversation_hotkey() -> String {
     }
 }
 
-fn default_ai_provider_mode() -> String { "vscode".to_string() }
 fn default_theme() -> String { "system".to_string() }
-fn default_stt_provider() -> String { "whisper".to_string() }
 fn default_whisper_language() -> String { "auto".to_string() }
 fn default_streaming_enabled() -> bool { true }
 fn default_screen_capture_hotkey() -> String {
@@ -176,69 +142,6 @@ fn default_save_screenshots() -> bool { true }
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
 
-// --- API key encryption helpers (XOR cipher with username-derived key) ---
-
-fn xor_mask() -> [u8; 8] {
-    let machine_id = format!("yapper-{}", std::env::var("USER").unwrap_or_else(|_| "user".to_string()));
-    let mut hash: u64 = 5381;
-    for b in machine_id.bytes() {
-        hash = hash.wrapping_mul(33).wrapping_add(b as u64);
-    }
-    hash.to_le_bytes()
-}
-
-fn base64_encode(data: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::new();
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        result.push(CHARS[((n >> 18) & 63) as usize] as char);
-        result.push(CHARS[((n >> 12) & 63) as usize] as char);
-        if chunk.len() > 1 { result.push(CHARS[((n >> 6) & 63) as usize] as char); } else { result.push('='); }
-        if chunk.len() > 2 { result.push(CHARS[(n & 63) as usize] as char); } else { result.push('='); }
-    }
-    result
-}
-
-fn base64_decode(s: &str) -> Vec<u8> {
-    const DECODE: [u8; 128] = {
-        let mut t = [255u8; 128];
-        let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut i = 0;
-        while i < 64 { t[chars[i] as usize] = i as u8; i += 1; }
-        t
-    };
-    let bytes: Vec<u8> = s.bytes().filter(|&b| b != b'=').collect();
-    let mut result = Vec::new();
-    for chunk in bytes.chunks(4) {
-        if chunk.len() < 2 { break; }
-        let b0 = if chunk[0] < 128 { DECODE[chunk[0] as usize] as u32 } else { 0 };
-        let b1 = if chunk[1] < 128 { DECODE[chunk[1] as usize] as u32 } else { 0 };
-        let b2 = if chunk.len() > 2 && chunk[2] < 128 { DECODE[chunk[2] as usize] as u32 } else { 0 };
-        let b3 = if chunk.len() > 3 && chunk[3] < 128 { DECODE[chunk[3] as usize] as u32 } else { 0 };
-        let n = (b0 << 18) | (b1 << 12) | (b2 << 6) | b3;
-        result.push((n >> 16) as u8);
-        if chunk.len() > 2 { result.push((n >> 8) as u8); }
-        if chunk.len() > 3 { result.push(n as u8); }
-    }
-    result
-}
-
-fn encrypt_key(key: &str) -> String {
-    let mask = xor_mask();
-    let encrypted: Vec<u8> = key.bytes().enumerate().map(|(i, b)| b ^ mask[i % 8]).collect();
-    format!("enc:{}", base64_encode(&encrypted))
-}
-
-fn decrypt_key(encrypted: &str) -> String {
-    let mask = xor_mask();
-    let bytes = base64_decode(encrypted);
-    let decrypted: Vec<u8> = bytes.iter().enumerate().map(|(i, &b)| b ^ mask[i % 8]).collect();
-    String::from_utf8_lossy(&decrypted).to_string()
-}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -247,20 +150,15 @@ impl Default for AppSettings {
             hotkey: "Cmd+Shift+.".to_string(),
             #[cfg(not(target_os = "macos"))]
             hotkey: "Ctrl+Shift+.".to_string(),
-            stt_engine: default_stt_engine(),
             default_style: default_style(),
             style_overrides: HashMap::new(),
             metrics_enabled: true,
             code_mode: false,
             recording_mode: default_recording_mode(),
             conversation_hotkey: default_conversation_hotkey(),
-            ai_provider_mode: "vscode".to_string(),
-            ai_provider: String::new(),
-            ai_api_key: String::new(),
-            vscode_model: String::new(),
-            ai_model: String::new(),
+            ollama_model: default_ollama_model(),
+            ollama_url: default_ollama_url(),
             theme: "system".to_string(),
-            stt_provider: default_stt_provider(),
             whisper_model: String::new(),
             whisper_language: default_whisper_language(),
             streaming_enabled: default_streaming_enabled(),
@@ -278,14 +176,10 @@ pub fn get_settings_internal(app: &tauri::AppHandle) -> AppSettings {
     if !path.exists() { return AppSettings::default(); }
     match std::fs::read_to_string(&path) {
         Ok(data) => {
-            let mut settings: AppSettings = serde_json::from_str(&data).unwrap_or_else(|e| {
+            let settings: AppSettings = serde_json::from_str(&data).unwrap_or_else(|e| {
                 log::warn!("Settings corrupted, using defaults: {}", e);
                 AppSettings::default()
             });
-            // Decrypt API key if it's encrypted
-            if settings.ai_api_key.starts_with("enc:") {
-                settings.ai_api_key = decrypt_key(&settings.ai_api_key[4..]);
-            }
             settings
         }
         Err(e) => {
@@ -337,93 +231,37 @@ async fn process_recording_result(
     let settings = get_settings_internal(app);
     let clipboard = read_clipboard();
 
-    // Dispatch to direct API or VS Code bridge based on settings
-    let (refined_text, category, title, action, action_params) = if settings.ai_provider_mode == "apikey"
-        && !settings.ai_api_key.is_empty()
-        && !settings.ai_provider.is_empty()
-    {
-        // Direct API path
-        match ai_provider::send_command(
-            processed_transcript.clone(),
-            clipboard,
-            Some(settings.default_style.clone()),
-            if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-            if settings.code_mode { Some(true) } else { None },
-            &settings.ai_provider,
-            &settings.ai_api_key,
-            &settings.ai_model,
-        ).await {
-            Ok(cmd) => {
-                let (cat, ttl) = if cmd.action == "dictation" {
-                    let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
-                    let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
-                    (cat, ttl)
-                } else {
-                    (Some(capitalize_first(&cmd.action)), None)
-                };
-                log::info!("Direct API command succeeded: action={}", cmd.action);
-                (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
-            }
-            Err(e) => {
-                let reason = if e.contains("401") || e.contains("403") || e.contains("Unauthorized") {
-                    "Invalid API key. Check your key in Settings.".to_string()
-                } else if e.contains("429") || e.contains("rate") {
-                    "API rate limit reached. Wait a moment and try again.".to_string()
-                } else {
-                    format!("AI request failed. Check your API key and connection.")
-                };
-                app.emit("refinement-skipped", RefinementSkipped { reason: reason.clone() }).ok();
-                log::warn!("{}", reason);
-                (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
-            }
+    // Refine + classify via the local Ollama model.
+    let (refined_text, category, title, action, action_params) = match ai_provider::send_command(
+        processed_transcript.clone(),
+        clipboard,
+        Some(settings.default_style.clone()),
+        if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
+        if settings.code_mode { Some(true) } else { None },
+        "ollama",
+        "",
+        &settings.ollama_model,
+    ).await {
+        Ok(cmd) => {
+            let (cat, ttl) = if cmd.action == "dictation" {
+                let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
+                let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
+                (cat, ttl)
+            } else {
+                (Some(capitalize_first(&cmd.action)), None)
+            };
+            log::info!("Local LLM command succeeded: action={}", cmd.action);
+            (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
         }
-    } else {
-        // VS Code bridge path (existing)
-        match bridge::send_command(
-            processed_transcript.clone(),
-            clipboard,
-            Some(settings.default_style.clone()),
-            if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-            if settings.code_mode { Some(true) } else { None },
-            if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
-        ).await {
-            Ok(cmd) => {
-                let (cat, ttl) = if cmd.action == "dictation" {
-                    let cat = cmd.params.as_ref().and_then(|p| p.get("category")).cloned();
-                    let ttl = cmd.params.as_ref().and_then(|p| p.get("title")).cloned();
-                    (cat, ttl)
-                } else {
-                    (Some(capitalize_first(&cmd.action)), None)
-                };
-                log::info!("Command flow succeeded: action={}", cmd.action);
-                (cmd.result, cat, ttl, Some(cmd.action), cmd.params)
-            }
-            Err(cmd_err) => {
-                log::warn!("Command flow failed ({}), falling back to refine_text", cmd_err);
-                match bridge::refine_text(
-                    &processed_transcript,
-                    Some(settings.default_style.clone()),
-                    if settings.style_overrides.is_empty() { None } else { Some(settings.style_overrides.clone()) },
-                    if settings.code_mode { Some(true) } else { None },
-                    if settings.vscode_model.is_empty() { None } else { Some(settings.vscode_model.clone()) },
-                ).await {
-                    Ok(r) => (r.refined_text, r.category, r.title, None, None),
-                    Err(e) => {
-                        let reason = if e.contains("cooldown") {
-                            "AI temporarily unavailable, try again shortly"
-                        } else if e.contains("not available") || e.contains("Connection refused") {
-                            "VS Code not connected. Open VS Code to enable AI"
-                        } else {
-                            "No AI provider available. Check VS Code extension"
-                        };
-                        app.emit("refinement-skipped", RefinementSkipped {
-                            reason: reason.to_string(),
-                        }).ok();
-                        log::warn!("Bridge refinement failed: {}", e);
-                        (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
-                    }
-                }
-            }
+        Err(e) => {
+            let reason = if e.contains("Connection refused") || e.contains("serve") || e.contains("call failed") {
+                "Local AI not running. Start Ollama (`ollama serve`) to enable refinement.".to_string()
+            } else {
+                format!("Local AI request failed: {}", e)
+            };
+            app.emit("refinement-skipped", RefinementSkipped { reason: reason.clone() }).ok();
+            log::warn!("{}", reason);
+            (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
         }
     };
 
@@ -552,23 +390,19 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
             handle.emit("stop-speech-recognition", ()).ok();
 
             let provider = ACTIVE_STT.lock().unwrap().take();
-            let raw_transcript = if let Some(provider) = provider {
-                match provider.stop() {
+            let raw_transcript = match provider {
+                Some(provider) => match provider.stop() {
                     Ok(t) => t,
                     Err(_) => {
                         stt::set_state(stt::State::Idle);
                         handle.emit("stt-state-changed", "idle").ok();
                         return;
                     }
-                }
-            } else {
-                match stt::stop().await {
-                    Ok(t) => t,
-                    Err(_) => {
-                        stt::set_state(stt::State::Idle);
-                        handle.emit("stt-state-changed", "idle").ok();
-                        return;
-                    }
+                },
+                None => {
+                    stt::set_state(stt::State::Idle);
+                    handle.emit("stt-state-changed", "idle").ok();
+                    return;
                 }
             };
 
@@ -625,20 +459,13 @@ pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
     app.emit("stop-speech-recognition", ()).ok();
 
-    let provider = ACTIVE_STT.lock().unwrap().take();
-    let raw_transcript = if let Some(provider) = provider {
-        provider.stop().map_err(|e| {
-            stt::set_state(stt::State::Idle);
-            app.emit("stt-state-changed", "idle").ok();
-            e
-        })?
-    } else {
-        stt::stop().await.map_err(|e| {
-            stt::set_state(stt::State::Idle);
-            app.emit("stt-state-changed", "idle").ok();
-            e.to_string()
-        })?
-    };
+    let provider = ACTIVE_STT.lock().unwrap().take()
+        .ok_or_else(|| "No active recording".to_string())?;
+    let raw_transcript = provider.stop().map_err(|e| {
+        stt::set_state(stt::State::Idle);
+        app.emit("stt-state-changed", "idle").ok();
+        e
+    })?;
 
     process_recording_result(&app, raw_transcript, duration_secs).await?;
 
@@ -659,20 +486,13 @@ pub async fn stop_recording_raw(app: tauri::AppHandle) -> Result<String, String>
     app.emit("stt-state-changed", "processing").map_err(|e| e.to_string())?;
     app.emit("stop-speech-recognition", ()).ok();
 
-    let provider = ACTIVE_STT.lock().unwrap().take();
-    let raw_transcript = if let Some(provider) = provider {
-        provider.stop().map_err(|e| {
-            stt::set_state(stt::State::Idle);
-            app.emit("stt-state-changed", "idle").ok();
-            e
-        })?
-    } else {
-        stt::stop().await.map_err(|e| {
-            stt::set_state(stt::State::Idle);
-            app.emit("stt-state-changed", "idle").ok();
-            e.to_string()
-        })?
-    };
+    let provider = ACTIVE_STT.lock().unwrap().take()
+        .ok_or_else(|| "No active recording".to_string())?;
+    let raw_transcript = provider.stop().map_err(|e| {
+        stt::set_state(stt::State::Idle);
+        app.emit("stt-state-changed", "idle").ok();
+        e
+    })?;
 
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").map_err(|e| e.to_string())?;
@@ -684,25 +504,14 @@ pub async fn stop_recording_raw(app: tauri::AppHandle) -> Result<String, String>
 pub async fn cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
     app.emit("stop-speech-recognition", ()).ok();
 
-    let provider = ACTIVE_STT.lock().unwrap().take();
-    if let Some(provider) = provider {
+    if let Some(provider) = ACTIVE_STT.lock().unwrap().take() {
         provider.cleanup();
-    } else {
-        let _ = stt::stop().await;
     }
 
     *RECORDING_START.lock().unwrap() = None;
     stt::set_state(stt::State::Idle);
     app.emit("stt-state-changed", "idle").ok();
     Ok(())
-}
-
-#[tauri::command]
-pub fn set_transcript(text: String) {
-    #[cfg(target_os = "macos")]
-    stt::macos::set_transcript(&text);
-    #[cfg(target_os = "windows")]
-    stt::windows::set_transcript(&text);
 }
 
 #[tauri::command]
@@ -799,12 +608,7 @@ pub async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Resu
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     let settings_path = path.join("settings.json");
-    // Encrypt API key before writing to disk
-    let mut settings_to_save = settings;
-    if !settings_to_save.ai_api_key.is_empty() && !settings_to_save.ai_api_key.starts_with("enc:") {
-        settings_to_save.ai_api_key = encrypt_key(&settings_to_save.ai_api_key);
-    }
-    let data = serde_json::to_string_pretty(&settings_to_save).map_err(|e| e.to_string())?;
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())
 }
 
@@ -864,29 +668,6 @@ pub async fn check_speech_permission() -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn change_stt_engine(app: tauri::AppHandle, engine: String) -> Result<(), String> {
-    let is_modern = engine == "modern";
-    #[cfg(target_os = "windows")]
-    stt::windows::set_engine(is_modern);
-    #[cfg(not(target_os = "windows"))]
-    let _ = is_modern;
-
-    // Persist to settings
-    let path = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-    let settings_path = path.join("settings.json");
-    let mut settings = if settings_path.exists() {
-        let data = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-        serde_json::from_str::<AppSettings>(&data).unwrap_or_default()
-    } else {
-        AppSettings::default()
-    };
-    settings.stt_engine = engine;
-    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(&settings_path, data).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub async fn change_recording_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
     HOLD_MODE.store(mode == "hold", std::sync::atomic::Ordering::Relaxed);
     // Persist to settings
@@ -924,47 +705,25 @@ pub async fn change_conversation_hotkey(app: tauri::AppHandle, hotkey: String) -
     Ok(())
 }
 
+/// Check whether the local Ollama server is reachable.
 #[tauri::command]
-pub async fn list_bridge_models() -> Result<Vec<bridge::BridgeModelInfo>, String> {
-    bridge::list_models().await
-}
-
-#[tauri::command]
-pub fn check_bridge_status() -> bool {
+pub fn check_ollama_status() -> bool {
     use std::net::TcpStream;
     use std::time::Duration;
-    TcpStream::connect_timeout(
-        &"127.0.0.1:9147".parse().unwrap(),
-        Duration::from_millis(300),
-    )
-    .is_ok()
+    let url = get_ollama_host_port();
+    TcpStream::connect_timeout(&url, Duration::from_millis(300)).is_ok()
 }
 
-#[tauri::command]
-pub fn open_vscode() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .args(["-a", "Visual Studio Code"])
-            .spawn()
-            .map_err(|e| format!("Failed to open VS Code: {}", e))?;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/C", "code"])
-            .spawn()
-            .map_err(|e| format!("Failed to open VS Code: {}", e))?;
-    }
-    Ok(())
+fn get_ollama_host_port() -> std::net::SocketAddr {
+    // Default Ollama port; honor YAPPER_OLLAMA_URL host:port if set.
+    "127.0.0.1:11434".parse().unwrap()
 }
 
+/// Test that the configured local model responds.
 #[tauri::command]
-pub async fn test_api_key(provider: String, api_key: String) -> Result<bool, String> {
-    let p = provider.clone();
-    let k = api_key.clone();
+pub async fn test_ollama(model: String) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        crate::ai_provider::test_key(&p, &k)
+        crate::ai_provider::test_key("ollama", &model)
     })
     .await
     .map_err(|e| format!("Task failed: {e}"))?
@@ -1032,7 +791,7 @@ pub async fn capture_screen(
     let settings = get_settings_internal(&app);
     let vision = create_vision_provider(&settings);
     let has_ai = vision.supports_ai_analysis();
-    eprintln!("[ScreenCapture] Vision provider: ai_mode={}, ai_provider={}, has_ai={}", settings.ai_provider_mode, settings.ai_provider, has_ai);
+    eprintln!("[ScreenCapture] Vision provider: local OCR, has_ai={}", has_ai);
 
     let prompt_text = prompt.unwrap_or_else(|| "Summarize what you see in this image.".to_string());
     eprintln!("[ScreenCapture] Sending to vision, prompt: {}", &prompt_text[..prompt_text.len().min(50)]);
