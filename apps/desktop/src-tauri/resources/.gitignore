@@ -1,0 +1,4 @@
+# Large build-time assets: fetched by scripts/fetch-models.sh, not committed.
+ollama/
+ollama-models/
+models/*.bin
