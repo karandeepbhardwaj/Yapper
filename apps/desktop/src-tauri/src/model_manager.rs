@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 use tauri::Manager;
 
-/// The single Whisper model bundled with the app (ggml-tiny.bin).
-pub const BUNDLED_MODEL: &str = "tiny";
+/// The single Whisper model bundled with the app (ggml-base.bin).
+pub const BUNDLED_MODEL: &str = "base";
 
 fn model_filename(model_name: &str) -> String {
     format!("ggml-{}.bin", model_name)

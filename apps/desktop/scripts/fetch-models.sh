@@ -24,7 +24,7 @@ esac
 echo "[fetch] Building bundled assets for: $PLATFORM"
 
 # 1. Whisper model (same on every platform) ----------------------------------
-WHISPER="ggml-tiny.bin"
+WHISPER="ggml-base.bin"
 if [ -f "$RES/models/$WHISPER" ]; then
   echo "[fetch] $WHISPER present — skipping."
 else
@@ -59,7 +59,7 @@ else
 fi
 
 # 3. Refinement model (OS-agnostic blobs) ------------------------------------
-MODEL="qwen2.5:0.5b"
+MODEL="qwen2.5:1.5b"
 if [ -d "$RES/ollama-models/manifests" ] && \
    find "$RES/ollama-models/manifests" -path '*qwen2.5*' | grep -q .; then
   echo "[fetch] $MODEL present — skipping."
