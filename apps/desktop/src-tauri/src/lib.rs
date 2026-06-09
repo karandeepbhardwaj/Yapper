@@ -14,7 +14,6 @@ mod snippets;
 mod metrics;
 pub mod providers;
 pub mod model_manager;
-pub mod screen_capture;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -95,8 +94,6 @@ pub fn run() {
             metrics::get_metrics,
             commands::check_ollama_status,
             commands::test_ollama,
-            commands::capture_screen,
-            commands::cancel_screen_capture,
             commands::get_model_status,
             commands::download_whisper_model,
             commands::delete_whisper_model,

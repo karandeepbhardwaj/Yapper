@@ -1,6 +1,5 @@
 pub mod stt_whisper;
 pub mod ai_direct;
-pub mod vision_native;
 
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
@@ -111,11 +110,4 @@ pub trait AiProvider: Send + Sync {
         &self,
         history: &[ConversationTurnMsg],
     ) -> Result<SummaryResult, String>;
-}
-
-/// Vision / OCR provider trait.
-pub trait VisionProvider: Send + Sync {
-    fn analyze(&self, image_bytes: &[u8], prompt: &str) -> Result<String, String>;
-    fn ocr(&self, image_bytes: &[u8]) -> Result<String, String>;
-    fn supports_ai_analysis(&self) -> bool;
 }

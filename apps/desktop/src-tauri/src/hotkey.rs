@@ -123,31 +123,6 @@ fn conversation_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: tau
     }
 }
 
-fn screen_capture_handler(app: &tauri::AppHandle, _shortcut: &Shortcut, event: tauri_plugin_global_shortcut::ShortcutEvent) {
-    eprintln!("[Hotkey] screen_capture_handler called, state={:?}", event.state);
-    if event.state == ShortcutState::Pressed {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            use tauri::Emitter;
-            eprintln!("[Hotkey] Screen capture triggered, calling capture_screen...");
-            if let Err(e) = crate::commands::capture_screen(
-                app.clone(),
-                "full".to_string(),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
-            .await
-            {
-                log::error!("[Hotkey] Screen capture failed: {}", e);
-                let _ = app.emit("stt-error", format!("Screen capture failed: {}", e));
-            }
-        });
-    }
-}
-
 /// Register the initial hotkeys at app startup.
 pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let settings = load_saved_settings(app);
@@ -178,21 +153,7 @@ pub fn register(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("[Hotkey] Conversation shortcut registered: {}", convo_hotkey_str);
     }
 
-    // Screen capture hotkey
-    let sc_hotkey = load_saved_screen_capture_hotkey_app(app)
-        .unwrap_or_else(|| if cfg!(target_os = "macos") { "Cmd+Shift+S".to_string() } else { "Ctrl+Shift+S".to_string() });
-    eprintln!("[Hotkey] Registering screen capture hotkey: {}", sc_hotkey);
-    match parse_hotkey(&sc_hotkey) {
-        Ok(sc_shortcut) => {
-            match app.global_shortcut().on_shortcut(sc_shortcut, screen_capture_handler) {
-                Ok(_) => eprintln!("[Hotkey] Screen capture shortcut registered OK: {}", sc_hotkey),
-                Err(e) => eprintln!("[Hotkey] FAILED to register screen capture shortcut: {}", e),
-            }
-        }
-        Err(e) => eprintln!("[Hotkey] FAILED to parse screen capture hotkey '{}': {}", sc_hotkey, e),
-    }
-
-    eprintln!("[Hotkey] All shortcuts registered");
+    log::info!("[Hotkey] All shortcuts registered");
     Ok(())
 }
 
@@ -220,13 +181,6 @@ pub fn update(app: &tauri::AppHandle, new_hotkey: &str) -> Result<(), String> {
         app.global_shortcut().on_shortcut(convo_shortcut, conversation_handler).ok();
     }
 
-    // Re-register screen capture hotkey
-    let sc_hotkey = load_saved_screen_capture_hotkey(app)
-        .unwrap_or_else(|| if cfg!(target_os = "macos") { "Cmd+Shift+S".to_string() } else { "Ctrl+Shift+S".to_string() });
-    if let Ok(sc_shortcut) = parse_hotkey(&sc_hotkey) {
-        app.global_shortcut().on_shortcut(sc_shortcut, screen_capture_handler).ok();
-    }
-
     Ok(())
 }
 
@@ -250,13 +204,6 @@ pub fn update_conversation(app: &tauri::AppHandle, new_convo_hotkey: &str) -> Re
 
     let convo_shortcut = parse_hotkey(new_convo_hotkey)?;
     app.global_shortcut().on_shortcut(convo_shortcut, conversation_handler).map_err(|e| e.to_string())?;
-
-    // Re-register screen capture hotkey
-    let sc_hotkey = load_saved_screen_capture_hotkey(app)
-        .unwrap_or_else(|| if cfg!(target_os = "macos") { "Cmd+Shift+S".to_string() } else { "Ctrl+Shift+S".to_string() });
-    if let Ok(sc_shortcut) = parse_hotkey(&sc_hotkey) {
-        app.global_shortcut().on_shortcut(sc_shortcut, screen_capture_handler).ok();
-    }
 
     Ok(())
 }
@@ -302,21 +249,6 @@ fn load_saved_conversation_hotkey(app: &tauri::AppHandle) -> Option<String> {
     let data = std::fs::read_to_string(path).ok()?;
     let settings: serde_json::Value = serde_json::from_str(&data).ok()?;
     settings.get("conversation_hotkey")?.as_str().map(|s| s.to_string())
-}
-
-fn load_saved_screen_capture_hotkey(app: &tauri::AppHandle) -> Option<String> {
-    let path = app.path().app_config_dir().ok()?.join("settings.json");
-    let data = std::fs::read_to_string(path).ok()?;
-    let settings: serde_json::Value = serde_json::from_str(&data).ok()?;
-    settings.get("screen_capture_hotkey")?.as_str().map(|s| s.to_string())
-}
-
-fn load_saved_screen_capture_hotkey_app(app: &tauri::App) -> Option<String> {
-    use tauri::Manager;
-    let path = app.path().app_config_dir().ok()?.join("settings.json");
-    let data = std::fs::read_to_string(path).ok()?;
-    let settings: serde_json::Value = serde_json::from_str(&data).ok()?;
-    settings.get("screen_capture_hotkey")?.as_str().map(|s| s.to_string())
 }
 
 // --- Fn key monitoring via NSEvent flagsChanged ---

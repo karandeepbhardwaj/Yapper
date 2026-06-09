@@ -406,11 +406,6 @@ function formatActionLabel(action: string, params?: Record<string, string>): str
       return params?.steps ? params.steps.split(" + ").map(s =>
         s.charAt(0).toUpperCase() + s.slice(1)
       ).join(" + ") : "Chained";
-    case "screen":
-    case "screen_summarize":
-    case "screen_extract":
-    case "screen_explain":
-      return "Screen";
     case "unrefined":
       return "Not AI Refined";
     default:
@@ -434,7 +429,6 @@ interface HistoryCardProps {
   isHovered?: boolean;
   action?: string;
   actionParams?: Record<string, string>;
-  screenshotThumbnail?: string;
 }
 
 export function HistoryCard({
@@ -453,7 +447,6 @@ export function HistoryCard({
   isHovered = false,
   action,
   actionParams,
-  screenshotThumbnail,
 }: HistoryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isTextExpanded, setIsTextExpanded] = useState(false);
@@ -605,22 +598,6 @@ export function HistoryCard({
             >
               {formatActionLabel(action, actionParams)}
             </span>
-          )}
-          {screenshotThumbnail && (
-            <div style={{
-              width: 48,
-              height: 36,
-              borderRadius: 6,
-              overflow: "hidden",
-              flexShrink: 0,
-              border: "1px solid var(--yapper-border)",
-            }}>
-              <img
-                src={`data:image/png;base64,${screenshotThumbnail}`}
-                alt="Screenshot"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            </div>
           )}
         </div>
 

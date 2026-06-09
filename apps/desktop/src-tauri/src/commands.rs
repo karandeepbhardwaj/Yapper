@@ -1,16 +1,13 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
 use crate::{ai_provider, autopaste, conversation, dictionary, history, model_manager, snippets, stt};
 use crate::providers::SttProvider;
-use crate::providers::VisionProvider;
 use crate::providers::stt_whisper::WhisperCppProvider;
-use crate::providers::vision_native::NativeOcrProvider;
 
 static RECORDING_START: Mutex<Option<Instant>> = Mutex::new(None);
 
@@ -28,11 +25,6 @@ fn create_stt_provider(settings: &AppSettings) -> Result<Box<dyn SttProvider>, S
         settings.streaming_enabled,
     )?;
     Ok(Box::new(provider))
-}
-
-fn create_vision_provider(_settings: &AppSettings) -> Box<dyn VisionProvider> {
-    // Fully local: on-device OCR text extraction (Apple Vision / Windows OCR).
-    Box::new(NativeOcrProvider::new())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,10 +56,6 @@ pub struct AppSettings {
     pub whisper_language: String,
     #[serde(default = "default_streaming_enabled")]
     pub streaming_enabled: bool,
-    #[serde(default = "default_screen_capture_hotkey")]
-    pub screen_capture_hotkey: String,
-    #[serde(default = "default_save_screenshots")]
-    pub save_screenshots: bool,
 }
 
 fn read_clipboard() -> Option<String> {
@@ -133,11 +121,6 @@ fn default_conversation_hotkey() -> String {
 fn default_theme() -> String { "system".to_string() }
 fn default_whisper_language() -> String { "auto".to_string() }
 fn default_streaming_enabled() -> bool { true }
-fn default_screen_capture_hotkey() -> String {
-    if cfg!(target_os = "macos") { "Cmd+Shift+0".to_string() }
-    else { "Ctrl+Shift+0".to_string() }
-}
-fn default_save_screenshots() -> bool { true }
 
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
@@ -162,8 +145,6 @@ impl Default for AppSettings {
             whisper_model: String::new(),
             whisper_language: default_whisper_language(),
             streaming_enabled: default_streaming_enabled(),
-            screen_capture_hotkey: default_screen_capture_hotkey(),
-            save_screenshots: default_save_screenshots(),
         }
     }
 }
@@ -264,61 +245,6 @@ async fn process_recording_result(
             (raw_transcript.clone(), Some("Unrefined".to_string()), None, Some("unrefined".to_string()), None)
         }
     };
-
-    // Handle screen capture voice commands
-    let (refined_text, category, title, action, action_params) =
-        if matches!(action.as_deref(), Some("screen_summarize") | Some("screen_extract") | Some("screen_explain")) {
-            let screen_action = action.as_deref().unwrap_or("screen_summarize");
-            log::info!("Screen voice command detected: {}", screen_action);
-
-            let capture_result = tokio::task::spawn_blocking(|| {
-                crate::screen_capture::capture_full_screen()
-            }).await.map_err(|e| format!("Task error: {}", e))?;
-            match capture_result {
-                Ok(image_bytes) => {
-                    let settings = get_settings_internal(app);
-                    let vision = create_vision_provider(&settings);
-
-                    let prompt = match screen_action {
-                        "screen_extract" => "Extract all visible text from this image. Return only the extracted text, preserving the original layout as much as possible.".to_string(),
-                        "screen_explain" => "Explain what is shown in this screenshot in detail. Describe the UI elements, content, and context.".to_string(),
-                        _ => "Summarize what you see in this image.".to_string(),
-                    };
-
-                    match tokio::task::spawn_blocking(move || {
-                        if vision.supports_ai_analysis() {
-                            vision.analyze(&image_bytes, &prompt)
-                        } else {
-                            vision.ocr(&image_bytes)
-                        }
-                    })
-                    .await
-                    {
-                        Ok(Ok(result)) => (
-                            result,
-                            Some("Screen Capture".to_string()),
-                            Some("Screen Analysis".to_string()),
-                            Some(screen_action.to_string()),
-                            action_params,
-                        ),
-                        Ok(Err(e)) => {
-                            log::error!("Vision analysis failed: {}", e);
-                            (format!("Screen capture failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
-                        }
-                        Err(e) => {
-                            log::error!("Vision task failed: {}", e);
-                            (format!("Screen capture task failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("Screen capture failed: {}", e);
-                    (format!("Screen capture failed: {}", e), Some("Error".to_string()), None, Some(screen_action.to_string()), action_params)
-                }
-            }
-        } else {
-            (refined_text, category, title, action, action_params)
-        };
 
     // Auto-paste
     let text_for_paste = refined_text.clone();
@@ -727,127 +653,6 @@ pub async fn test_ollama(model: String) -> Result<bool, String> {
     })
     .await
     .map_err(|e| format!("Task failed: {e}"))?
-}
-
-static SCREEN_CAPTURE_CANCEL: AtomicBool = AtomicBool::new(false);
-
-#[tauri::command]
-pub async fn cancel_screen_capture(app: tauri::AppHandle) -> Result<(), String> {
-    log::info!("[ScreenCapture] Cancelled by user");
-    SCREEN_CAPTURE_CANCEL.store(true, Ordering::Relaxed);
-    let _ = app.emit("stt-state-changed", "idle");
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn capture_screen(
-    app: tauri::AppHandle,
-    mode: String,
-    prompt: Option<String>,
-    x: Option<i32>,
-    y: Option<i32>,
-    width: Option<u32>,
-    height: Option<u32>,
-) -> Result<String, String> {
-    eprintln!("[ScreenCapture] Starting capture, mode={}", mode);
-    SCREEN_CAPTURE_CANCEL.store(false, Ordering::Relaxed);
-    let _ = app.emit("stt-state-changed", "processing");
-
-    // Run screen capture in a blocking thread (Swift subprocess blocks)
-    let capture_mode = mode.clone();
-    let image_bytes = tokio::task::spawn_blocking(move || {
-        if capture_mode == "region" {
-            let x = x.ok_or("Region capture requires x coordinate")?;
-            let y = y.ok_or("Region capture requires y coordinate")?;
-            let w = width.ok_or("Region capture requires width")?;
-            let h = height.ok_or("Region capture requires height")?;
-            crate::screen_capture::capture_region(x, y, w, h)
-        } else {
-            crate::screen_capture::capture_full_screen()
-        }
-    })
-    .await
-    .map_err(|e| format!("Task error: {}", e))?;
-
-    let image_bytes = match image_bytes {
-        Ok(bytes) => {
-            log::info!("[ScreenCapture] Captured {} bytes", bytes.len());
-            bytes
-        }
-        Err(e) => {
-            log::error!("[ScreenCapture] Capture failed: {}", e);
-            let _ = app.emit("stt-state-changed", "idle");
-            let _ = app.emit("stt-error", format!("Screen capture failed: {}", e));
-            return Err(e);
-        }
-    };
-
-    if SCREEN_CAPTURE_CANCEL.load(Ordering::Relaxed) {
-        log::info!("[ScreenCapture] Cancelled after capture");
-        let _ = app.emit("stt-state-changed", "idle");
-        return Err("Screen capture cancelled".to_string());
-    }
-
-    let settings = get_settings_internal(&app);
-    let vision = create_vision_provider(&settings);
-    let has_ai = vision.supports_ai_analysis();
-    eprintln!("[ScreenCapture] Vision provider: local OCR, has_ai={}", has_ai);
-
-    let prompt_text = prompt.unwrap_or_else(|| "Summarize what you see in this image.".to_string());
-    eprintln!("[ScreenCapture] Sending to vision, prompt: {}", &prompt_text[..prompt_text.len().min(50)]);
-
-    eprintln!("[ScreenCapture] Starting vision analysis...");
-    let analysis_result = tokio::task::spawn_blocking(move || {
-        eprintln!("[ScreenCapture] Inside spawn_blocking, has_ai={}", vision.supports_ai_analysis());
-        let result = if vision.supports_ai_analysis() {
-            vision.analyze(&image_bytes, &prompt_text)
-        } else {
-            vision.ocr(&image_bytes)
-        };
-        eprintln!("[ScreenCapture] Vision call returned: {:?}", result.as_ref().map(|s| s.len()));
-        result
-    })
-    .await
-    .map_err(|e| format!("Task error: {}", e))?;
-
-    let analysis_result = match analysis_result {
-        Ok(result) => {
-            eprintln!("[ScreenCapture] Analysis complete: {} chars", result.len());
-            result
-        }
-        Err(e) => {
-            eprintln!("[ScreenCapture] Vision analysis FAILED: {}", e);
-            let _ = app.emit("stt-state-changed", "idle");
-            let _ = app.emit("stt-error", format!("Vision analysis failed: {}", e));
-            return Err(e);
-        }
-    };
-
-    // Auto-paste result
-    let paste_text = analysis_result.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        if let Err(e) = autopaste::paste_text(&paste_text) {
-            log::warn!("Auto-paste failed: {}", e);
-        }
-    });
-
-    // Save to history
-    let _ = history::add_entry(
-        &app,
-        "Screen capture",
-        &analysis_result,
-        Some("Screen Capture"),
-        Some("Screen Analysis"),
-        None,
-        Some("screen"),
-        None,
-    );
-
-    let _ = app.emit("stt-state-changed", "idle");
-    let _ = app.emit("refinement-complete", serde_json::json!({ "action": "screen" }));
-
-    Ok(analysis_result)
 }
 
 #[tauri::command]
