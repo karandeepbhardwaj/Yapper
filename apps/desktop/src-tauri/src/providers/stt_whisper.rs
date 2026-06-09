@@ -4,7 +4,6 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-use crate::model_manager;
 use crate::providers::{PartialTranscript, SttProvider};
 
 const WHISPER_SAMPLE_RATE: u32 = 16000;
@@ -31,19 +30,15 @@ pub struct WhisperCppProvider {
 }
 
 impl WhisperCppProvider {
-    pub fn new(model_name: &str, language: &str, streaming: bool) -> Result<Self, String> {
-        let path = model_manager::model_path(model_name);
-        if !path.exists() {
-            return Err(format!(
-                "Whisper model '{}' not found. Download it in Settings.",
-                model_name
-            ));
+    pub fn new(model_path: &std::path::Path, language: &str, streaming: bool) -> Result<Self, String> {
+        if !model_path.exists() {
+            return Err("Whisper model not found in the app bundle.".to_string());
         }
 
         let (tx, rx) = mpsc::channel();
 
         Ok(Self {
-            model_path: path.to_string_lossy().to_string(),
+            model_path: model_path.to_string_lossy().to_string(),
             language: language.to_string(),
             streaming,
             audio_buffer: Arc::new(Mutex::new(Vec::new())),

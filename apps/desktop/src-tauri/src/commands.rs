@@ -15,12 +15,11 @@ static ACTIVE_STT: Lazy<Mutex<Option<Box<dyn SttProvider>>>> = Lazy::new(|| Mute
 
 pub static HOLD_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-fn create_stt_provider(settings: &AppSettings) -> Result<Box<dyn SttProvider>, String> {
-    if settings.whisper_model.is_empty() {
-        return Err("No Whisper model downloaded yet. Download one in Settings.".to_string());
-    }
+fn create_stt_provider(app: &tauri::AppHandle, settings: &AppSettings) -> Result<Box<dyn SttProvider>, String> {
+    let model_path = model_manager::resolve_model_path(app, model_manager::BUNDLED_MODEL)
+        .ok_or_else(|| "Bundled Whisper model is missing from the app.".to_string())?;
     let provider = WhisperCppProvider::new(
-        &settings.whisper_model,
+        &model_path,
         &settings.whisper_language,
         settings.streaming_enabled,
     )?;
@@ -282,7 +281,7 @@ pub async fn toggle_recording(handle: &tauri::AppHandle) {
     match current {
         stt::State::Idle => {
             let settings = get_settings_internal(handle);
-            let provider = match create_stt_provider(&settings) {
+            let provider = match create_stt_provider(handle, &settings) {
                 Ok(p) => p,
                 Err(e) => {
                     log::error!("STT provider creation failed: {}", e);
@@ -355,7 +354,7 @@ pub async fn start_recording(app: tauri::AppHandle) -> Result<(), String> {
     }
 
     let settings = get_settings_internal(&app);
-    let provider = create_stt_provider(&settings)?;
+    let provider = create_stt_provider(&app, &settings)?;
 
     *RECORDING_START.lock().unwrap() = Some(Instant::now());
     stt::set_state(stt::State::Recording);
@@ -655,23 +654,3 @@ pub async fn test_ollama(model: String) -> Result<bool, String> {
     .map_err(|e| format!("Task failed: {e}"))?
 }
 
-#[tauri::command]
-pub async fn get_model_status(app: tauri::AppHandle) -> Result<model_manager::ModelStatus, String> {
-    let settings = get_settings_internal(&app);
-    Ok(model_manager::get_status(&settings.whisper_model))
-}
-
-#[tauri::command]
-pub async fn download_whisper_model(app: tauri::AppHandle, model: String) -> Result<(), String> {
-    let app_clone = app.clone();
-    tokio::task::spawn_blocking(move || {
-        model_manager::download_model(&model, &app_clone)
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
-}
-
-#[tauri::command]
-pub async fn delete_whisper_model(model: String) -> Result<(), String> {
-    model_manager::delete_model(&model)
-}

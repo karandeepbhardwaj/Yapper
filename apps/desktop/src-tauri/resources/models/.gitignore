@@ -1,0 +1,2 @@
+# Bundled model binaries are fetched at build time, not committed.
+*.bin

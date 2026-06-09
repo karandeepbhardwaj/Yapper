@@ -94,9 +94,6 @@ pub fn run() {
             metrics::get_metrics,
             commands::check_ollama_status,
             commands::test_ollama,
-            commands::get_model_status,
-            commands::download_whisper_model,
-            commands::delete_whisper_model,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");
