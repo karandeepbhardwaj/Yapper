@@ -91,24 +91,3 @@ export interface Metrics {
   totalEntries: number;
   totalDurationSeconds: number;
 }
-
-export interface ModelInfo {
-  name: string;
-  size: string;
-  description: string;
-}
-
-export interface ModelDownloadProgress {
-  model: string;
-  downloaded_bytes: number;
-  total_bytes: number;
-  percent: number;
-}
-
-export const WHISPER_MODELS: ModelInfo[] = [
-  { name: "tiny", size: "75 MB", description: "Fastest, decent accuracy" },
-  { name: "base", size: "150 MB", description: "Good balance of speed and accuracy" },
-  { name: "small", size: "500 MB", description: "Great accuracy, moderate speed" },
-  { name: "medium", size: "1.5 GB", description: "Excellent accuracy, slower" },
-  { name: "large-v3", size: "3 GB", description: "Best accuracy, slowest" },
-];
