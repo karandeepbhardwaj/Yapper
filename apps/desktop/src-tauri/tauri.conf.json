@@ -46,11 +46,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": {
-      "resources/models/ggml-tiny.bin": "models/ggml-tiny.bin",
-      "resources/ollama": "ollama",
-      "resources/ollama-models": "ollama-models"
-    },
+    "resources": [
+      "resources/models/ggml-tiny.bin",
+      "resources/ollama/**/*",
+      "resources/ollama-models/**/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

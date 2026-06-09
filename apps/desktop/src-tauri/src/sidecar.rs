@@ -22,7 +22,7 @@ static CHILD: Mutex<Option<Child>> = Mutex::new(None);
 fn binary_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let res = app.path().resource_dir().ok()?;
     let name = if cfg!(target_os = "windows") { "ollama.exe" } else { "ollama" };
-    let p = res.join("ollama").join(name);
+    let p = res.join("resources").join("ollama").join(name);
     p.exists().then_some(p)
 }
 
@@ -34,7 +34,7 @@ fn ensure_models_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
         return Some(dest); // already populated
     }
     if let Ok(res) = app.path().resource_dir() {
-        let src = res.join("ollama-models");
+        let src = res.join("resources").join("ollama-models");
         if src.exists() {
             if let Err(e) = copy_dir_all(&src, &dest) {
                 log::error!("[sidecar] failed to stage models: {e}");
