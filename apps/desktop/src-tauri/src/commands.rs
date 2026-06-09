@@ -41,11 +41,6 @@ pub struct AppSettings {
     pub recording_mode: String,
     #[serde(default = "default_conversation_hotkey")]
     pub conversation_hotkey: String,
-    // Local LLM (Ollama) — fully on-device AI refinement.
-    #[serde(default = "default_ollama_model")]
-    pub ollama_model: String,         // e.g. "llama3.2"
-    #[serde(default = "default_ollama_url")]
-    pub ollama_url: String,           // e.g. "http://localhost:11434"
     #[serde(default = "default_theme")]
     pub theme: String,                // "light" | "dark" | "system"
     // Speech-to-text — local whisper.cpp only.
@@ -100,9 +95,6 @@ fn capitalize_first(s: &str) -> String {
     }
 }
 
-fn default_ollama_model() -> String { "llama3.2".to_string() }
-fn default_ollama_url() -> String { "http://localhost:11434".to_string() }
-
 fn default_style() -> String {
     "Professional".to_string()
 }
@@ -138,8 +130,6 @@ impl Default for AppSettings {
             code_mode: false,
             recording_mode: default_recording_mode(),
             conversation_hotkey: default_conversation_hotkey(),
-            ollama_model: default_ollama_model(),
-            ollama_url: default_ollama_url(),
             theme: "system".to_string(),
             whisper_model: String::new(),
             whisper_language: default_whisper_language(),
@@ -628,29 +618,5 @@ pub async fn change_conversation_hotkey(app: tauri::AppHandle, hotkey: String) -
     std::fs::write(&settings_path, data).map_err(|e| e.to_string())?;
     app.emit("hotkey-changed", settings.hotkey).ok();
     Ok(())
-}
-
-/// Check whether the local Ollama server is reachable.
-#[tauri::command]
-pub fn check_ollama_status() -> bool {
-    use std::net::TcpStream;
-    use std::time::Duration;
-    let url = get_ollama_host_port();
-    TcpStream::connect_timeout(&url, Duration::from_millis(300)).is_ok()
-}
-
-fn get_ollama_host_port() -> std::net::SocketAddr {
-    // The bundled sidecar's private port.
-    crate::sidecar::OLLAMA_HOST.parse().unwrap()
-}
-
-/// Test that the configured local model responds.
-#[tauri::command]
-pub async fn test_ollama(model: String) -> Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::ai_provider::test_key("ollama", &model)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {e}"))?
 }
 

@@ -42,8 +42,6 @@ export interface AppSettings {
   code_mode: boolean;
   recording_mode: string;
   conversation_hotkey: string;
-  ollama_model: string;        // local LLM, e.g. "llama3.2"
-  ollama_url: string;          // e.g. "http://localhost:11434"
   theme: string;               // "light" | "dark" | "system"
   whisper_model: string;
   whisper_language: string;
@@ -58,8 +56,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   code_mode: false,
   recording_mode: "toggle",
   conversation_hotkey: "Cmd+Shift+Y",
-  ollama_model: "llama3.2",
-  ollama_url: "http://localhost:11434",
   theme: "system",
   whisper_model: "",
   whisper_language: "auto",
