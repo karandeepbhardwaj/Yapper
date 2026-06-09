@@ -86,6 +86,14 @@ pub fn start(app: &tauri::AppHandle) {
         cmd.env("OLLAMA_MODELS", models);
     }
 
+    // On Windows, don't pop a console window for the server process.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
     match cmd.spawn() {
         Ok(child) => {
             log::info!("[sidecar] ollama serve started on {OLLAMA_HOST}");
