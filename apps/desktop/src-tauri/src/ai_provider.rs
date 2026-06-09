@@ -192,10 +192,11 @@ fn resolve_model<'a>(provider: &str, model: &'a str) -> &'a str {
     }
 }
 
-/// Base URL for the local Ollama server. Override with YAPPER_OLLAMA_URL.
+/// Base URL for the bundled Ollama server. Defaults to the sidecar's private
+/// port; override with YAPPER_OLLAMA_URL.
 fn ollama_base_url() -> String {
     std::env::var("YAPPER_OLLAMA_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string())
+        .unwrap_or_else(|_| format!("http://{}", crate::sidecar::OLLAMA_HOST))
 }
 
 /// Call a local Ollama model via its OpenAI-compatible chat endpoint.

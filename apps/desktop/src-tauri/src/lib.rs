@@ -14,6 +14,7 @@ mod snippets;
 mod metrics;
 pub mod providers;
 pub mod model_manager;
+pub mod sidecar;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,6 +24,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    sidecar::stop();
                     std::process::exit(0);
                 }
             }
@@ -38,6 +40,9 @@ pub fn run() {
 
             hotkey::register(app)?;
             widget::setup(app);
+
+            // Start the bundled local LLM server for offline refinement.
+            sidecar::start(app.handle());
 
             // Restore recording mode preference
             {

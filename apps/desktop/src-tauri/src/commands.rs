@@ -220,7 +220,7 @@ async fn process_recording_result(
         if settings.code_mode { Some(true) } else { None },
         "ollama",
         "",
-        &settings.ollama_model,
+        crate::sidecar::MODEL,
     ).await {
         Ok(cmd) => {
             let (cat, ttl) = if cmd.action == "dictation" {
@@ -640,8 +640,8 @@ pub fn check_ollama_status() -> bool {
 }
 
 fn get_ollama_host_port() -> std::net::SocketAddr {
-    // Default Ollama port; honor YAPPER_OLLAMA_URL host:port if set.
-    "127.0.0.1:11434".parse().unwrap()
+    // The bundled sidecar's private port.
+    crate::sidecar::OLLAMA_HOST.parse().unwrap()
 }
 
 /// Test that the configured local model responds.

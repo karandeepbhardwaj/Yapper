@@ -97,7 +97,6 @@ pub async fn send_conversation_turn(
     }).ok();
 
     // Converse via the local Ollama model.
-    let settings = crate::commands::get_settings_internal(&app);
     let app_clone = app.clone();
     let session_id_clone = session_id.clone();
     let result = crate::ai_provider::send_conversation_turn(
@@ -105,7 +104,7 @@ pub async fn send_conversation_turn(
         user_text,
         "ollama",
         "",
-        &settings.ollama_model,
+        crate::sidecar::MODEL,
         move |chunk| {
             app_clone.emit("conversation-ai-chunk", AiChunkPayload {
                 session_id: session_id_clone.clone(),
@@ -166,12 +165,11 @@ pub async fn end_conversation(app: tauri::AppHandle) -> Result<ConversationSumma
     }
 
     // Summarize via the local Ollama model.
-    let settings = crate::commands::get_settings_internal(&app);
     let summary_result = crate::ai_provider::summarize_conversation(
         history,
         "ollama",
         "",
-        &settings.ollama_model,
+        crate::sidecar::MODEL,
     ).await;
 
     let (summary_text, title, key_points) = match summary_result {
