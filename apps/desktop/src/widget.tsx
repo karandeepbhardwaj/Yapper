@@ -12,8 +12,8 @@ const COLLAPSED_W = 60;
 const COLLAPSED_H = 8;
 const HOVER_W = 64;
 const HOVER_H = 48;
-const RECORDING_W = 200;
-const RECORDING_H = 62;
+const RECORDING_W = 210;
+const RECORDING_H = 46;
 
 const PILL_EASE = [0.34, 1.1, 0.64, 1] as const;
 
@@ -24,7 +24,6 @@ function WidgetApp() {
   const [convoHotkey, setConvoHotkey] = useState("Cmd+Shift+Y");
   const [actionLabel, setActionLabel] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [partialText, setPartialText] = useState<string>("");
 
   const isListening = state === "listening";
   const isProcessing = state === "processing";
@@ -46,16 +45,7 @@ function WidgetApp() {
       if (event.payload === "listening") {
         setErrorMessage(null);
       }
-      if (event.payload !== "listening") {
-        setPartialText("");
-      }
     });
-    const unlistenPartial = listen<{ text: string; is_final: boolean }>(
-      "stt-partial",
-      (event) => {
-        setPartialText(event.payload.text);
-      }
-    );
     const unsubAction = listen<{action?: string}>("refinement-complete", (event) => {
       const action = event.payload?.action;
       if (action && action !== "dictation") {
@@ -77,7 +67,6 @@ function WidgetApp() {
     });
     return () => {
       unsub.then((fn) => fn());
-      unlistenPartial.then((fn) => fn());
       unsubAction.then((fn) => fn());
       unsubSkipped.then((fn) => fn());
     };
@@ -146,9 +135,28 @@ function WidgetApp() {
         pointerEvents: "none",
       }}
     >
-      {/* Tooltip — error message or hover hint */}
+      {/* Tooltip — speaking label, error message, or hover hint */}
       <AnimatePresence>
-        {errorMessage && !isActive ? (
+        {isListening ? (
+          <motion.div
+            key="speaking-label"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              marginBottom: 9,
+              fontSize: 13,
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+              color: "rgba(255,255,255,0.9)",
+              textShadow: "0 1px 5px rgba(0,0,0,0.45)",
+              pointerEvents: "none",
+            }}
+          >
+            Speaking…
+          </motion.div>
+        ) : errorMessage && !isActive ? (
           <motion.div
             key="error-tooltip"
             initial={{ opacity: 0, y: 4 }}
@@ -250,118 +258,65 @@ function WidgetApp() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               style={{
-                width: "100%",
-                height: "100%",
-                position: "relative",
+                width: "100%", height: "100%",
+                display: "flex", alignItems: "center",
+                padding: "0 7px", gap: 8,
               }}
             >
-              {/* Wave background — full pill width, behind buttons */}
-              <div style={{ position: "absolute", inset: 0 }}>
-                {[0, 1, 2].map((i) => (
+              {/* Cancel (X) */}
+              <motion.button
+                onClick={handleDiscard}
+                aria-label="Cancel recording"
+                whileHover={{ scale: 1.12 }}
+                whileTap={{ scale: 0.85 }}
+                style={{
+                  width: 30, height: 30, borderRadius: 15,
+                  background: "rgba(255,255,255,0.08)",
+                  border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0, color: "rgba(255,255,255,0.5)",
+                  fontSize: 13, lineHeight: 1,
+                }}
+              >
+                ✕
+              </motion.button>
+
+              {/* Live audio equalizer — contained inset waveform */}
+              <div style={{
+                flex: 1, height: 26, borderRadius: 13,
+                background: "rgba(0,0,0,0.28)",
+                boxShadow: "inset 0 1px 3px rgba(0,0,0,0.45)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                gap: 3, overflow: "hidden",
+              }}>
+                {Array.from({ length: 16 }).map((_, i) => (
                   <div
-                    key={`wave-${i}`}
+                    key={`bar-${i}`}
                     style={{
-                      position: "absolute",
-                      inset: 0,
-                      background: `linear-gradient(90deg,
-                        transparent 0%,
-                        rgba(218,119,86,${[0.35, 0.2, 0.15][i]}) 25%,
-                        rgba(245,201,168,${[0.25, 0.15, 0.1][i]}) 50%,
-                        rgba(218,119,86,${[0.35, 0.2, 0.15][i]}) 75%,
-                        transparent 100%
-                      )`,
-                      backgroundSize: "200% 100%",
-                      animation: `waveFlow ${[2.5, 3.5, 4.5][i]}s ease-in-out infinite`,
-                      animationDelay: `${[0, -1.2, -2.4][i]}s`,
-                    }}
-                  />
-                ))}
-                {/* Sparkle particles riding the waves */}
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div
-                    key={`sp-${i}`}
-                    style={{
-                      position: "absolute",
-                      width: i % 2 === 0 ? 2.5 : 1.5,
-                      height: i % 2 === 0 ? 2.5 : 1.5,
-                      borderRadius: "50%",
-                      background: "#fff",
-                      top: `${25 + Math.sin(i * 1.3) * 25}%`,
-                      pointerEvents: "none",
-                      animation: `sparkleFlow ${1.8 + i * 0.3}s ease-in-out infinite`,
-                      animationDelay: `${i * 0.35}s`,
-                      opacity: 0,
+                      width: 2.5, borderRadius: 2,
+                      background: "linear-gradient(180deg, #f5c9a8, #DA7756)",
+                      animation: `eq ${0.7 + (i % 5) * 0.13}s ease-in-out ${(i % 7) * 0.07}s infinite alternate`,
                     }}
                   />
                 ))}
               </div>
 
-              {/* Buttons — floating on top of aurora */}
-              <div style={{
-                position: "relative", zIndex: 2,
-                width: "100%", height: "100%",
-                display: "flex", alignItems: "center", padding: "0 6px",
-              }}>
-                {/* Discard (X) button */}
-                <motion.button
-                  onClick={handleDiscard}
-                  aria-label="Cancel recording"
-                  whileHover={{ scale: 1.15 }}
-                  whileTap={{ scale: 0.85 }}
-                  style={{
-                    width: 28, height: 28, borderRadius: 14,
-                    background: "rgba(0,0,0,0.35)",
-                    border: "none", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    flexShrink: 0, color: "rgba(255,255,255,0.45)",
-                    fontSize: 14, fontWeight: 400, lineHeight: 1,
-                  }}
-                >
-                  ✕
-                </motion.button>
-                <div style={{ flex: 1 }} />
-                {/* Stop button */}
-                <motion.button
-                  onClick={handleStop}
-                  aria-label="Stop recording"
-                  whileHover={{ scale: 1.15 }}
-                  whileTap={{ scale: 0.85 }}
-                  style={{
-                    width: 28, height: 28, borderRadius: 14,
-                    background: "#DA7756", border: "none", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <div style={{ width: 9, height: 9, borderRadius: 2, background: "#fff" }} />
-                </motion.button>
-              </div>
-              {/* Live transcript text */}
-              {partialText && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 0.7 }}
-                  style={{
-                    position: "absolute",
-                    bottom: 4,
-                    left: 12,
-                    right: 48,
-                    fontSize: 10,
-                    color: "var(--yapper-text-secondary, #aaa)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    direction: "rtl",
-                    textAlign: "left",
-                    pointerEvents: "none",
-                    fontStyle: "italic",
-                  }}
-                >
-                  <span style={{ unicodeBidi: "plaintext" }}>
-                    {partialText.length > 50 ? "..." + partialText.slice(-50) : partialText}
-                  </span>
-                </motion.div>
-              )}
+              {/* Stop */}
+              <motion.button
+                onClick={handleStop}
+                aria-label="Stop recording"
+                whileHover={{ scale: 1.12 }}
+                whileTap={{ scale: 0.85 }}
+                style={{
+                  width: 30, height: 30, borderRadius: 15,
+                  background: "#DA7756", border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                  boxShadow: "0 2px 8px rgba(218,119,86,0.5)",
+                }}
+              >
+                <div style={{ width: 9, height: 9, borderRadius: 2, background: "#fff" }} />
+              </motion.button>
             </motion.div>
           )}
           {isProcessing && (
@@ -488,15 +443,9 @@ function WidgetApp() {
         </AnimatePresence>
       </motion.div>
       <style>{`
-        @keyframes waveFlow {
-          0% { background-position: 200% 50%; }
-          100% { background-position: -200% 50%; }
-        }
-        @keyframes sparkleFlow {
-          0% { left: 5%; opacity: 0; transform: scale(0.3); }
-          20% { opacity: 0.8; transform: scale(1); }
-          80% { opacity: 0.6; transform: scale(0.8); }
-          100% { left: 90%; opacity: 0; transform: scale(0.2); }
+        @keyframes eq {
+          0%   { height: 4px;  opacity: 0.55; }
+          100% { height: 18px; opacity: 1; }
         }
       `}</style>
     </div>

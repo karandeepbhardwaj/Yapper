@@ -59,7 +59,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: "system",
   whisper_model: "",
   whisper_language: "auto",
-  streaming_enabled: true,
+  streaming_enabled: false,
 };
 
 export interface DictionaryEntry {

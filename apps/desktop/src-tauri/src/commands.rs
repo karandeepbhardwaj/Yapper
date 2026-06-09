@@ -111,7 +111,7 @@ fn default_conversation_hotkey() -> String {
 
 fn default_theme() -> String { "system".to_string() }
 fn default_whisper_language() -> String { "auto".to_string() }
-fn default_streaming_enabled() -> bool { true }
+fn default_streaming_enabled() -> bool { false }
 
 fn default_true() -> bool { true }
 fn default_false() -> bool { false }
