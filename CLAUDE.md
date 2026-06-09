@@ -6,7 +6,13 @@ See also: `AGENTS.md` (full agent guidelines), `DESIGN.md` (design principles + 
 
 ## Project Overview
 
-Yapper is a cross-platform voice-to-text desktop app built with Tauri v2 (Rust backend) + React 18 (frontend). It captures speech via native OS APIs, optionally refines transcripts through AI, and auto-pastes refined text at the active cursor. Supports two AI provider modes: **VS Code mode** (routes through the local VS Code extension using `vscode.lm` / Copilot) and **API Key mode** (direct calls to Groq or Anthropic — no VS Code required). Includes voice commands (translate, summarize, draft, explain, chain), conversation mode for back-and-forth AI chat, dictionary/snippets for text expansion, per-category style settings, metrics tracking, and code reference detection.
+Yapper is a cross-platform voice-to-text desktop app built with Tauri v2 (Rust backend) + React 18 (frontend). It captures speech, transcribes it **fully on-device** with whisper.cpp, optionally refines the transcript through a **local LLM (Ollama)**, and auto-pastes the result at the active cursor.
+
+**As of v0.5.0 everything runs locally — there is no cloud, no API keys, and no external app dependency.** Speech-to-text is on-device (whisper.cpp via `whisper-rs`); AI refinement goes to a local Ollama server over `localhost:11434`. If Ollama isn't running, dictation still works and the raw transcript is pasted.
+
+> **History note:** Earlier versions (≤0.4.x) supported a VS Code/Copilot bridge and a direct Groq/Anthropic "API key" mode. Both were removed in the v0.5.0 migration to the local stack. Some Groq/Anthropic helper code still lingers in `ai_provider.rs` (`call_groq`, `call_anthropic`) and `providers/ai_direct.rs` (`DirectAiProvider`), but it is **dead/legacy** — not referenced by the live pipeline, which hardcodes the `"ollama"` provider. The `extensions/vscode-bridge/` directory only contains stale build artifacts.
+
+Features: voice commands (translate, summarize, draft, explain, chain) detected by an AI-first intent classifier, screen-capture commands routed to vision/OCR, conversation mode for back-and-forth chat, dictionary/snippets for text expansion, per-category style settings, usage metrics, and code-reference detection.
 
 ## Commands
 
@@ -19,123 +25,117 @@ bun tauri build             # Build .dmg / .app / .exe / .msi
 # After Rust changes:
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 
-# After VS Code extension changes:
-cd extensions/vscode-bridge && bun run compile
+# Start with sample history data (dev/demos):
+YAPPER_SAMPLE_DATA=1 bun tauri dev
 ```
 
 ### Prerequisites
 
-Rust 1.75+, Node.js 20+, Bun (latest). macOS requires Xcode CLI Tools (`xcode-select --install`).
+Rust 1.75+, Node.js 20+, Bun (latest), **CMake** (required to compile whisper.cpp on first build — `brew install cmake`). macOS requires Xcode CLI Tools (`xcode-select --install`). **Ollama** must be installed and running for AI refinement (`ollama pull llama3.2`, `ollama serve`).
 
 ## Architecture
 
 ```
 apps/desktop/          — Tauri desktop app
-  src/                 — React frontend (Vite + Tailwind CSS v4)
+  src/                 — React frontend (Vite 6 + Tailwind CSS v4 + Motion)
+    app/App.tsx        — Router: history | conversation | settings | dictionary | snippets | help
     app/components/    — UI components:
-      MainWindow.tsx   — History dashboard with search, sort, filter dropdown, action badges on cards
-      ConversationView.tsx — Chat mode with AI
-      SettingsView.tsx — Settings page (style, metrics, code mode, hotkey, AI provider, theme; segmented controls; hint tooltips)
-      DictionaryView.tsx — Text replacement management (empty state examples)
-      SnippetsView.tsx — Text expansion management (empty state examples)
-      HistoryCard.tsx  — History item cards (pinned, conversation, normal; action badges)
-      MetricsBadges.tsx — Usage statistics display
-      HelpView.tsx     — "How to Yapp" help screen with voice command reference
-    app/hooks/         — Custom hooks (useTauriEvents, useHistory, useSettings)
-    app/lib/           — Tauri bridge, types
+      MainWindow.tsx       — History dashboard: Fuse.js search, sort, category filter, action badges
+      ConversationView.tsx — Chat mode with the local LLM
+      SettingsView.tsx     — Settings: Speech Recognition (Whisper model/language), Local AI (Ollama
+                             model + server URL + live status), Screen Capture, theme, hotkeys,
+                             recording mode, style, dictionary, snippets, metrics, code mode
+      DictionaryView.tsx   — Text replacement management
+      SnippetsView.tsx     — Text expansion management
+      HistoryCard.tsx      — History item cards (pinned / conversation / normal; action badges)
+      MetricsBadges.tsx    — Usage statistics display
+      HelpView.tsx         — "How to Yapp" help screen with voice command reference
+    app/hooks/         — useTauriEvents, useHistory, useSettings
+    app/lib/           — tauri-bridge.ts (IPC wrappers), types.ts, tokens.ts
     widget.tsx         — Floating pill widget (separate webview)
-    styles/            — CSS custom properties + dark mode tokens + DM Serif Display font
   src-tauri/src/       — Rust backend
-    lib.rs             — Entry point: mod declarations + run()
-    commands.rs        — All Tauri commands, toggle_recording, AppSettings (hotkey, stt_engine, default_style, style_overrides, metrics_enabled, code_mode, recording_mode, conversation_hotkey, ai_provider_mode, ai_provider, ai_api_key [encrypted], theme), change_recording_mode, change_conversation_hotkey, check_bridge_status, open_vscode, test_api_key
-    conversation.rs    — Conversation mode: start/send_turn/end/discard sessions
-    dictionary.rs      — Dictionary CRUD + text replacement before AI refinement (handles trailing punctuation)
-    snippets.rs        — Snippets CRUD + trigger detection using word boundary matching (bypasses AI)
+    lib.rs             — Entry point: module declarations + run() + invoke_handler (command registry)
+    main.rs            — Binary shim → yapper_lib::run()
+    commands.rs        — All Tauri commands, recording pipeline, AppSettings (see below)
+    ai_provider.rs     — Local Ollama calls (call_ollama → POST /v1/chat/completions); intent
+                         classification + voice-command routing. (Legacy call_groq/call_anthropic unused.)
+    conversation.rs    — Conversation mode: start / send_turn / end / discard sessions
+    dictionary.rs      — Dictionary CRUD + replacement before AI refinement (handles trailing punctuation)
+    snippets.rs        — Snippets CRUD + trigger detection via word-boundary matching (bypasses AI)
     metrics.rs         — Computed usage stats (streak, words, WPM) from history
-    store.rs           — Generic JSON persistence: atomic file writes (write-to-tmp-then-rename), shared load/save/data_path, uuid_simple()
-    widget/mod.rs      — Platform dispatcher for widget setup
-    widget/macos.rs    — NSPanel creation, hover/click polling, setIgnoresMouseEvents passthrough, dock-aware positioning (visibleFrame + full-screen detection via currentSystemPresentationOptions)
-    widget/windows.rs  — Win32 positioning, hover/click polling
-    stt/mod.rs         — STT state machine dispatcher
-    stt/macos.rs       — Speech-to-text via Swift subprocess
-    stt/windows.rs     — Speech-to-text via Windows.Media.SpeechRecognition
-    bridge.rs          — WebSocket client to VS Code extension (127.0.0.1:9147), supports refine/conversation/summarize with style + code mode, authenticated via random token from ~/.yapper/bridge-token, circuit breaker (3 failures → 30s cooldown); used only in VS Code provider mode
-    ai_provider.rs     — Direct Groq/Anthropic HTTP calls for API Key provider mode; handles voice command routing (translate, summarize, draft, explain, chain) and intent classification
-    hotkey.rs          — Global shortcut + Fn key monitoring (macOS), separate conversation hotkey (Cmd+Shift+Y / Ctrl+Shift+Y)
-    history.rs         — History persistence (JSON, supports conversation entries with turns/keyPoints/duration)
+    history.rs         — History persistence (JSON; supports conversation entries with turns/keyPoints)
+    store.rs           — Generic JSON persistence: atomic write-to-tmp-then-rename, uuid_simple()
+    hotkey.rs          — Global shortcuts + Fn-key monitoring (macOS); separate conversation hotkey
     autopaste.rs       — Cross-platform paste: pbcopy+osascript (macOS) / PowerShell (Windows)
-    providers/mod.rs          — Provider trait definitions (SttProvider, AiProvider, VisionProvider)
-    providers/stt_whisper.rs  — WhisperCppProvider (cpal + whisper-rs, streaming)
-    providers/stt_native.rs   — NativeOsProvider (fallback, wraps existing platform STT)
-    providers/ai_bridge.rs    — BridgeAiProvider (wraps bridge.rs)
-    providers/ai_direct.rs    — DirectAiProvider (wraps ai_provider.rs)
-    providers/vision_anthropic.rs — AnthropicVisionProvider (Claude API with images)
-    providers/vision_bridge.rs    — CopilotVisionProvider (via VS Code bridge)
-    providers/vision_native.rs    — NativeOcrProvider (Apple Vision / Windows OCR)
-    model_manager.rs          — Whisper model download, verification, status
-    screen_capture/mod.rs     — Screen capture dispatcher
-    screen_capture/macos.rs   — macOS CGDisplay screenshot via Swift subprocess
-    screen_capture/windows.rs — Windows placeholder
+    stt/mod.rs         — Recording STATE MACHINE only (Idle → Recording → Processing). No STT logic here.
+    model_manager.rs   — Whisper model download / verify / status (downloads to ~/.yapper/models/)
+    widget/mod.rs      — Platform dispatcher for widget setup
+    widget/macos.rs    — NSPanel creation, hover/click polling, setIgnoresMouseEvents passthrough,
+                         dock-aware positioning (visibleFrame + full-screen detection)
+    widget/windows.rs  — Win32 positioning, hover/click polling
+    providers/mod.rs            — Trait definitions: SttProvider, AiProvider, VisionProvider
+    providers/stt_whisper.rs    — WhisperCppProvider: cpal capture (16 kHz mono) + whisper-rs streaming
+    providers/ai_direct.rs      — DirectAiProvider (Groq/Anthropic). LEGACY — not wired into the pipeline.
+    providers/vision_native.rs  — NativeOcrProvider (Apple Vision / Windows OCR)
+    screen_capture/mod.rs       — Screen capture dispatcher
+    screen_capture/macos.rs     — macOS screenshot (Swift subprocess)
+    screen_capture/windows.rs   — Windows placeholder
 
-extensions/vscode-bridge/  — VS Code extension (Copilot-only; no API key fallback in bridge)
-  src/extension.ts         — WebSocket server, routes refine/conversation/summarize messages
-  src/copilot-bridge.ts    — vscode.lm provider only; conversation handler, summarize handler, code reference detection, style overrides
-  src/protocol.ts          — Message types: RefineRequest (with styleOverrides, codeMode), ConversationRequest, SummarizeRequest
+extensions/vscode-bridge/  — DEAD: source removed in v0.5.0; only stale .vsix / out/*.js artifacts remain.
 ```
+
+### AppSettings (commands.rs)
+
+`hotkey`, `default_style` (Professional), `style_overrides`, `metrics_enabled`, `code_mode`,
+`recording_mode` ("toggle" default | "hold"), `conversation_hotkey` (Cmd/Ctrl+Shift+Y),
+`ollama_model` ("llama3.2"), `ollama_url` ("http://localhost:11434"), `theme` ("system" default),
+`whisper_model`, `whisper_language` ("auto"), `screen_capture_hotkey` (Cmd/Ctrl+Shift+0),
+plus streaming + save-screenshots toggles. Persisted via `store.rs` atomic writes.
 
 ## Key Constraints
 
-- **Two AI provider modes**: **VS Code mode** routes through the local VS Code bridge (vscode.lm / Copilot only — no API key fallback in the bridge). **API Key mode** makes direct HTTPS calls to Groq or Anthropic from the Rust backend (`ai_provider.rs`) — no VS Code required.
-- **Zero network egress in VS Code mode** from the desktop app. All STT is on-device. AI refinement calls go through the local VS Code extension bridge only.
-- **Cross-platform**: macOS (primary) and Windows. Platform-specific code isolated in `widget/macos.rs` vs `widget/windows.rs` and `stt/macos.rs` vs `stt/windows.rs`.
-- **macOS interop**: Uses `objc2` + `objc2-app-kit` + `block2` crates (NOT deprecated `cocoa`/`objc`).
-- **Windows interop**: Uses `windows` crate for Win32 APIs and WinRT.
-- **Swift subprocesses** (macOS only): STT uses runtime-compiled Swift scripts in `/tmp/`.
-- **Main thread requirement** (macOS): All AppKit calls via `run_on_main_thread` with `MainThreadMarker`. Widget position calculation also runs on the main thread for accurate `visibleFrame()` values.
-- **Widget is a separate webview** (`widget.html` / `widget.tsx`) — communicates via Tauri events, `pointer-events: none` on root for click passthrough, `setIgnoresMouseEvents` toggled by hover detection. `useSettings` hook listens for `hotkey-changed` events to keep the UI in sync when hotkeys are changed.
-- **Bridge is optional**: Falls back to raw transcript if VS Code isn't running (VS Code mode). Circuit breaker skips bridge attempts for 30s after 3 consecutive failures. Authentication via random token in `~/.yapper/bridge-token`.
-- **API key encryption**: `ai_api_key` in `AppSettings` is stored encrypted on disk. The `test_api_key` command validates a key before saving.
-- **Voice commands**: The recording pipeline runs AI-first intent classification to detect voice commands (translate, summarize, draft, explain, chain) and dispatches them to the appropriate handler before standard refinement.
-- **Theme persistence**: `theme` field in `AppSettings` supports "Light", "Dark", and "Auto". Theme changes use a circle-reveal CSS animation.
-- **Recording modes**: "Press" (toggle, default) starts/stops on hotkey press. "Hold" starts on press, stops on release (including Fn key release on macOS).
-- **Conversation hotkey**: Separate hotkey for starting conversations, default `Cmd+Shift+Y` (macOS) / `Ctrl+Shift+Y` (Windows). Configurable in settings.
-- **Atomic writes**: All persistence (history, dictionary, snippets, settings) uses write-to-tmp-then-rename via `store.rs` to prevent data corruption on crash.
-- **Whisper STT**: Primary STT via whisper-rs (local). Models downloaded from Hugging Face on first use to `~/.yapper/models/`. Falls back to native OS STT before model download.
-- **Screen Capture**: macOS uses CGDisplayCreateImage via Swift subprocess. Region select deferred to follow-up. Requires Screen Recording permission on macOS.
-- **Vision AI**: Routes through same dual-provider pattern. Native OCR fallback for offline use.
-- **Provider traits**: All providers (STT, AI, Vision) use trait-based dispatch in commands.rs via factory functions.
+- **100% local.** STT is on-device (whisper.cpp); AI refinement is a local Ollama HTTP call to `localhost:11434/v1/chat/completions` (OpenAI-compatible). No cloud, no API keys. Override the server with `YAPPER_OLLAMA_URL`.
+- **Ollama is optional at runtime.** If `ollama serve` isn't running, the pipeline emits `refinement-skipped` and pastes the raw transcript with a "Local AI not running" notice.
+- **Whisper STT only.** Primary (and only) STT is `whisper-rs`. Native OS STT was removed — there is no longer a native fallback. Models download from Hugging Face to `~/.yapper/models/` on first use; a model must be selected in Settings → Speech Recognition before transcription works.
+- **Provider traits.** STT / AI / Vision use trait-based dispatch (`providers/mod.rs`) via factory functions in `commands.rs`.
+- **Cross-platform**: macOS (primary) and Windows. Platform code is isolated in `widget/macos.rs` vs `widget/windows.rs` and `screen_capture/macos.rs` vs `screen_capture/windows.rs`.
+- **macOS interop**: `objc2` + `objc2-app-kit` + `block2` (NOT deprecated `cocoa`/`objc`). All AppKit calls run on the main thread via `run_on_main_thread` with `MainThreadMarker`.
+- **Windows interop**: `windows` crate (Win32 + WinRT).
+- **Swift subprocesses** (macOS): screen capture compiles/runs a Swift script.
+- **Widget is a separate webview** (`widget.html` / `widget.tsx`) — talks to the backend via Tauri events; `pointer-events: none` on root for click passthrough, `setIgnoresMouseEvents` toggled by Rust hover detection.
+- **Voice commands**: AI-first intent classification detects translate / summarize / draft / explain / chain (+ screen_summarize / screen_extract / screen_explain) before standard refinement.
+- **Recording modes**: "toggle" (default — press to start, press to stop) and "hold" (press-and-hold; Fn-key release also stops on macOS).
+- **Atomic writes**: history, dictionary, snippets, and settings all persist via write-to-tmp-then-rename.
+- **Screen Capture**: macOS uses a Swift subprocess; requires Screen Recording permission. Vision routes to native OCR (`vision_native.rs`).
 
 ## Recording Pipeline
 
 ```
 1. User triggers hotkey/widget click
-2. start_recording → cpal audio capture → whisper-rs streaming → stt-partial events emitted → final pass on stop
+2. start_recording → cpal audio capture → whisper-rs streaming → stt-partial events → final pass on stop
 3. stop_recording →
-   a. Check snippets (detect_and_expand, word boundary matching) → if match, paste directly, skip AI
-   b. Apply dictionary replacements (word-by-word, handles trailing punctuation)
-   c. AI-first intent classification → detect voice commands (translate, summarize, draft, explain, chain, screen_summarize, screen_extract, screen_explain)
-      - If voice command detected → dispatch to voice command handler → execute → paste result
-      - Screen commands: capture screen first via screen_capture, then route to vision provider
-   d. (Non-command path) Route by provider mode:
-      - VS Code mode: send to bridge with style + styleOverrides + codeMode (token auth)
-        → Bridge refines via vscode.lm → returns refinedText + category + title
-        → If bridge unavailable → emit `refinement-skipped` event, fall back to raw transcript
-      - API Key mode: send to ai_provider.rs (Groq or Anthropic direct call)
-        → Returns refinedText + category + title
-   e. Auto-paste refined text
+   a. Snippets check (word-boundary match) → if match, paste directly, skip AI
+   b. Dictionary replacements (word-by-word, handles trailing punctuation)
+   c. AI-first intent classification → detect voice/screen commands
+      - Voice command → dispatch handler → execute → paste result
+      - Screen command → capture screen → route to vision/OCR provider
+   d. (Non-command) Refine via local Ollama (ai_provider::send_command, "ollama")
+      → returns refinedText + category + title
+      → if Ollama unavailable → emit `refinement-skipped`, fall back to raw transcript
+   e. Auto-paste
    f. Save to history with duration_seconds
 ```
 
 ## Conversation Mode
 
 ```
-start_conversation → create session
-send_conversation_turn → refine user text, send history + message to AI, stream response
-end_conversation → summarize via AI, save to history with turns/keyPoints
-discard_conversation → clear session without saving
+start_conversation       → create session
+send_conversation_turn   → refine user text, send history + message to Ollama, stream response
+end_conversation         → summarize via Ollama, save to history with turns/keyPoints
+discard_conversation     → clear session without saving
 ```
 
-Widget emits `conversation-raw-transcript` event when recording stops during active conversation.
+Widget emits `conversation-raw-transcript` when recording stops during an active conversation.
 
 ## State Machine
 
@@ -144,45 +144,48 @@ Idle → start_recording → Recording → stop_recording → Processing → (pa
                                     → cancel_recording → Idle (no paste)
 ```
 
+## Tauri Commands (registered in lib.rs)
+
+Recording: `start_recording`, `stop_recording`, `cancel_recording`, `stop_recording_raw`, `paste_last_transcript`.
+History: `get_history`, `clear_history`, `delete_history_item`, `toggle_pin_item`.
+Settings/hotkeys: `get_settings`, `save_settings`, `change_hotkey`, `change_recording_mode`, `change_conversation_hotkey`.
+Ollama: `check_ollama_status`, `test_ollama`.
+Whisper models: `get_model_status`, `download_whisper_model`, `delete_whisper_model`.
+Screen capture: `capture_screen`, `cancel_screen_capture`.
+Conversation: `start_conversation`, `send_conversation_turn`, `end_conversation`, `is_conversation_active`, `discard_conversation`.
+Dictionary: `get_all_entries`, `add_entry`, `update_entry`, `delete_entry`, `toggle_favorite`.
+Snippets: `get_all_snippets`, `add_snippet`, `update_snippet`, `delete_snippet`, `toggle_snippet_favorite`.
+Misc: `get_metrics`, `check_speech_permission`, `debug_log`, `open_main_window`, `navigate_to`.
+
 ## Code Style
 
-- **Rust**: Standard rustfmt.
-- **TypeScript/React**: Functional components, hooks-only. Inline styles + Tailwind (no CSS modules).
-- **Animations**: Use `motion/react` (framer-motion). Spring animations for interactive elements.
-- **Brand font**: DM Serif Display (bundled TTF) for "Yapper." logo.
+- **Rust**: standard rustfmt. Use `log` macros (`log::info!`, etc.) — not `println!`.
+- **TypeScript/React**: functional components, hooks-only. Inline styles + Tailwind (no CSS modules).
+- **Animations**: `motion/react` (framer-motion); spring animations for interactive elements.
+- **Brand font**: DM Serif Display (bundled TTF) for the "Yapper." logo.
 - **Accent color**: `#DA7756` (Anthropic terracotta) — single orange throughout.
-- **Design language**: Isomorphic 3D shadows (inset highlights, drop shadows, card depth).
 - **Platform detection** (frontend): `const isMac = navigator.platform.toUpperCase().includes("MAC");`
 
 ## Common Pitfalls
 
-- Don't use `enigo` for keyboard simulation — crashes on macOS. Use `autopaste.rs`.
-- Don't use `git add -A` — repo has build artifacts in `target/` and `dist/`.
-- Use `YAPPER_SAMPLE_DATA=1 bun tauri dev` to start with sample history data for development/demos.
 - Don't add `Co-Authored-By` lines to commits.
-- Use `log` macros (`log::info!`, `log::error!`, etc.) instead of `println!` — all println! has been replaced with structured logging.
-- Don't resize the NSPanel dynamically — crashes. Widget is fixed at 220x80 (recording height is now 62, was 42, to accommodate live transcript).
-- Don't use Web Speech API — doesn't work in WKWebView.
-- Widget `pointer-events: none` on root, `auto` only on pill/tooltip. `setIgnoresMouseEvents` toggled by Rust hover detection for dock click passthrough.
-- CSS can't transition between gradients — use overlays or instant switch for background gradient changes.
-- `user-select: none` on all elements except inputs to prevent text selection.
-- Dictionary replacements happen BEFORE AI refinement. Snippets bypass AI entirely.
-- whisper-rs requires CMake for first build (compiles whisper.cpp C++ code).
-- cpal audio capture requires microphone permission on macOS.
-- Screen capture requires Screen Recording permission on macOS.
-
-## App Views
-
-App.tsx router: `history | conversation | settings | dictionary | snippets | help`
-
-Settings includes new sections: **Speech Recognition** (model picker, language, streaming toggle) and **Screen Capture** (hotkey, save screenshots).
+- Don't use `git add -A` — repo has build artifacts in `target/` and `dist/`.
+- Don't use `enigo` for keyboard simulation — crashes on macOS. Use `autopaste.rs`.
+- Don't use the Web Speech API — doesn't work in WKWebView. STT is whisper-rs only.
+- whisper-rs requires **CMake** for the first build (it compiles whisper.cpp C++).
+- cpal audio capture needs microphone permission; screen capture needs Screen Recording permission (macOS).
+- Don't resize the NSPanel dynamically — crashes. Widget is fixed at 220×80 (recording height 62).
+- Widget `pointer-events: none` on root, `auto` only on pill/tooltip; `setIgnoresMouseEvents` toggled by Rust hover detection.
+- CSS can't transition between gradients — use overlays or instant switch.
+- `user-select: none` everywhere except inputs.
+- Dictionary replacements run BEFORE AI refinement; snippets bypass AI entirely.
 
 ## Testing
 
 No automated test suite. Manual testing:
-1. `bun dev` to start the app
-2. Click widget or press hotkey → speak → stop → verify text pastes
-3. Conversation mode: press Cmd+Shift+Y → record turns → End to save
-4. Settings: gear icon → configure style/hotkey/dictionary/snippets
-5. Widget: hover shows tooltip "press fn to yapp", click records, right area passes clicks through to dock
-6. Recording modes: Settings → recording mode "Press" (toggle) vs "Hold" (press-and-hold); Fn key release stops recording in hold mode
+1. Ensure `ollama serve` is running and a model is pulled (`ollama pull llama3.2`); download a Whisper model in Settings.
+2. `bun dev` → click widget or press hotkey → speak → stop → verify text pastes.
+3. Conversation mode: `Cmd+Shift+Y` → record turns → End to save.
+4. Settings: configure style / hotkeys / dictionary / snippets / Whisper model / Ollama model.
+5. Widget: hover shows tooltip, click records, right area passes clicks through to dock.
+6. Recording modes: "toggle" vs "hold" (Fn-key release stops in hold mode on macOS).
