@@ -24,7 +24,6 @@ export interface HistoryItem {
   durationSeconds?: number;
   action?: string;
   actionParams?: Record<string, string>;
-  screenshotThumbnail?: string;
 }
 
 export interface ConversationSummary {
@@ -49,8 +48,6 @@ export interface AppSettings {
   whisper_model: string;
   whisper_language: string;
   streaming_enabled: boolean;
-  screen_capture_hotkey: string;
-  save_screenshots: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -67,8 +64,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   whisper_model: "",
   whisper_language: "auto",
   streaming_enabled: true,
-  screen_capture_hotkey: "Cmd+Shift+0",
-  save_screenshots: true,
 };
 
 export interface DictionaryEntry {
